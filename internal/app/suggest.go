@@ -126,6 +126,45 @@ func (a *App) GoWith(ctx context.Context, c Couple, ideaID int64) (domain.Round,
 
 var ErrRoundOpen = errors.New("round_open")
 
+// SwapIdea puts a specific idea into the round that is already open («давай лучше это»):
+// marked time stays, the vote is skipped, and if both already marked time it goes straight to confirmation.
+func (a *App) SwapIdea(ctx context.Context, c Couple, ideaID int64) (domain.Round, error) {
+	i, err := a.S.Idea(ctx, c.Space.ID, ideaID)
+	if err != nil {
+		return domain.Round{}, err
+	}
+	r, err := a.S.OpenRound(ctx, c.Space.ID)
+	if err != nil {
+		return a.GoWith(ctx, c, ideaID)
+	}
+	ver := r.Version
+	r.State, r.Chosen, r.Triple = domain.StateTime, ideaID, nil
+	r.VoteA, r.VoteB, r.ConfirmA, r.ConfirmB = domain.VoteNone, domain.VoteNone, false, false
+	r.StartsAt, r.EndsAt = time.Time{}, time.Time{}
+	r.Version++
+	if r.SentA && r.SentB {
+		if err := a.startVoting(ctx, c, &r, nil); err != nil {
+			return r, err
+		}
+	}
+	if err := a.save(ctx, r, ver); err != nil {
+		return r, err
+	}
+	for _, m := range a.both(c) {
+		lead := fmt.Sprintf("Меняем выбор: <b>%s</b>.", esc(i.Title))
+		if m.ID != c.Me.ID {
+			lead = fmt.Sprintf("%s предлагает вместо этого: <b>%s</b>.", esc(c.Me.Name), esc(i.Title))
+		}
+		if r.State == domain.StateTime {
+			a.send(ctx, m.ChatID, lead+" Отмеченное время сохранилось.", tg.Keyboard(tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
+		}
+	}
+	if r.State == domain.StateConfirm {
+		a.announceConfirm(ctx, c, r)
+	}
+	return r, nil
+}
+
 // nudge: the weekly proactive suggestion to both, unless something is already being planned.
 func (a *App) nudge(ctx context.Context, sp store.Space) error {
 	mode := domain.SuggestMode(sp.SuggestMode)

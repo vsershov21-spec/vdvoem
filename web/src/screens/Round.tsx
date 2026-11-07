@@ -67,7 +67,10 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
   // a rolling 7-day window, never starting in the past: opens on the suggested days (or the earliest mark)
   const t0 = parseDay(today), lastStart = addDays(parseDay(last), -6)
   const clamp = (d: Date) => d < t0 ? t0 : d > lastStart ? lastStart : d
-  const [week, setWeek] = useState(() => clamp(monday(parseDay([...r.my_slots].sort()[0]?.slice(0, 10) || r.days[0] || today))))
+  // a day picked in the calendar opens its week and is highlighted
+  const [focus, setFocus] = useState(() => { try { const d = sessionStorage.getItem('vd-focus-day') || ''; sessionStorage.removeItem('vd-focus-day'); return d >= today ? d : '' } catch { return '' } })
+  const [week, setWeek] = useState(() => clamp(monday(parseDay(focus || [...r.my_slots].sort()[0]?.slice(0, 10) || r.days[0] || today))))
+  useEffect(() => { if (!focus) return; const t = setTimeout(() => setFocus(''), 2600); return () => clearTimeout(t) }, [focus])
   const [dir, setDir] = useState(0)
   const [picker, setPicker] = useState(false)
   const paint = useRef<null | boolean>(null)
@@ -124,7 +127,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         onPointerUp={() => { paint.current = null }} onPointerLeave={() => { paint.current = null }}>
         <span />{PARTS.map(([, l, ic]) => <span key={l} className="slots__h row" style={{ justifyContent: 'center', gap: 4 }}><Icon n={ic} s={14} w={2} />{l}</span>)}
         {days.map(d => { const L = dayLabel(d); const off = d < today || d > last; return [
-          <div key={d} className={'slots__day' + (sug.has(d) ? ' is-sug' : '') + (off ? ' is-off' : '')}><b>{L.wd}</b><span>{L.num} {L.mon}</span></div>,
+          <div key={d} className={'slots__day' + (sug.has(d) ? ' is-sug' : '') + (off ? ' is-off' : '') + (d === focus ? ' is-focus' : '')}><b>{L.wd}</b><span>{L.num} {L.mon}</span></div>,
           ...PARTS.map(([p]) => { const k = `${d}:${p}`; const dis = past(d, p); return (
             <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}`} style={{ ['--c' as any]: 'var(--person-a)' }}
               onPointerDown={e => { if (dis) return; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); paint.current = !sel.has(k); toggle(k, paint.current) }}
@@ -136,7 +139,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
       <p className="caption muted" style={{ margin: 0 }}>Утро 9–13 · день 13–18 · вечер 18–23. Можно вести пальцем. <span style={{ color: '#ff701e' }}>●</span> — предлагаю эти дни.</p>
       <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Отметь хотя бы одно' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
       <Sheet open={picker} onClose={() => setPicker(false)}>
-        <WeekPicker today={today} last={last} perDay={perDay} week={week} onPick={d => { goWeek(monday(parseDay(d))); setPicker(false) }} />
+        <WeekPicker today={today} last={last} perDay={perDay} week={week} onPick={d => { goWeek(monday(parseDay(d))); setFocus(d); setPicker(false); toast('Теперь отметь, когда удобно в этот день') }} />
       </Sheet>
     </div>
   )

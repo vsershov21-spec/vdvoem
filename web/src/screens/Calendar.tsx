@@ -31,6 +31,9 @@ export function CalendarScreen({ home }: { home: Home | null }) {
   const mp = stats.data?.months.find(m => m.month === ym(month))
   const mm = mp ? mp.done + mp.planned : 0, hh = Math.round(stats.data?.hours ?? 0)
   const startOn = async () => {
+    // a choice already going on: open it on this day's week instead of a dead end
+    try { sessionStorage.setItem('vd-focus-day', sel) } catch { /* private mode */ }
+    if (home?.round) { go('round/' + home.round.id); return }
     try { const r = await post<{ round: Round }>('/rounds', { day: sel }); emit('home'); go('round/' + r.round.id) } catch (e) { toast(humanError(e)) }
   }
   const canStart = !!sel && sel >= today && !(marks[sel]?.planned) && !!home?.paired
@@ -47,7 +50,7 @@ export function CalendarScreen({ home }: { home: Home | null }) {
       </div>}
       <div className="sec"><h2 className="title"><span className="orange-ind" />{sel ? new Date(sel + 'T12:00').toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Запланировано'}</h2>
         {sel && <button className="link" onClick={() => setSel('')}>Все</button>}</div>
-      {canStart && <div style={{ marginBottom: 10 }}><Btn kind="accent" block icon="cal" onClick={startOn}>Выбрать вместе на этот день</Btn></div>}
+      {canStart && <div style={{ marginBottom: 10 }}><Btn kind="accent" block icon="cal" onClick={startOn}>{home?.round ? 'Отметить время на этот день' : 'Выбрать вместе на этот день'}</Btn></div>}
       {events.length === 0 ? <div className="card"><Empty title={sel ? 'В этот день пусто' : 'Впереди ничего нет'} text={sel ? (canStart ? 'Можно начать выбор прямо на этот день.' : undefined) : 'Запланированные встречи и дедлайны дел появятся здесь.'} /></div> : (
         <div className="sched">
           {events.map((e, k) => (

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { Idea, Round } from '../lib/types'
-import { get, post, humanError } from '../lib/api'
-import { emit } from '../lib/data'
-import { go } from '../lib/router'
+import { startWith } from '../lib/startWith'
+import type { Idea } from '../lib/types'
+import { get, humanError } from '../lib/api'
 import { haptic } from '../lib/tg'
 import { Btn, Cover, Sheet, toast } from '../ui/kit'
 import { Particles } from '../ui/Particles'
@@ -24,7 +23,7 @@ export function SurpriseSheet({ mode, onClose }: { mode: '' | 'random' | 'best';
   }
   useEffect(() => { if (mode) { setS(null); setChain([]); pull(mode, []) } }, [mode])
   const goWith = async () => {
-    try { const r = await post<{ round: Round }>('/rounds/with/' + s!.idea.id); onClose(); emit('home'); go('round/' + r.round.id) } catch (e) { toast(humanError(e)) }
+    if (await startWith(s!.idea.id, s!.idea.title)) onClose()
   }
   return (
     <Sheet open={!!mode} onClose={onClose}>

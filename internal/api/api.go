@@ -714,7 +714,12 @@ func (a *API) roundWith(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	if err != nil {
 		return nil, err
 	}
-	rd, err := a.App.GoWith(r.Context(), c, id)
+	var rd domain.Round
+	if r.URL.Query().Get("replace") == "1" {
+		rd, err = a.App.SwapIdea(r.Context(), c, id)
+	} else {
+		rd, err = a.App.GoWith(r.Context(), c, id)
+	}
 	if err != nil {
 		return nil, err
 	}

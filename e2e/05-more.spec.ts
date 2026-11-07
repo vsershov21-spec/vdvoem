@@ -20,6 +20,18 @@ test('E17 «Удиви нас» в приложении: «Давай!» отк�
   await p.getByTestId('island').click()
   await expect(p.getByRole('button', { name: 'Добавить идею' }).first()).toBeVisible()
   await shot(p, 'E17-island')
+  // another idea while the choice is open: no dead end — it replaces the idea, marked time is kept
+  const cur = (await api(v, 'GET', '/rounds/current')).round
+  await api(v, 'POST', `/rounds/${cur.id}/slots`, { slots: [cur.days[1] + ':2'] })
+  await api(n, 'POST', `/rounds/${cur.id}/slots`, { slots: [cur.days[1] + ':2'] })
+  const other = (await api(v, 'GET', '/ideas')).ideas.find((i: any) => i.id !== (cur.chosen?.id))
+  p.once('dialog', d => d.accept())
+  await p.goto('/app/idea/' + other.id)
+  await p.getByRole('button', { name: /Идём сюда/ }).click()
+  await expect(p.getByText('Совпало!')).toBeVisible()
+  const swapped = (await api(v, 'GET', `/rounds/${cur.id}`)).round
+  expect(swapped.chosen.id).toBe(other.id)
+  expect(swapped.state).toBe('confirm')
 })
 
 test('E18 помощник: ответы, карточки, кнопки срабатывают один раз и только нажатием', async ({ browser }) => {

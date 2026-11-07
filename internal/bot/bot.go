@@ -409,9 +409,17 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		toast = "Запомнил"
 	case "sg":
 		_, err = b.App.GoWith(ctx, c, id(1))
-		if errors.Is(err, app.ErrRoundOpen) {
-			toast, err = "У вас уже идёт выбор", nil
+		if errors.Is(err, app.ErrRoundOpen) { // no dead end: offer to put this idea into the open choice
+			err = nil
+			if i, e := b.App.S.Idea(ctx, c.Space.ID, id(1)); e == nil {
+				b.say(ctx, chat, fmt.Sprintf("У вас уже идёт выбор. Взять <b>%s</b> вместо него? Отмеченное время сохранится.", html.EscapeString(i.Title)),
+					tg.Keyboard(tg.Row(tg.CB("Да, берём это", fmt.Sprintf("sw:%d", i.ID)), tg.CB("Оставить как есть", "nop"))))
+			}
 		}
+	case "sw":
+		_, err = b.App.SwapIdea(ctx, c, id(1))
+	case "nop":
+		toast = "Оставил как есть"
 	case "sn":
 		b.suggest(ctx, c, chat, domain.SuggestMode(arg(1)), app.ParseExclude(arg(2)))
 	case "lg":

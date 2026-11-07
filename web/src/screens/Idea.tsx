@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import type { Idea, Person, Round, Wish } from '../lib/types'
+import { startWith } from '../lib/startWith'
+import type { Idea, Person, Wish } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, patch, del, humanError } from '../lib/api'
-import { go, back } from '../lib/router'
+import { back } from '../lib/router'
 import { CATS, money, dur } from '../lib/format'
 import { openLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
@@ -20,7 +21,7 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
     try { const r = await post<{ idea: Idea }>(`/ideas/${i.id}/wish`, { wish: w || 'skip' }); set(r); emit('home') } catch (e) { toast(humanError(e)) }
   }
   const goWith = async () => {
-    try { const r = await post<{ round: Round }>('/rounds/with/' + i.id); emit('home'); go('round/' + r.round.id) } catch (e) { toast(humanError(e)) }
+    await startWith(i.id, i.title)
   }
   const archive = async () => { await del('/ideas/' + i.id); emit('ideas'); emit('home'); toast('Убрал в архив'); back('ideas') }
   const restore = async () => { const r = await patch<{ idea: Idea }>('/ideas/' + i.id, { status: 'active' }); set(r); emit('ideas'); toast('Вернул в копилку') }

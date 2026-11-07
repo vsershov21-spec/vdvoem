@@ -545,3 +545,7 @@ button,a,[role=tab]{touch-action:manipulation}
 .fchips .wkchip{height:34px}
 .fchips .wkchip[data-on] b{background:#ff701e}
 .archrow{appearance:none;border:0;width:100%;margin-top:14px;height:48px;padding:0 16px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow-card);display:flex;align-items:center;gap:10px;font:600 15px/1 var(--font-sans);color:var(--ink);cursor:pointer}
+
+.slots__day.is-focus b,.slots__day.is-focus span{color:#ff701e}
+.slots__day.is-focus{animation:focus-day 1.2s ease-in-out 2}
+@keyframes focus-day{50%{transform:scale(1.12)}}
