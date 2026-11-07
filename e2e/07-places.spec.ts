@@ -24,7 +24,7 @@ test('E23 «Где именно»: общая идея → ссылка отве
   const np = await open(await phone(browser), n, 'idea/' + idea.id)
   await expect(np.getByTestId('place-option')).toHaveCount(4)
   await np.getByLabel('Добавить вариант места').fill('Каток в Измайлово')
-  await np.getByLabel('Добавить вариант').click()
+  await np.getByLabel('Добавить вариант', { exact: true }).click()
   await expect(np.getByTestId('place-option')).toHaveCount(5)
   await expect(np.getByTestId('place-option').filter({ hasText: 'Каток в Измайлово' })).toContainText('добавил(а) ты')
   await shot(np, 'E23-options')
