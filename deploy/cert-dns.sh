@@ -15,8 +15,28 @@ SH=/root/.acme.sh/acme.sh
 if [ ! -x "$SH" ]; then
   echo "Ставлю acme.sh…"
   t=$(mktemp -d); curl -fsSL https://github.com/acmesh-official/acme.sh/archive/refs/heads/master.tar.gz | tar xz -C "$t"
-  (cd "$t"/acme.sh-master && ./acme.sh --install --home /root/.acme.sh >/dev/null); rm -rf "$t"
-  "$SH" --install-cronjob >/dev/null 2>&1 || true
+  (cd "$t"/acme.sh-master && ./acme.sh --install --force --nocron --home /root/.acme.sh >/dev/null); rm -rf "$t"
+fi
+# renewals: a daily systemd timer (the server has no cron)
+if [ ! -f /etc/systemd/system/acme-renew.timer ]; then
+  cat > /etc/systemd/system/acme-renew.service <<'U'
+[Unit]
+Description=Renew Let's Encrypt certificates (acme.sh)
+[Service]
+Type=oneshot
+ExecStart=/root/.acme.sh/acme.sh --cron --home /root/.acme.sh
+U
+  cat > /etc/systemd/system/acme-renew.timer <<'U'
+[Unit]
+Description=Daily acme.sh renewal check
+[Timer]
+OnCalendar=*-*-* 04:17
+RandomizedDelaySec=1h
+Persistent=true
+[Install]
+WantedBy=timers.target
+U
+  systemctl daemon-reload && systemctl enable --now acme-renew.timer >/dev/null 2>&1
 fi
 
 if [ ! -s "$CREDS" ]; then
@@ -77,5 +97,5 @@ systemctl reload caddy
 sleep 2
 openssl x509 -in "$CERTS/fullchain.pem" -noout -issuer -enddate
 curl -fs --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/healthz" >/dev/null \
-  && echo "Готово: https://$DOMAIN работает, продление автоматическое (acme.sh, cron)" \
+  && echo "Готово: https://$DOMAIN работает, продление автоматическое (acme-renew.timer)" \
   || echo "Caddy перезагружен, но проверка не прошла — пришли вывод"
