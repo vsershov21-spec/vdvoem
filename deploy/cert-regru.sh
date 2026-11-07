@@ -14,8 +14,8 @@ export REGRU_API_Username REGRU_API_Password
 
 if [ ! -x "$ACME" ]; then
   echo "Ставлю acme.sh…"
-  curl -fsSL https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh -o /tmp/acme.sh
-  (cd /tmp && sh acme.sh --install --nocron --home /root/.acme.sh >/dev/null)
+  rm -rf /tmp/acme-src && git clone -q --depth 1 https://github.com/acmesh-official/acme.sh /tmp/acme-src  # with dnsapi/dns_regru.sh
+  (cd /tmp/acme-src && ./acme.sh --install --nocron --home /root/.acme.sh >/dev/null)
 fi
 "$ACME" --set-default-ca --server letsencrypt >/dev/null
 "$ACME" --register-account --server letsencrypt >/dev/null 2>&1 || true
