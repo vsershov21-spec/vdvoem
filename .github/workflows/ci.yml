@@ -39,6 +39,7 @@ jobs:
             e2e/shots
             e2e/.run/*.log
           retention-days: 14
+          include-hidden-files: true
 
   release:
     needs: test
