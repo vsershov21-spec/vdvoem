@@ -575,14 +575,14 @@ func (s *Store) LateJobs(ctx context.Context, now time.Time, d time.Duration) (i
 
 // ---------- telegram updates ----------
 
-// SeenUpdate returns true when the update was already handled (Telegram retries webhooks).
-func (s *Store) SeenUpdate(ctx context.Context, id int64, now time.Time) (bool, error) {
+// FirstSeen records an update id and reports whether it is new (Telegram retries webhooks).
+func (s *Store) FirstSeen(ctx context.Context, id int64, now time.Time) (bool, error) {
 	r, err := s.DB.ExecContext(ctx, `INSERT INTO tg_updates(update_id, seen_at) VALUES (?,?) ON CONFLICT DO NOTHING`, id, now.Unix())
 	if err != nil {
 		return false, err
 	}
 	n, _ := r.RowsAffected()
-	return n == 0, nil
+	return n == 1, nil // true: first time we see this update
 }
 
 func (s *Store) LogAI(ctx context.Context, task, provider, in, out string, ok bool, ms int64, now time.Time) {

@@ -55,7 +55,7 @@ func (b *Bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
-	if fresh, err := b.App.S.SeenUpdate(ctx, u.UpdateID, b.App.Now()); err == nil && !fresh {
+	if fresh, err := b.App.S.FirstSeen(ctx, u.UpdateID, b.App.Now()); err == nil && !fresh {
 		w.WriteHeader(http.StatusOK)
 		return
 	}

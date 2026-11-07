@@ -31,6 +31,18 @@ jobs:
         run: npm i --no-audit --no-fund && npx playwright install --with-deps chromium
       - name: E2E (bot emulator + two phones)
         run: ./e2e/run.sh
+      - name: Publish screenshots and logs to branch e2e-artifacts
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          set -e
+          D=$(mktemp -d)
+          mkdir -p "$D/shots" "$D/logs"
+          cp e2e/shots/*.png "$D/shots/" 2>/dev/null || true
+          cp e2e/.run/*.log "$D/logs/" 2>/dev/null || true
+          echo "${GITHUB_SHA} ${{ job.status }}" > "$D/RUN"
+          cd "$D" && git init -q -b e2e-artifacts && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "e2e ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" e2e-artifacts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
