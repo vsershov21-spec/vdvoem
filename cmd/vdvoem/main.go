@@ -38,6 +38,8 @@ import (
 	"vdvoem/internal/tg"
 )
 
+var version = "dev"
+
 func env(k, def string) string {
 	if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 		return v
@@ -47,6 +49,23 @@ func env(k, def string) string {
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if len(os.Args) == 3 && os.Args[1] == "backup" {
+		// online-safe copy of the database: vdvoem backup /path/to/file.db
+		db, err := sql.Open("sqlite", "file:"+env("DB_PATH", "./data/vdvoem.db")+"?_pragma=busy_timeout(10000)")
+		if err == nil {
+			_, err = db.Exec(`VACUUM INTO ?`, os.Args[2])
+		}
+		if err != nil {
+			log.Error("backup failed", "err", err)
+			os.Exit(1)
+		}
+		log.Info("backup ok", "to", os.Args[2])
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "version" {
+		os.Stdout.WriteString(version + "\n")
+		return
+	}
 	token, public, secret := env("BOT_TOKEN", ""), strings.TrimRight(env("PUBLIC_URL", ""), "/"), env("WEBHOOK_SECRET", "")
 	if token == "" || public == "" || secret == "" {
 		log.Error("BOT_TOKEN, PUBLIC_URL and WEBHOOK_SECRET are required")
@@ -142,7 +161,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(sc)
 	}()
-	log.Info("listening", "addr", srv.Addr, "public", public, "bot", botName, "ai", aiClient.Enabled())
+	log.Info("listening", "version", version, "addr", srv.Addr, "public", public, "bot", botName, "ai", aiClient.Enabled())
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("serve", "err", err)
 		os.Exit(1)

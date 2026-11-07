@@ -38,6 +38,7 @@ type App struct {
 	PublicURL string // https://vdvoem.vershov.com
 	BotName   string // vdvoem_bot
 	Log       *slog.Logger
+	NoKick    bool // tests drive jobs through Tick
 }
 
 var (
@@ -235,6 +236,7 @@ func (a *App) AddIdea(ctx context.Context, c Couple, text string) (AddResult, er
 		res.Similar = sim
 	}
 	_ = a.S.Enqueue(ctx, "parse", now, map[string]any{"idea": i.ID, "text": text, "notify": c.Me.ChatID, "similar": similarID(res.Similar)}, fmt.Sprintf("parse:%d", i.ID))
+	a.Kick()
 	return res, nil
 }
 
@@ -1105,6 +1107,19 @@ func reminderText(r domain.Round) string {
 		return "Напоминаю: встреча ждёт твоего подтверждения. Молчание не считается согласием."
 	}
 	return "Напоминаю про выбор."
+}
+
+// Kick runs due jobs right away in the background (the parse job after a new idea),
+// instead of waiting for the next tick. Claim() makes concurrent runs safe.
+func (a *App) Kick() {
+	if a.NoKick {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		a.runJobs(ctx)
+	}()
 }
 
 func (a *App) runJobs(ctx context.Context) {

@@ -75,7 +75,7 @@ func setup(t *testing.T) (*app.App, *fakeTG, *clock) {
 	msk, _ := time.LoadLocation("Europe/Moscow")
 	ck := &clock{time.Date(2026, 11, 11, 12, 0, 0, 0, msk)} // Wednesday
 	f := &fakeTG{}
-	a := &app.App{S: st, TG: f, AI: &ai.Client{}, Now: ck.now, PublicURL: "https://x.test", BotName: "vdvoem_bot",
+	a := &app.App{S: st, TG: f, AI: &ai.Client{}, Now: ck.now, PublicURL: "https://x.test", BotName: "vdvoem_bot", NoKick: true,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	return a, f, ck
 }

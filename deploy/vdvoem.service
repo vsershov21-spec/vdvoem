@@ -1,0 +1,26 @@
+[Unit]
+Description=Вдвоём — Telegram bot and Mini App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vdvoem
+Group=vdvoem
+WorkingDirectory=/var/lib/vdvoem
+EnvironmentFile=/etc/vdvoem/vdvoem.env
+Environment=DB_PATH=/var/lib/vdvoem/vdvoem.db WEB_DIR=/opt/vdvoem/current/web LISTEN=127.0.0.1:8099 SETUP=1
+ExecStart=/opt/vdvoem/current/vdvoem
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vdvoem
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
