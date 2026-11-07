@@ -10,12 +10,14 @@ import { Icon } from '../ui/icons'
 import { Btn, Cover, Empty, Marks, Sheet, Skel, SubHeader, burst, toast } from '../ui/kit'
 import { MonthGrid, type DayMark } from '../ui/Charts'
 import { Places } from '../ui/Places'
+import { useOnline } from '../lib/live'
 import { openLink } from '../lib/tg'
 
 type R = { round: Round }
 
 export function RoundScreen({ id, home }: { id: number; home: Home | null }) {
   const { data, set, refresh } = useLoad<R>('/rounds/' + id, 5000)
+  const here = useOnline(home?.partner?.color)
   const prev = useRef<string>('')
   const r = data?.round
   useEffect(() => {
@@ -32,7 +34,7 @@ export function RoundScreen({ id, home }: { id: number; home: Home | null }) {
   const partner = home.partner?.name || 'Партнёр'
   let body
   switch (r.state) {
-    case 'time': body = <TimeStage r={r} act={act} partner={partner} />; break
+    case 'time': body = <TimeStage r={r} act={act} partner={partner} here={here} />; break
     case 'vote': body = <VoteStage r={r} act={act} partner={partner} home={home} />; break
     case 'confirm': body = <ConfirmStage r={r} act={act} partner={partner} home={home} onPlace={refresh} />; break
     case 'planned': body = <PlannedStage r={r} act={act} home={home} onPlace={refresh} />; break
@@ -56,7 +58,7 @@ const weekTitle = (m: Date) => { const e = addDays(m, 6); return m.getMonth() ==
 const PART_END = [13, 18, 23]
 const slotWord = (n: number) => n % 10 === 1 && n % 100 !== 11 ? 'слот' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'слота' : 'слотов'
 
-function TimeStage({ r, act, partner }: { r: Round; act: Act; partner: string }) {
+function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: string; here?: boolean }) {
   const [sel, setSel] = useState<Set<string>>(new Set(r.my_slots))
   const [editing, setEditing] = useState(!r.sent)
   const today = r.today || ymd(new Date())
@@ -89,6 +91,7 @@ function TimeStage({ r, act, partner }: { r: Round; act: Act; partner: string })
             <p className="callout muted">Ни одного общего слота. Добавьте ещё варианты — можно на любой день, хоть через неделю.</p>
           </> : <>
             <h2 className="title">Ждём {ncase(partner, 'acc')}</h2>
+            {here && <p className="here" style={{ justifyContent: 'center', margin: '6px 0 0' }}>{partner} сейчас в приложении</p>}
             <p className="callout muted">Как только {partner} отметит время, я найду пересечение и пришлю варианты вам обоим.</p>
           </>}
           <Btn kind="soft" sm icon="edit" onClick={() => setEditing(true)}>Изменить моё время</Btn>

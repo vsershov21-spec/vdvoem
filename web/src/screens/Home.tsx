@@ -3,6 +3,7 @@ import type { Home as HomeT, Idea, Round, Stats, Wish } from '../lib/types'
 import { go } from '../lib/router'
 import { post, humanError } from '../lib/api'
 import { emit, useLoad, useOn } from '../lib/data'
+import { useOnline } from '../lib/live'
 import { relLeft, plural, money, ncase } from '../lib/format'
 import { shareLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
@@ -11,6 +12,7 @@ import { AreaChart, Bars, Gauge, Metric, Pulse } from '../ui/Charts'
 
 export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null; onAdd: () => void; onSurprise: (m: 'random' | 'best') => void; onStart: () => void }) {
   const stats = useLoad<Stats>('/stats', 60000)
+  const partnerHere = useOnline(home?.partner?.color)
   useOn('home', stats.refresh)
   if (!home) return (<><Skel h={44} /><Skel h={190} r={36} /><Skel h={84} /><Skel h={200} /></>)
   const hour = new Date().getHours()
@@ -20,10 +22,10 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
       <header className="hdr" style={{ height: 'auto', margin: '4px 0 14px' }}>
         <div style={{ flex: 1 }}>
           <h1 className="title">{hello}, {home.me.name} 👋</h1>
-          <p className="caption muted" style={{ margin: '2px 0 0' }}>{home.partner ? `Планируем вдвоём с ${ncase(home.partner.name, 'ins')}` : 'Пригласи партнёра — и начнём'}</p>
+          <p className="caption muted" style={{ margin: '2px 0 0' }}>{home.partner ? (partnerHere ? <span className="here">{home.partner.name} сейчас здесь</span> : `Планируем вдвоём с ${ncase(home.partner.name, 'ins')}`) : 'Пригласи партнёра — и начнём'}</p>
         </div>
         <button className="pairava" style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer' }} onClick={() => go('us')} aria-label="Мы">
-          <Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} />
+          <Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} online={partnerHere} />
         </button>
       </header>
       {!home.paired ? <Invite /> : home.round ? <RoundCard r={home.round} home={home} /> : home.next ? <NextCard r={home.next} /> : <Hero home={home} onStart={onStart} />}

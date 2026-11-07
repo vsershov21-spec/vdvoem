@@ -49,7 +49,8 @@ button,a,[role=tab]{touch-action:manipulation}
 /* ---------- avatars (person colours) ---------- */
 .ava{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font:750 14px/1 var(--font-sans);
   color:#fff;background:var(--c,var(--person-a));border:2.5px solid var(--page);position:relative;overflow:hidden;flex:none}
-.ava img{width:100%;height:100%;object-fit:cover}
+.ava img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.ava[data-online]{overflow:visible}
 .ava[data-p="b"]{--c:var(--person-b)}
 .ava--ghost{background:var(--surface);color:var(--ink-muted);border:2px dashed var(--line)}
 .pairava{display:flex}.pairava .ava+.ava{margin-left:-10px}
@@ -530,3 +531,11 @@ button,a,[role=tab]{touch-action:manipulation}
 .places__add .input{padding:11px 12px;font-size:16px}
 .places__send{flex:none;width:46px;border:0;border-radius:14px;background:var(--solid);color:var(--on-solid);display:grid;place-items:center;cursor:pointer}
 .places__send[disabled]{opacity:.35}
+
+/* presence: the partner has the app open right now */
+.ava__live{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2.5px var(--page);font-style:normal}
+.ava__live::after{content:"";position:absolute;inset:0;border-radius:50%;background:#22c55e;animation:live-ping 1.8s ease-out infinite}
+@keyframes live-ping{from{transform:scale(1);opacity:.6}to{transform:scale(2.4);opacity:0}}
+@media (prefers-reduced-motion:reduce){.ava__live::after{animation:none}}
+.here{display:inline-flex;align-items:center;gap:6px;font:600 13px/1 var(--font-sans);color:#16a34a}
+.here::before{content:"";width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px color-mix(in srgb,#22c55e 25%,transparent)}

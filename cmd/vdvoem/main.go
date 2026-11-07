@@ -35,6 +35,7 @@ import (
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
 	"vdvoem/internal/bot"
+	"vdvoem/internal/live"
 	"vdvoem/internal/parse"
 	"vdvoem/internal/store"
 	"vdvoem/internal/tg"
@@ -102,7 +103,8 @@ func main() {
 		log.Warn("getMe failed", "err", err)
 	}
 
-	a := &app.App{S: st, TG: client, AI: aiClient, Fetch: parse.Client(false), Now: time.Now, PublicURL: public, BotName: botName, Log: log}
+	hub := live.New()
+	a := &app.App{Live: hub, S: st, TG: client, AI: aiClient, Fetch: parse.Client(false), Now: time.Now, PublicURL: public, BotName: botName, Log: log}
 	helper := &assistant.Assistant{App: a, AI: aiClient}
 	b := &bot.Bot{App: a, Helper: helper, TG: client, Secret: secret, Log: log}
 	ap := &api.API{App: a, Helper: helper, BotToken: token, WebDir: env("WEB_DIR", "./web/dist"), Log: log}
@@ -165,6 +167,7 @@ func main() {
 		}
 	}()
 
+	srv.RegisterOnShutdown(hub.Close) // open live streams end, so shutdown does not wait for them
 	go func() {
 		<-ctx.Done()
 		sc, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
 	"vdvoem/internal/domain"
+	"vdvoem/internal/live"
 	"vdvoem/internal/store"
 	"vdvoem/internal/tgauth"
 )
@@ -65,6 +67,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("GET /api/rounds/{id}", a.round)
 	h("POST /api/rounds/{id}/{action}", a.roundAction)
 	mux.HandleFunc("GET /api/rounds/{id}/ics", a.authRaw(a.ics))
+	mux.HandleFunc("GET /api/live", a.authRaw(a.liveStream))
 	h("GET /api/suggest", a.suggest)
 	h("GET /api/history", a.history)
 	h("GET /api/settings", a.settings)
@@ -142,9 +145,16 @@ func (a *API) auth(f func(w http.ResponseWriter, r *http.Request, c app.Couple) 
 		r = r.WithContext(ctx)
 		c, err := a.couple(r)
 		if err == nil {
+			mut := r.Method != http.MethodGet
+			if mut {
+				r = r.WithContext(live.WithSource(r.Context(), c.Me.ID, clientID(r)))
+			}
 			var out any
 			out, err = f(w, r, c)
 			if err == nil {
+				if mut { // the partner's open app refreshes now, not on the next poll
+					a.App.Live.From(r.Context(), c.Space.ID)
+				}
 				if out != nil {
 					writeJSON(w, 200, out)
 				}
@@ -152,6 +162,79 @@ func (a *API) auth(f func(w http.ResponseWriter, r *http.Request, c app.Couple) 
 			}
 		}
 		a.fail(w, r, err)
+	}
+}
+
+// clientID: a random id per open tab, so its own changes don't echo back to it.
+func clientID(r *http.Request) string {
+	c := r.Header.Get("X-Client")
+	if len(c) > 40 {
+		c = c[:40]
+	}
+	return c
+}
+
+// liveStream: server-sent events for the open app — «sync» (refresh) and «presence» (who is in the app).
+func (a *API) liveStream(w http.ResponseWriter, r *http.Request, c app.Couple) error {
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{}) // the server timeouts would cut the stream
+	_ = rc.SetReadDeadline(time.Time{})
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache, no-transform")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(200)
+	ch, cancel := a.App.Live.Subscribe(c.Space.ID, c.Me.ID)
+	defer cancel()
+	send := func(ev string, data any) bool {
+		b, _ := json.Marshal(data)
+		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev, b); err != nil {
+			return false
+		}
+		return rc.Flush() == nil
+	}
+	if !send("hello", map[string]any{"me": c.Me.ID}) {
+		return nil
+	}
+	ping := time.NewTicker(20 * time.Second)
+	defer ping.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return nil
+		case <-ping.C:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil || rc.Flush() != nil {
+				return nil
+			}
+		case e, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			var ok2 bool
+			if e.Kind == "presence" { // as colours: the app knows people as «a» and «b»
+				on := []string{}
+				ms, _ := a.App.S.Members(r.Context(), c.Space.ID) // the partner may have joined since the stream opened
+				for _, id := range e.On {
+					for _, m := range ms {
+						if m.ID == id {
+							on = append(on, m.Color)
+						}
+					}
+				}
+				ok2 = send("presence", map[string]any{"online": on})
+			} else {
+				by := ""
+				if e.By == c.Me.ID {
+					by = c.Me.Color
+				} else if e.By != 0 {
+					by = map[string]string{"a": "b", "b": "a"}[c.Me.Color]
+				}
+				ok2 = send("sync", map[string]any{"by": by, "cid": e.CID})
+			}
+			if !ok2 {
+				return nil
+			}
+		}
 	}
 }
 

@@ -62,9 +62,10 @@ export function IdeaTile({ idea, me, onOpen, d = 0 }: { idea: Idea; me: Person; 
   )
 }
 
-export function Avatar({ p, ghost }: { p?: Person; ghost?: boolean }) {
+export function Avatar({ p, ghost, online }: { p?: Person; ghost?: boolean; online?: boolean }) {
   if (!p || ghost) return <span className="ava ava--ghost"><Icon n="plus" s={16} /></span>
-  return <span className="ava" data-p={p.color}>{p.photo ? <img src={p.photo} alt="" /> : p.name.slice(0, 1).toUpperCase()}</span>
+  return <span className="ava" data-p={p.color} data-online={online || undefined} title={online ? p.name + ' сейчас в приложении' : undefined}>
+    {p.photo ? <img src={p.photo} alt="" /> : p.name.slice(0, 1).toUpperCase()}{online && <i className="ava__live" aria-label="в приложении" />}</span>
 }
 
 export function Segmented<T extends string>({ items, value, onChange }: { items: [T, string][]; value: T; onChange: (v: T) => void }) {

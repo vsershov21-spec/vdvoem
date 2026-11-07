@@ -3,6 +3,7 @@ import { useRoute, go, navDir, back } from './lib/router'
 import { scheme, onTheme, setBack, statusBar } from './lib/tg'
 import { useLoad, emit, useOn } from './lib/data'
 import { get, post, humanError } from './lib/api'
+import { startLive } from './lib/live'
 import type { Home as HomeT, Round } from './lib/types'
 import { Burst, Toasts, toast } from './ui/kit'
 import { PillNav, Island, TABS } from './ui/Nav'
@@ -43,7 +44,7 @@ function Main() {
   const [surprise, setSurprise] = useState<'' | 'random' | 'best'>('')
   const home = useLoad<HomeT>('/home', 20000)
   useOn('home', home.refresh)
-  useEffect(() => { get_me_theme() }, [])
+  useEffect(() => { get_me_theme(); startLive() }, [])
 
   const top = route[0]
   const tab = TABS.find(t => t.path === top)

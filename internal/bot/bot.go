@@ -18,6 +18,7 @@ import (
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
 	"vdvoem/internal/domain"
+	"vdvoem/internal/live"
 	"vdvoem/internal/parse"
 	"vdvoem/internal/store"
 	"vdvoem/internal/tg"
@@ -83,6 +84,28 @@ func name(u *tg.User) string {
 }
 
 func (b *Bot) Handle(ctx context.Context, u tg.Update) {
+	var from int64
+	if u.CallbackQuery != nil {
+		from = u.CallbackQuery.From.ID
+	} else if u.Message != nil && u.Message.From != nil {
+		from = u.Message.From.ID
+	}
+	// whatever the bot changed (an idea, a vote, a confirmation) shows up in the open apps right away
+	var space int64
+	if from != 0 {
+		if m, err := b.App.S.MemberByTG(ctx, from); err == nil {
+			space = m.SpaceID
+			ctx = live.WithSource(ctx, m.ID, "")
+		}
+	}
+	defer func() {
+		if space == 0 && from != 0 { // /start or an invite just created the space
+			if m, err := b.App.S.MemberByTG(ctx, from); err == nil {
+				space = m.SpaceID
+			}
+		}
+		b.App.Live.From(ctx, space)
+	}()
 	switch {
 	case u.CallbackQuery != nil:
 		b.callback(ctx, u.CallbackQuery)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get } from './api'
+import { live } from './live'
 
 // useLoad fetches on mount, on refresh(), every `poll` ms while the page is visible
 // (so the partner's moves appear without reload), and when the app comes back to the foreground.
@@ -17,9 +18,12 @@ export function useLoad<T>(path: string | null, poll = 0) {
   useEffect(() => {
     const vis = () => { if (document.visibilityState === 'visible') load() }
     document.addEventListener('visibilitychange', vis)
-    const t = poll ? setInterval(() => { if (document.visibilityState === 'visible') load() }, poll) : 0
+    // with the live stream up, polling is only a slow safety net
+    let n = 0
+    const t = poll ? setInterval(() => { if (document.visibilityState === 'visible' && (!live.up || ++n % 6 === 0)) load() }, poll) : 0
     return () => { document.removeEventListener('visibilitychange', vis); if (t) clearInterval(t) }
   }, [load, poll])
+  useOn('sync', load) // the partner changed something: refetch now
   return { data, err, refresh: load, set: setData }
 }
 

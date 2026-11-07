@@ -17,6 +17,7 @@ import (
 
 	"vdvoem/internal/ai"
 	"vdvoem/internal/domain"
+	"vdvoem/internal/live"
 	"vdvoem/internal/parse"
 	"vdvoem/internal/store"
 	"vdvoem/internal/tg"
@@ -38,7 +39,8 @@ type App struct {
 	PublicURL string // https://vdvoem.vershov.com
 	BotName   string // vdvoem_bot
 	Log       *slog.Logger
-	NoKick    bool // tests drive jobs through Tick
+	NoKick    bool      // tests drive jobs through Tick
+	Live      *live.Hub // open apps refresh in real time (nil = off)
 }
 
 var (
@@ -555,7 +557,11 @@ func (a *App) round(ctx context.Context, c Couple, id int64) (domain.Round, erro
 
 // save retries are the caller's business: a version conflict surfaces as store.ErrConflict.
 func (a *App) save(ctx context.Context, r domain.Round, ver int) error {
-	return a.S.SaveRound(ctx, r, ver, a.now())
+	err := a.S.SaveRound(ctx, r, ver, a.now())
+	if err == nil {
+		a.Live.From(ctx, r.SpaceID)
+	}
+	return err
 }
 
 // SlotHorizon: how far ahead free time can be marked (the round suggests three days, any day up to this is fine).
@@ -1181,6 +1187,9 @@ func (a *App) runJobs(ctx context.Context) {
 	if err != nil {
 		a.Log.Error("claim", "err", err)
 		return
+	}
+	if len(jobs) > 0 {
+		defer a.Live.ChangedAll() // parsed links, reminders, suggestions: open apps refresh
 	}
 	for _, j := range jobs {
 		err := a.runJob(ctx, j)

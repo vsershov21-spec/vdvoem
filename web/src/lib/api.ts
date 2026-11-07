@@ -9,11 +9,19 @@ const q = new URLSearchParams(location.search)
 if (q.get('dev')) { sessionStorage.setItem('vd-dev', q.get('dev')!); sessionStorage.setItem('vd-devtoken', q.get('devtoken') || '') }
 const devUser = () => { try { return sessionStorage.getItem('vd-dev') } catch { return null } }
 
-export async function api<T = any>(method: string, path: string, body?: unknown): Promise<T> {
-  const h: Record<string, string> = { 'Content-Type': 'application/json' }
+// one id per open tab: the live stream skips echoes of this tab's own changes
+export const CLIENT_ID = Math.random().toString(36).slice(2, 12)
+
+export function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = { 'X-Client': CLIENT_ID }
   const d = devUser()
   if (d) { const [id, name] = d.split(':'); h['X-Dev-User'] = id; h['X-Dev-Name'] = encodeURIComponent(name || 'Dev'); h['X-Dev-Token'] = sessionStorage.getItem('vd-devtoken') || '' }
   else if (initData()) h['Authorization'] = 'tma ' + initData() // outside Telegram the session cookie is used
+  return h
+}
+
+export async function api<T = any>(method: string, path: string, body?: unknown): Promise<T> {
+  const h = { ...authHeaders(), 'Content-Type': 'application/json' }
   const res = await fetch('/api' + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error || 'error')

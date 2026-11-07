@@ -4,6 +4,7 @@ import { useLoad, emit } from '../lib/data'
 import { patch, post, del, humanError, ApiError } from '../lib/api'
 import { go } from '../lib/router'
 import { money, plural } from '../lib/format'
+import { useOnline } from '../lib/live'
 import { shareLink, haptic, biometric, bioRequest, bioAuth, bioName } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, Empty, Segmented, Sheet, Skel, toast } from '../ui/kit'
@@ -24,6 +25,7 @@ type Sec = { login?: string; biometric_lock: boolean; theme: string; passkeys: {
 
 export function Us({ home }: { home: Home | null }) {
   const hist = useLoad<{ meetings: Round[] }>('/history')
+  const partnerHere = useOnline(home?.partner?.color)
   const st = useLoad<Settings>('/settings')
   const stats = useLoad<Stats>('/stats')
   const ideas = useLoad<{ ideas: Idea[] }>('/ideas?kind=leisure')
@@ -41,7 +43,7 @@ export function Us({ home }: { home: Home | null }) {
       <header className="hdr"><h1 className="display">Мы</h1></header>
       <div className="card rise" style={{ display: 'grid', gap: 14 }}>
         <div className="row" style={{ gap: 14 }}>
-          <div className="pairava"><Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} /></div>
+          <div className="pairava"><Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} online={partnerHere} /></div>
           <div style={{ flex: 1 }}><b className="headline">{home.me.name}{home.partner ? ' и ' + home.partner.name : ''}</b>
             <div className="caption muted">{home.partner ? `${n} ${plural(n, 'встреча', 'встречи', 'встреч')} вместе` : 'Партнёр ещё не присоединился'}</div></div>
           {!home.partner && <Btn sm kind="accent" icon="share" onClick={invite}>Пригласить</Btn>}
