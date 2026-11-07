@@ -4,6 +4,7 @@ import { people, press, waitMsg, pair, open, phone, shot, api, addIdeas, chat, l
 const cell = (p: Page, k: string) => p.locator(`.cell[data-k="${k}"]`)
 // open the week that holds the day (the grid shows a week at a time)
 async function show(p: Page, k: string) {
+  if (!(await cell(p, k).count())) await p.getByRole('button', { name: 'Ближайшие дни' }).click()
   for (let i = 0; i < 10 && !(await cell(p, k).count()); i++) await p.getByLabel('Следующая неделя').click()
   await expect(cell(p, k)).toBeVisible()
 }
