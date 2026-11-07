@@ -52,6 +52,7 @@ type Round struct {
 	DoneA     string // "", "yes", "moved", "no"
 	AgainA    string // "", "yes", "no"
 	AgainB    string
+	Days      []string // optional: the three days offered for slots (YYYY-MM-DD); empty = the coming weekend
 }
 
 var (

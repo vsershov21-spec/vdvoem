@@ -476,14 +476,19 @@ func SlotDays(now time.Time, loc *time.Location) []time.Time {
 	return []time.Time{start, start.AddDate(0, 0, 1), start.AddDate(0, 0, 2)}
 }
 
-func (a *App) Go(ctx context.Context, c Couple) (domain.Round, error) {
+func (a *App) Go(ctx context.Context, c Couple) (domain.Round, error) { return a.GoOn(ctx, c, nil) }
+
+// GoOn starts a round; days (three YYYY-MM-DD) come from the calendar, nil means the coming weekend.
+func (a *App) GoOn(ctx context.Context, c Couple, days []string) (domain.Round, error) {
 	if c.Partner == nil {
 		return domain.Round{}, ErrNotPaired
 	}
 	if r, err := a.S.OpenRound(ctx, c.Space.ID); err == nil {
 		return r, nil
 	}
-	r, err := a.S.CreateRound(ctx, domain.NewRound(c.Space.ID, a.now(), c.Space.BudgetKop), a.now())
+	nr := domain.NewRound(c.Space.ID, a.now(), c.Space.BudgetKop)
+	nr.Days = days
+	r, err := a.S.CreateRound(ctx, nr, a.now())
 	if errors.Is(err, store.ErrConflict) {
 		return a.S.OpenRound(ctx, c.Space.ID)
 	}
@@ -565,7 +570,7 @@ func (a *App) SubmitSlots(ctx context.Context, c Couple, roundID int64, keys []s
 		return r, err
 	}
 	ver := r.Version
-	slots := parseSlotKeys(keys, c.Loc(), SlotDays(r.OpenedAt, c.Loc()))
+	slots := parseSlotKeys(keys, c.Loc(), RoundDays(r, c.Loc()))
 	both, err := r.SubmitSlots(c.Me.Color, slots, a.now())
 	if err != nil {
 		return r, err

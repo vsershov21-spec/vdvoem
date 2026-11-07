@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -110,6 +111,10 @@ func main() {
 			os.Exit(2)
 		}
 		ap.DevToken = t
+		var off atomic.Int64
+		a.Now = func() time.Time { return time.Now().Add(time.Duration(off.Load())) }
+		ap.Advance = func(d time.Duration) { off.Add(int64(d)) }
+		a.Fetch = parse.Client(true) // e2e serves link pages from localhost
 		log.Warn("DEV_TOKEN set: e2e users accepted — never in production")
 	}
 

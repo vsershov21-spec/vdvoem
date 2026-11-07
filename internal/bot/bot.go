@@ -104,6 +104,13 @@ func (b *Bot) openApp(path string) *tg.Markup {
 func (b *Bot) message(ctx context.Context, m *tg.Message) {
 	chat := m.Chat.ID
 	text := strings.TrimSpace(m.Text)
+	if cmd, arg := splitCmd(text); cmd == "/start" && strings.HasPrefix(arg, "login_") {
+		if _, err := b.App.Couple(ctx, m.From.ID); errors.Is(err, app.ErrNoSpace) {
+			_, _, _ = b.App.Start(ctx, app.Profile{TGID: m.From.ID, ChatID: m.Chat.ID, Name: name(m.From)}, "")
+		}
+		b.App.AskLogin(ctx, m.Chat.ID, strings.TrimPrefix(arg, "login_"))
+		return
+	}
 	if strings.HasPrefix(text, "/start") {
 		b.start(ctx, m)
 		return
@@ -371,6 +378,20 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		}
 	case "sn":
 		b.suggest(ctx, c, chat, domain.SuggestMode(arg(1)), app.ParseExclude(arg(2)))
+	case "lg":
+		if e := b.App.ConfirmLogin(ctx, c, arg(1)); e != nil {
+			toast = "Ссылка устарела — открой страницу входа ещё раз"
+		} else {
+			toast = "Готово — возвращайся в браузер"
+			if q.Message != nil {
+				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, "✅ Вход в браузере подтверждён.", nil)
+			}
+		}
+	case "lgx":
+		toast = "Хорошо, вход отменён"
+		if q.Message != nil {
+			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, "Вход отменён.", nil)
+		}
 	case "aa":
 		rep, e := b.Helper.Act(ctx, c, arg(1))
 		err = e

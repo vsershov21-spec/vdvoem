@@ -79,13 +79,15 @@ func (sp Space) Loc() *time.Location {
 }
 
 type Member struct {
-	ID       int64
-	SpaceID  int64
-	TGUserID int64
-	ChatID   int64
-	Name     string
-	Color    string
-	PhotoURL string
+	ID            int64
+	SpaceID       int64
+	TGUserID      int64
+	ChatID        int64
+	Name          string
+	Color         string
+	PhotoURL      string
+	BiometricLock bool
+	Theme         string
 }
 
 func (s *Store) CreateSpace(ctx context.Context, now time.Time) (Space, error) {
@@ -161,11 +163,13 @@ func (s *Store) AddMember(ctx context.Context, m Member, now time.Time) (Member,
 	return m, tx.Commit()
 }
 
-const memberCols = `id, space_id, tg_user_id, chat_id, name, color, photo_url`
+const memberCols = `id, space_id, tg_user_id, chat_id, name, color, photo_url, biometric_lock, theme`
 
 func scanMember(sc interface{ Scan(...any) error }) (Member, error) {
 	var m Member
-	err := sc.Scan(&m.ID, &m.SpaceID, &m.TGUserID, &m.ChatID, &m.Name, &m.Color, &m.PhotoURL)
+	var lock int
+	err := sc.Scan(&m.ID, &m.SpaceID, &m.TGUserID, &m.ChatID, &m.Name, &m.Color, &m.PhotoURL, &lock, &m.Theme)
+	m.BiometricLock = lock == 1
 	if errors.Is(err, sql.ErrNoRows) {
 		return m, ErrNotFound
 	}

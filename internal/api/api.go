@@ -32,11 +32,16 @@ type API struct {
 	// DevToken lets e2e run without Telegram: requests carrying X-Dev-Token == DevToken may name a user
 	// in X-Dev-User. Empty (production) disables it entirely.
 	DevToken string
+	Advance  func(time.Duration) // e2e clock (DEV_TOKEN only)
 }
 
 type ctxKey struct{}
 
 func (a *API) Routes(mux *http.ServeMux) {
+	a.AuthRoutes(mux)
+	if a.DevToken != "" {
+		mux.HandleFunc("POST /api/dev/advance", a.devAdvance)
+	}
 	h := func(pattern string, f func(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error)) {
 		mux.HandleFunc(pattern, a.auth(f))
 	}
@@ -101,9 +106,15 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// couple resolves who is asking: e2e dev header, Telegram initData (inside the Mini App), or a browser session cookie.
 func (a *API) couple(r *http.Request) (app.Couple, error) {
 	u, err := a.user(r)
 	if err != nil {
+		if r.Header.Get("Authorization") == "" || r.Header.Get("Authorization") == "tma " {
+			if id, ok := a.sessionMember(r); ok {
+				return a.App.CoupleByMember(r.Context(), id)
+			}
+		}
 		return app.Couple{}, httpErr{401, "unauthorized"}
 	}
 	c, err := a.App.Couple(r.Context(), u.ID)
@@ -256,7 +267,8 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 }
 
 func (a *API) me(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
-	out := map[string]any{"me": person(c.Me), "space": map[string]any{"id": c.Space.ID, "status": c.Space.Status, "tz": c.Space.TZ}, "bot": a.App.BotName}
+	out := map[string]any{"me": person(c.Me), "space": map[string]any{"id": c.Space.ID, "status": c.Space.Status, "tz": c.Space.TZ}, "bot": a.App.BotName,
+		"biometric_lock": c.Me.BiometricLock, "theme": c.Me.Theme, "now": a.App.Now().Unix()}
 	if c.Partner != nil {
 		out["partner"] = person(*c.Partner)
 	}
@@ -522,7 +534,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	againMe, _ := pick(me, rd.AgainA, rd.AgainB).(string)
 
 	days := []string{}
-	for _, d := range app.SlotDays(rd.OpenedAt, c.Loc()) {
+	for _, d := range app.RoundDays(rd, c.Loc()) {
 		days = append(days, d.Format("2006-01-02"))
 	}
 	out := map[string]any{"id": rd.ID, "state": string(rd.State), "version": rd.Version, "opened_at": rd.OpenedAt.Unix(), "expires_at": rd.ExpiresAt.Unix(),
@@ -569,7 +581,23 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 }
 
 func (a *API) newRound(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
-	rd, err := a.App.Go(r.Context(), c)
+	var in struct {
+		Day string `json:"day"`
+	}
+	if r.ContentLength > 0 {
+		if err := body(r, &in); err != nil {
+			return nil, err
+		}
+	}
+	var days []string
+	if in.Day != "" {
+		d, ok := app.DaysFrom(in.Day, a.App.Now(), c.Loc())
+		if !ok {
+			return nil, bad("bad_day")
+		}
+		days = d
+	}
+	rd, err := a.App.GoOn(r.Context(), c, days)
 	if err != nil {
 		return nil, err
 	}
@@ -822,4 +850,29 @@ func (a *API) static(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, filepath.Join(a.WebDir, "index.html"))
+}
+
+// devAdvance moves the e2e clock forward and runs the scheduler (only with DEV_TOKEN).
+func (a *API) devAdvance(w http.ResponseWriter, r *http.Request) {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Dev-Token")), []byte(a.DevToken)) != 1 || a.Advance == nil {
+		http.Error(w, "forbidden", 403)
+		return
+	}
+	var in struct {
+		Minutes int    `json:"minutes"`
+		To      string `json:"to"` // RFC3339: jump to this moment
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	if in.To != "" {
+		if t, err := time.Parse(time.RFC3339, in.To); err == nil && t.After(a.App.Now()) {
+			a.Advance(t.Sub(a.App.Now()))
+		}
+	} else {
+		a.Advance(time.Duration(in.Minutes) * time.Minute)
+	}
+	a.App.NoKick = true
+	a.App.Tick(r.Context())
+	a.App.Tick(r.Context())
+	a.App.NoKick = false
+	writeJSON(w, 200, map[string]any{"now": a.App.Now().Format(time.RFC3339)})
 }
