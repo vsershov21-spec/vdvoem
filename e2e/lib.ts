@@ -102,7 +102,7 @@ export async function open(ctx: BrowserContext, u: U | null, path = '', intro = 
   if (u) { q.set('dev', `${u.id}:${u.name}`); q.set('devtoken', TOKEN) }
   if (!intro) q.set('nointro', '1')
   await p.goto(`/app/${path}?${q}`)
-  if (u && !intro) await expect(p.locator('.pnav')).toBeVisible({ timeout: 10000 })
+  if (u && !intro) await expect(p.locator('main.screen')).toBeVisible({ timeout: 10000 })
   return p
 }
 export const tab = (p: Page, id: 'home' | 'bank' | 'cal' | 'ai' | 'us') => p.locator('#tab-' + id).click()

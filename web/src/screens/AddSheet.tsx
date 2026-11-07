@@ -54,7 +54,7 @@ export function AddSheet({ open, onClose, onAdded }: { open: boolean; onClose: (
           {!text && <div className="sugg">{examples.map(x => <button key={x} onClick={() => setText(x)}>{x}</button>)}</div>}
           <p className="caption muted" style={{ margin: 0 }}>По ссылке я сам достану название, адрес, цену и фото. Партнёр увидит идею, но не твою оценку.</p>
           <div ref={btn}><Btn kind="primary" block onClick={save} disabled={!text.trim()} icon="plus">В копилку</Btn></div>
-          <button className="link" style={{ appearance: 'none', border: 0, background: 'none', color: 'var(--ink-muted)', font: '600 14px var(--font-sans)', cursor: 'pointer' }}
+          <button className="link" style={{ appearance: 'none', border: 0, background: 'none', color: 'var(--ink-muted)', font: '600 14px var(--font-sans)', cursor: 'pointer', minHeight: 40, padding: '8px 0' }}
             onClick={() => { onClose(); go('assistant') }}>Не знаешь, что добавить? Спроси помощника</button>
         </div>
       )}

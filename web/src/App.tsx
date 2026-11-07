@@ -73,11 +73,11 @@ function Main() {
   const hideIsland = top === 'round' || top === 'idea'
   return (
     <div className="shell">
-      <main key={route.join('/')} className="screen" data-dir={navDir()}>
+      <main key={route.join('/')} className={'screen' + (hideIsland ? ' screen--sub' : '')} data-dir={navDir()}>
         {!hideIsland && <Island home={home.data} actions={actions} />}
         {screen}
       </main>
-      <PillNav current={tab ? top : '-'} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />
+      {!hideIsland && <PillNav current={tab ? top : '-'} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />}
       <AddSheet open={adding} onClose={() => setAdding(false)} onAdded={() => { emit('ideas'); emit('home') }} />
       <SurpriseSheet mode={surprise} onClose={() => setSurprise('')} />
     </div>

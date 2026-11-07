@@ -14,6 +14,8 @@ button,a,[role=tab]{touch-action:manipulation}
 .shell{position:relative;min-height:100%;overflow-x:hidden}
 .screen{min-height:100vh;min-height:100dvh;padding:8px 16px calc(var(--dock-h) + var(--safe-b) + 28px);animation:screen-in .42s var(--ease-out) backwards}
 .screen[data-dir="back"]{animation-name:screen-back}
+.screen--sub{padding-top:calc(var(--safe-t) + 8px);padding-bottom:calc(var(--safe-b) + 16px)}
+.stickybar{position:sticky;bottom:0;z-index:20;margin:0 -16px;padding:14px 16px var(--safe-b);background:linear-gradient(to bottom,transparent,var(--page) 22px)}
 .screen--flush{padding-left:0;padding-right:0}
 @keyframes screen-in{from{opacity:0;transform:translateX(18px)}}
 @keyframes screen-back{from{opacity:0;transform:translateX(-18px)}}

@@ -62,16 +62,17 @@ function TimeStage({ r, act, partner }: { r: Round; act: Act; partner: string })
   const today = r.today || ymd(new Date())
   const last = r.horizon || ymd(addDays(parseDay(today), 60))
   const sug = new Set(r.days)
-  // open on the week of the first suggested day (or of the earliest mark)
-  const [week, setWeek] = useState(() => monday(parseDay([...r.my_slots].sort()[0]?.slice(0, 10) || r.days[0] || today)))
+  // a rolling 7-day window, never starting in the past: opens on the suggested days (or the earliest mark)
+  const t0 = parseDay(today), lastStart = addDays(parseDay(last), -6)
+  const clamp = (d: Date) => d < t0 ? t0 : d > lastStart ? lastStart : d
+  const [week, setWeek] = useState(() => clamp(monday(parseDay([...r.my_slots].sort()[0]?.slice(0, 10) || r.days[0] || today))))
   const [dir, setDir] = useState(0)
   const [picker, setPicker] = useState(false)
   const paint = useRef<null | boolean>(null)
   const toggle = (k: string, on?: boolean) => setSel(s => { const n = new Set(s); const v = on ?? !n.has(k); if (v === n.has(k)) return s; v ? n.add(k) : n.delete(k); haptic.select(); return n })
   const send = async () => { await act('slots', { slots: [...sel] }); setEditing(false) }
   const noOverlap = r.sent && r.partner_sent
-  const firstWeek = monday(parseDay(today)), lastWeek = monday(parseDay(last))
-  const goWeek = (m: Date) => { const t = m < firstWeek ? firstWeek : m > lastWeek ? lastWeek : m; if (+t === +week) return; haptic.select(); setDir(t > week ? 1 : -1); setWeek(t) }
+  const goWeek = (m: Date) => { const t = clamp(m); if (+t === +week) return; haptic.select(); setDir(t > week ? 1 : -1); setWeek(t) }
   const perDay = useMemo(() => { const m: Record<string, number> = {}; sel.forEach(k => { const d = k.slice(0, 10); m[d] = (m[d] || 0) + 1 }); return m }, [sel])
   const perWeek = useMemo(() => { const m: Record<string, number> = {}; Object.entries(perDay).forEach(([d, n]) => { const w = ymd(monday(parseDay(d))); m[w] = (m[w] || 0) + n }); return m }, [perDay])
   const nowH = new Date().getHours()
@@ -96,20 +97,23 @@ function TimeStage({ r, act, partner }: { r: Round; act: Act; partner: string })
     )
   }
   const days = [...Array(7)].map((_, i) => ymd(addDays(week, i)))
-  const thisW = +week === +firstWeek, nextW = +week === +addDays(firstWeek, 7)
-  const otherWeeks = Object.entries(perWeek).filter(([w]) => w !== ymd(week)).sort()
+  const fri = (() => { const wd = t0.getDay(); return wd === 0 || wd === 6 ? t0 : addDays(t0, 5 - wd) })()
+  const nextMon = addDays(monday(t0), 7)
+  const quick: [string, Date][] = [['Ближайшие дни', t0], ['Выходные', fri], ['След. неделя', nextMon]]
+  const shown = new Set(days)
+  // marks outside the visible window get a chip that leads to them
+  const otherWeeks = Object.entries(perWeek).filter(([w]) => Object.keys(perDay).some(d => ymd(monday(parseDay(d))) === w && !shown.has(d))).sort()
   return (
     <div className="col">
       {r.chosen && <ChosenStrip i={r.chosen} />}
       <p className="callout muted rise" style={{ margin: 0 }}>Отметь всё, когда можешь — на любой день. {partner} не увидит твои отметки, только общее время.</p>
       <div className="wknav rise" style={{ ['--d' as any]: 1 }}>
-        <button className="wknav__arrow" aria-label="Предыдущая неделя" disabled={+week <= +firstWeek} onClick={() => goWeek(addDays(week, -7))}><Icon n="back" s={16} w={2.4} /></button>
+        <button className="wknav__arrow" aria-label="Предыдущая неделя" disabled={+week <= +t0} onClick={() => goWeek(addDays(week, -7))}><Icon n="back" s={16} w={2.4} /></button>
         <button className="wknav__mid" onClick={() => setPicker(true)} aria-label="Выбрать неделю в календаре"><Icon n="cal" s={17} />{weekTitle(week)}{perWeek[ymd(week)] ? <small>· {perWeek[ymd(week)]}</small> : null}</button>
-        <button className="wknav__arrow" aria-label="Следующая неделя" disabled={+week >= +lastWeek} onClick={() => goWeek(addDays(week, 7))}><Icon n="chev" s={16} w={2.4} /></button>
+        <button className="wknav__arrow" aria-label="Следующая неделя" disabled={+week >= +lastStart} onClick={() => goWeek(addDays(week, 7))}><Icon n="chev" s={16} w={2.4} /></button>
       </div>
       <div className="wkchips rise" style={{ ['--d' as any]: 1 }}>
-        <button className="wkchip" data-on={thisW || undefined} onClick={() => goWeek(firstWeek)}>Эта неделя</button>
-        <button className="wkchip" data-on={nextW || undefined} onClick={() => goWeek(addDays(firstWeek, 7))}>Следующая</button>
+        {quick.map(([l, d]) => <button key={l} className="wkchip" data-on={+clamp(d) === +week || undefined} onClick={() => goWeek(d)}>{l}</button>)}
         {otherWeeks.map(([w, n]) => <button key={w} className="wkchip" onClick={() => goWeek(parseDay(w))}>{weekTitle(parseDay(w))}<b>{n}</b></button>)}
         <button className="wkchip" onClick={() => setPicker(true)}><Icon n="cal" s={14} />Другая дата</button>
       </div>
@@ -127,7 +131,7 @@ function TimeStage({ r, act, partner }: { r: Round; act: Act; partner: string })
         ] })}
       </motion.div>
       <p className="caption muted" style={{ margin: 0 }}>Утро 9–13 · день 13–18 · вечер 18–23. Можно вести пальцем. <span style={{ color: '#ff701e' }}>●</span> — предлагаю эти дни.</p>
-      <Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Отметь хотя бы одно' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn>
+      <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Отметь хотя бы одно' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
       <Sheet open={picker} onClose={() => setPicker(false)}>
         <WeekPicker today={today} last={last} perDay={perDay} week={week} onPick={d => { goWeek(monday(parseDay(d))); setPicker(false) }} />
       </Sheet>

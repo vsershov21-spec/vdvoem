@@ -16,8 +16,9 @@ test('E24 время на любой день: недели, календарь,
   const title = await p.locator('.wknav__mid').textContent()
   await p.getByLabel('Следующая неделя').click()
   await expect(p.locator('.wknav__mid')).not.toHaveText(title!)
-  await p.getByRole('button', { name: 'Эта неделя' }).click()
+  await p.getByRole('button', { name: 'Ближайшие дни' }).click()
   await expect(p.getByLabel('Предыдущая неделя')).toBeDisabled()
+  await expect(p.locator('.slots__day.is-off')).toHaveCount(0) // the window never starts in the past
   // past parts of today are locked
   const today = ymd(new Date())
   if (new Date().getHours() >= 13) await expect(p.locator(`.cell[data-k="${today}:0"]`)).toBeDisabled()
@@ -32,8 +33,8 @@ test('E24 время на любой день: недели, календарь,
   await expect(p.locator(`.cell[data-k="${k}"]`)).toBeVisible()
   await p.locator(`.cell[data-k="${k}"]`).click()
   // the mark is remembered while moving between weeks, and a chip leads back to it
-  await p.getByRole('button', { name: 'Эта неделя' }).click()
-  await expect(p.locator('.wkchip', { hasText: /\d/ }).filter({ has: p.locator('b') })).toHaveCount(1)
+  await p.getByRole('button', { name: 'Ближайшие дни' }).click()
+  await expect(p.locator('.wkchip').filter({ has: p.locator('b') })).toHaveCount(1)
   await p.locator('.wkchip').filter({ has: p.locator('b') }).click()
   await expect(p.locator(`.cell[data-k="${k}"]`)).toHaveAttribute('aria-pressed', 'true')
   await shot(p, 'E24-far-week')
