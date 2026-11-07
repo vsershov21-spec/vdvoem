@@ -304,6 +304,8 @@ button,a,[role=tab]{touch-action:manipulation}
 .composer .send[disabled]{opacity:.3}
 .sugg{display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px;scrollbar-width:none}
 .sugg::-webkit-scrollbar{display:none}
+.sugg--dock{position:fixed;left:0;right:0;margin:0;bottom:calc(var(--dock-h) + var(--safe-b) + 76px);z-index:34}
+.chat:has(+ .sugg--dock){padding-bottom:150px}
 .sugg button{flex:none;appearance:none;border:1.5px solid var(--line);background:var(--surface);height:36px;padding:0 14px;border-radius:var(--radius-pill);
   font:600 14px/1 var(--font-sans);cursor:pointer}
 .orb{width:64px;height:64px;border-radius:50%;background:conic-gradient(from var(--ang),var(--person-a),var(--person-b),var(--person-a));

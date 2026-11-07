@@ -3,7 +3,7 @@ import type { CalEvent, Home, Round, Stats } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, humanError } from '../lib/api'
 import { go } from '../lib/router'
-import { money } from '../lib/format'
+import { money, plural } from '../lib/format'
 import { MonthGrid, type DayMark } from '../ui/Charts'
 import { Btn, Cover, Empty, Skel, toast } from '../ui/kit'
 
@@ -29,6 +29,7 @@ export function CalendarScreen({ home }: { home: Home | null }) {
   }, [data])
   const events = (data?.events || []).filter(e => sel ? e.date === sel : e.date >= today)
   const mp = stats.data?.months.find(m => m.month === ym(month))
+  const mm = mp ? mp.done + mp.planned : 0, hh = Math.round(stats.data?.hours ?? 0)
   const startOn = async () => {
     try { const r = await post<{ round: Round }>('/rounds', { day: sel }); emit('home'); go('round/' + r.round.id) } catch (e) { toast(humanError(e)) }
   }
@@ -37,8 +38,8 @@ export function CalendarScreen({ home }: { home: Home | null }) {
     <>
       <header className="hdr"><h1 className="display">Календарь</h1></header>
       <div className="monthstats rise">
-        <div><b>{mp ? mp.done + mp.planned : 0}</b><span>встреч в месяце</span></div>
-        <div><b>{stats.data?.hours ?? 0}</b><span>часов вместе</span></div>
+        <div><b>{mm}</b><span>{plural(mm, 'встреча', 'встречи', 'встреч')} в месяце</span></div>
+        <div><b>{hh}</b><span>{plural(hh, 'час', 'часа', 'часов')} вместе</span></div>
         <div><b style={{ fontSize: 18 }}>{stats.data?.spent ? money(stats.data.spent) : '—'}</b><span>потрачено</span></div>
       </div>
       {!data ? <Skel h={330} r={24} /> : <div className="rise" style={{ ['--d' as any]: 1 }}>

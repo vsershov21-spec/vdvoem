@@ -60,9 +60,9 @@ export function Assistant({ home }: { home: Home | null }) {
           ? <div key={m.id} className="msg msg--me">{m.reply.text}</div>
           : <AiMsg key={m.id} r={m.reply} done={done} onPress={press} />)}
         {busy && <div className="msg msg--ai typing" aria-label="Печатает"><i /><i /><i /></div>}
-        {msgs.length < 2 && !busy && <div className="sugg rise" style={{ ['--d' as any]: 2 }}>{SUGG.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
         <div ref={end} />
       </div>
+      {msgs.length < 2 && !busy && <div className="sugg sugg--dock rise" style={{ ['--d' as any]: 2 }}>{SUGG.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
       <form className="composer" onSubmit={e => { e.preventDefault(); ask(text) }}>
         <input className="input" placeholder={home?.paired ? 'Спроси про ваши планы…' : 'Спроси что-нибудь…'} value={text} maxLength={600} onChange={e => setText(e.target.value)} />
         <button className="send" type="submit" disabled={!text.trim() || busy} aria-label="Отправить"><Icon n="send" s={20} w={2.4} /></button>

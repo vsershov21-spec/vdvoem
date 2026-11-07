@@ -20,13 +20,17 @@ test('E24 время на любой день: недели, календарь,
   await expect(p.getByLabel('Предыдущая неделя')).toBeDisabled()
   await expect(p.locator('.slots__day.is-off')).toHaveCount(0) // the window never starts in the past
   // past parts of today are locked
-  const today = ymd(new Date())
-  if (new Date().getHours() >= 13) await expect(p.locator(`.cell[data-k="${today}:0"]`)).toBeDisabled()
+  // dates as the server (Moscow) sees them; the test runner may be in UTC
+  const cur = (await api(v, 'GET', '/rounds/current')).round
+  const today: string = cur.today
+  const mskHour = +new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Moscow' }).format(new Date())
+  if (mskHour >= 13) await expect(p.locator(`.cell[data-k="${today}:0"]`)).toBeDisabled()
   // a date three weeks ahead through the month picker
-  const far = new Date(); far.setDate(far.getDate() + 21)
+  const [y, m, d] = today.split('-').map(Number)
+  const far = new Date(y, m - 1, d + 21)
   await p.getByRole('button', { name: 'Другая дата' }).click()
   await expect(p.getByText('Выбери день')).toBeVisible()
-  if (far.getMonth() !== new Date().getMonth()) await p.locator('.sheet').getByLabel('Следующий месяц').click()
+  if (far.getMonth() !== m - 1) await p.locator('.sheet').getByLabel('Следующий месяц').click()
   await shot(p, 'E24-picker')
   await p.locator('.sheet').getByLabel(ymd(far)).click()
   const k = ymd(far) + ':2'
@@ -43,6 +47,6 @@ test('E24 время на любой день: недели, календарь,
   const { round } = await api(n, 'GET', '/rounds/current')
   const r = (await api(n, 'POST', `/rounds/${round.id}/slots`, { slots: [k] })).round
   expect(r.state).toBe('vote')
-  expect(r.windows[0].from * 1000).toBeGreaterThan(far.getTime() - 86400_000)
+  expect(r.windows[0].from * 1000).toBeGreaterThan(Date.UTC(y, m - 1, d + 20))
   await expect(p.getByText('Выбираем')).toBeVisible({ timeout: 12000 })
 })

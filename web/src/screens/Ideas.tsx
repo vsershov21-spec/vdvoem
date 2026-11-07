@@ -1,3 +1,4 @@
+import { plural } from '../lib/format'
 import { useCallback, useMemo, useState } from 'react'
 import type { Home, Idea } from '../lib/types'
 import { useLoad, useOn, emit } from '../lib/data'
@@ -52,7 +53,7 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
   const shown = FOLDERS.map(f => ({ f, list: ideas.filter(i => f.test(i, now)) })).filter(x => x.f.always || x.list.length > 0)
   return (
     <>
-      <header className="hdr"><h1 className="display">Копилка</h1><span className="spacer" /><span className="pill">{ideas.filter(i => i.kind === 'leisure').length} идей</span></header>
+      <header className="hdr"><h1 className="display">Копилка</h1><span className="spacer" /><span className="pill">{(n => `${n} ${plural(n, 'идея', 'идеи', 'идей')}`)(ideas.filter(i => i.kind === 'leisure').length)}</span></header>
       <label className="searchbar"><Icon n="search" s={19} /><input placeholder="Найти в копилке" value={q} onChange={e => setQ(e.target.value)} />{q && <button className="iconbtn" style={{ width: 28, height: 28, boxShadow: 'none' }} onClick={() => setQ('')} aria-label="Очистить"><Icon n="x" s={14} /></button>}</label>
       {q.trim() ? (
         <div style={{ marginTop: 14 }}>{found.length === 0 ? <Empty title="Ничего не нашёл" text="Попробуй другое слово — или добавь эту идею." /> :

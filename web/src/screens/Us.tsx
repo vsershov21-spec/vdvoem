@@ -49,7 +49,7 @@ export function Us({ home }: { home: Home | null }) {
         {stats.data && home.partner && (
           <div className="row" style={{ gap: 12, background: 'var(--surface-soft)', borderRadius: 18, padding: 12 }}>
             <Gauge value={stats.data.match} tone="pink" size={70} />
-            <div style={{ flex: 1 }}><b className="title" style={{ color: '#ff3b71' }}>{stats.data.match}%</b><div className="caption muted">совпадение вкусов · {stats.data.both_want} из {stats.data.both_marked} идей хотите оба</div></div>
+            <div style={{ flex: 1 }}><b className="title" style={{ color: '#ff3b71' }}>{stats.data.match}%</b><div className="caption muted">совпадение вкусов · {stats.data.both_want} из {stats.data.both_marked} {plural(stats.data.both_marked, 'идеи', 'идей', 'идей')} хотите оба</div></div>
           </div>
         )}
       </div>
