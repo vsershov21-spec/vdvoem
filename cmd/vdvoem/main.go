@@ -11,7 +11,7 @@
 //	TG_API_BASE     https://api.telegram.org (emulator in tests)
 //	AI_URL, AI_KEY, AI_MODEL   OpenAI-compatible endpoint; empty = rules only
 //	SETUP=1         register webhook, commands, menu button and description at start
-//	DEV_USER=1      accept X-Dev-User header instead of initData (local e2e only)
+//	DEV_TOKEN       e2e only: accept X-Dev-User when X-Dev-Token matches (never in production)
 package main
 
 import (
@@ -85,9 +85,13 @@ func main() {
 	helper := &assistant.Assistant{App: a, AI: aiClient}
 	b := &bot.Bot{App: a, Helper: helper, TG: client, Secret: secret, Log: log}
 	ap := &api.API{App: a, Helper: helper, BotToken: token, WebDir: env("WEB_DIR", "./web/dist"), Log: log}
-	if env("DEV_USER", "") == "1" {
-		ap.DevUser = 1
-		log.Warn("DEV_USER enabled: X-Dev-User header is trusted — never in production")
+	if t := env("DEV_TOKEN", ""); t != "" {
+		if len(t) < 24 {
+			log.Error("DEV_TOKEN must be at least 24 characters")
+			os.Exit(2)
+		}
+		ap.DevToken = t
+		log.Warn("DEV_TOKEN set: e2e users accepted — never in production")
 	}
 
 	mux := http.NewServeMux()

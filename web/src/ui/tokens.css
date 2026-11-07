@@ -1,0 +1,116 @@
+/* Вдвоём — tokens (DS «Вдвоём»; font Onest for Cyrillic) */
+:root, [data-theme="light"] {
+  --page: #f4f4f4;
+  --surface: #ffffff;
+  --surface-soft: #f5f5f5;
+  --surface-sunken: #ececec;
+  --line: #e3e3e3;
+  --hatch: #dedede;
+  --ink: #141414;
+  --ink-muted: #5f5f63;
+  --solid: #181818;
+  --on-solid: #ffffff;
+  --accent: #ef6537;
+  --accent-2: #f68b5f;
+  --accent-deep: #e04d1d;
+  --accent-soft: #fdece7;
+  --on-accent: #141414;
+  --person-a: #ef6537;
+  --person-a-soft: #fdece7;
+  --person-b: #3d6ef5;
+  --person-b-soft: #e8effe;
+  --success: #23a15b;
+  --success-soft: #e5f6eb;
+  --danger: #e5484d;
+  --danger-soft: #fde9e9;
+  --warning: #f0b400;
+  --warning-soft: #fdf4d6;
+  --focus: #3d6ef5;
+  --cover-onyx: #1e1e20;
+  --cover-ember: #ef6537;
+  --cover-ocean: #3d6ef5;
+  --cover-forest: #14a06a;
+  --on-cover: #ffffff;
+  --glass: rgba(255,255,255,0.72);
+  --glass-border: rgba(255,255,255,0.45);
+  --scrim: rgba(10,10,10,0.32);
+  --seg-track: rgba(118,118,128,0.12);
+  --shadow-card: 0 1px 0 rgba(0,0,0,0.015);
+  --shadow-deck: 0 26px 50px -12px rgba(15,23,42,0.16), 0 10px 20px -4px rgba(15,23,42,0.08);
+  --shadow-pop: 0 24px 60px -18px rgba(20,20,20,0.22), 0 4px 14px -6px rgba(20,20,20,0.08);
+  --shadow-dock: 0 20px 40px -10px rgba(18,28,42,0.25), 0 4px 14px rgba(0,0,0,0.08), inset 0 1.5px 2px rgba(255,255,255,0.85), inset 0 -1.5px 2.5px rgba(0,0,0,0.2);
+}
+[data-theme="dark"] {
+  --page: #0f0f11;
+  --surface: #18181b;
+  --surface-soft: #202024;
+  --surface-sunken: #29292e;
+  --line: #2e2e34;
+  --hatch: #3a3a40;
+  --ink: #f4f4f5;
+  --ink-muted: #8d8d96;
+  --solid: #f4f4f5;
+  --on-solid: #141414;
+  --accent: #ef6537;
+  --accent-2: #f68b5f;
+  --accent-deep: #e04d1d;
+  --accent-soft: #33211d;
+  --on-accent: #141414;
+  --person-a: #ef6537;
+  --person-a-soft: #33211d;
+  --person-b: #6b95ff;
+  --person-b-soft: rgba(107,149,255,0.15);
+  --success: #3cc47a;
+  --success-soft: rgba(60,196,122,0.14);
+  --danger: #f2666b;
+  --danger-soft: rgba(242,102,107,0.14);
+  --warning: #f5c542;
+  --warning-soft: rgba(245,197,66,0.13);
+  --focus: #6b95ff;
+  --cover-onyx: #1e1e20;
+  --cover-ember: #ef6537;
+  --cover-ocean: #3d6ef5;
+  --cover-forest: #14a06a;
+  --on-cover: #ffffff;
+  --glass: rgba(18,20,26,0.65);
+  --glass-border: rgba(255,255,255,0.14);
+  --scrim: rgba(0,0,0,0.55);
+  --seg-track: rgba(255,255,255,0.10);
+  --shadow-card: 0 1px 0 rgba(0,0,0,0.2);
+  --shadow-deck: 0 26px 50px -12px rgba(0,0,0,0.6), 0 10px 20px -4px rgba(0,0,0,0.4);
+  --shadow-pop: 0 28px 70px -20px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.05);
+  --shadow-dock: 0 20px 40px -10px rgba(0,0,0,0.6), 0 4px 14px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.18);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-7: 24px;
+  --space-8: 32px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-media: 26px;
+  --radius-sheet: 28px;
+  --radius-xl: 36px;
+  --radius-pill: 999px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-flight: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-tap: 150ms;
+  --dur-ui: 400ms;
+  --dur-sheet: 500ms;
+  --dur-flight: 800ms;
+  --dur-success: 1200ms;
+  --font-sans: "Onest", -apple-system, system-ui, sans-serif;
+}
+.display { font-family: var(--font-sans); font-size: 30px; line-height: 34px; font-weight: 700; letter-spacing: -0.8px; }
+.title { font-family: var(--font-sans); font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.4px; }
+.headline { font-family: var(--font-sans); font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.2px; }
+.body { font-family: var(--font-sans); font-size: 16px; line-height: 22px; font-weight: 400; }
+.callout { font-family: var(--font-sans); font-size: 15px; line-height: 20px; font-weight: 500; }
+.caption { font-family: var(--font-sans); font-size: 13px; line-height: 18px; font-weight: 500; }
+.micro { font-family: var(--font-sans); font-size: 11.5px; line-height: 14px; font-weight: 600; letter-spacing: 0.1px; }

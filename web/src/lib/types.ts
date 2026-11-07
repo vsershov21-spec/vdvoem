@@ -1,0 +1,38 @@
+export type Wish = '' | 'skip' | 'want' | 'very'
+export type Person = { name: string; color: 'a' | 'b'; photo?: string }
+
+export type Idea = {
+  id: number; title: string; kind: 'leisure' | 'chore'; category: string
+  url?: string; address?: string; image?: string; note?: string
+  price_min?: number; price_max?: number; duration_min?: number
+  starts_at?: number; ends_at?: number; deadline?: number; assignee?: string
+  status: string; my_wish: Wish; partner_marked: boolean; partner_wish?: Wish
+  mine: boolean; parsed: boolean; meta: string; liked_before?: boolean; created_at: number
+}
+
+export type RoundState = 'time' | 'vote' | 'confirm' | 'planned' | 'done' | 'expired' | 'cancelled'
+
+export type Round = {
+  id: number; state: RoundState; version: number; opened_at: number; expires_at: number
+  days: string[]; my_slots: string[]; sent: boolean; partner_sent: boolean
+  voted: boolean; partner_voted: boolean; my_vote?: number; partner_vote?: number
+  confirmed: boolean; partner_confirmed: boolean; again: string; budget: number
+  windows?: { from: number; to: number }[]; triple: Idea[]; chosen?: Idea
+  starts_at?: number; ends_at?: number; when?: string; compromise?: Idea; photos?: number
+}
+
+export type Home = {
+  me: Person; partner?: Person; paired: boolean
+  counts: { ideas: number; chores: number; both_want: number; unmarked: number }
+  to_mark: Idea[]; round?: Round; next?: Round
+}
+
+export type Card = { type: 'idea' | 'meeting'; idea_id?: number; round_id?: number; title: string; meta?: string; image?: string; category?: string; why?: string; when?: string }
+export type ActionBtn = { id: string; label: string; kind: string }
+export type Reply = { text: string; cards?: Card[]; actions?: ActionBtn[] }
+export type ChatMsg = { id: number; role: 'user' | 'assistant'; at: number; reply: Reply }
+
+export type Settings = {
+  city: string; tz: string; plan_weekday: number; plan_hour: number; budget: number
+  suggest_mode: 'best' | 'random' | 'mix' | 'off'; suggest_weekday: number; suggest_hour: number; paired: boolean
+}

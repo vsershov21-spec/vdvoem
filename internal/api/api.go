@@ -3,11 +3,13 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,8 +29,9 @@ type API struct {
 	BotToken string
 	WebDir   string
 	Log      *slog.Logger
-	// DevUser lets local e2e run without Telegram (never set in production).
-	DevUser int64
+	// DevToken lets e2e run without Telegram: requests carrying X-Dev-Token == DevToken may name a user
+	// in X-Dev-User. Empty (production) disables it entirely.
+	DevToken string
 }
 
 type ctxKey struct{}
@@ -68,9 +71,10 @@ func (a *API) Routes(mux *http.ServeMux) {
 // ---------- auth & plumbing ----------
 
 func (a *API) user(r *http.Request) (tgauth.User, error) {
-	if a.DevUser != 0 {
+	if a.DevToken != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Dev-Token")), []byte(a.DevToken)) == 1 {
+		name, _ := url.QueryUnescape(r.Header.Get("X-Dev-Name"))
 		if id, err := strconv.ParseInt(r.Header.Get("X-Dev-User"), 10, 64); err == nil {
-			return tgauth.User{ID: id, FirstName: r.Header.Get("X-Dev-Name")}, nil
+			return tgauth.User{ID: id, FirstName: name}, nil
 		}
 	}
 	raw := strings.TrimPrefix(r.Header.Get("Authorization"), "tma ")
