@@ -9,11 +9,11 @@ button{font-family:inherit;color:inherit}
 
 /* ---------- shell & screen transitions ---------- */
 .shell{position:relative;min-height:100%;overflow-x:hidden}
-.screen{min-height:100vh;padding:8px 16px calc(var(--dock-h) + var(--safe-b) + 28px);animation:screen-in .42s var(--ease-out) both}
+.screen{min-height:100vh;padding:8px 16px calc(var(--dock-h) + var(--safe-b) + 28px);animation:screen-in .42s var(--ease-out) backwards}
 .screen[data-dir="back"]{animation-name:screen-back}
 .screen--flush{padding-left:0;padding-right:0}
-@keyframes screen-in{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
-@keyframes screen-back{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
+@keyframes screen-in{from{opacity:0;transform:translateX(18px)}}
+@keyframes screen-back{from{opacity:0;transform:translateX(-18px)}}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .rise{animation:rise .5s var(--ease-out) both;animation-delay:calc(var(--d,0) * 55ms)}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}

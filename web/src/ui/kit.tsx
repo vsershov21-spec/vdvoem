@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { Idea, Person, Wish } from '../lib/types'
 import { CATS } from '../lib/format'
 import { haptic } from '../lib/tg'
@@ -102,10 +103,11 @@ export function Sheet({ open, onClose, children }: { open: boolean; onClose: () 
     else if (shown) { setOut(true); const t = setTimeout(() => setShown(false), 280); return () => clearTimeout(t) }
   }, [open])
   if (!shown) return null
-  return (<>
+  // a portal: a transformed ancestor would turn position:fixed into position:absolute
+  return createPortal(<>
     <div className="scrim" data-out={out || undefined} onClick={onClose} />
     <div className="sheet" data-out={out || undefined} role="dialog" aria-modal="true"><div className="sheet__grip" />{children}</div>
-  </>)
+  </>, document.body)
 }
 
 // ---------- toast ----------

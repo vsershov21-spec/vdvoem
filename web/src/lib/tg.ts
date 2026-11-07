@@ -1,7 +1,8 @@
 // Thin wrapper over Telegram.WebApp; everything degrades gracefully in a plain browser.
 type TGWebApp = any
 const w = window as any
-export const tg: TGWebApp | undefined = w.Telegram?.WebApp?.initData !== undefined ? w.Telegram.WebApp : undefined
+// telegram-web-app.js also loads in a plain browser; only a non-empty initData means we are inside Telegram
+export const tg: TGWebApp | undefined = w.Telegram?.WebApp?.initData ? w.Telegram.WebApp : undefined
 
 export const initData = (): string => tg?.initData || ''
 

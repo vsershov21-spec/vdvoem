@@ -285,7 +285,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	if c.Partner != nil {
 		out["partner"] = person(*c.Partner)
 	}
-	var unmarked []ideaView
+	unmarked := []ideaView{}
 	leisure, chores, both := 0, 0, 0
 	for _, i := range ideas {
 		v := viewIdea(c, i)
@@ -547,13 +547,13 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 		out["partner_vote"] = voteOther
 	}
 	if sentMe && sentOther {
-		var wv []windowView
+		wv := []windowView{}
 		for _, w := range domain.CommonWindows(rd.SlotsA, rd.SlotsB, c.Loc()) {
 			wv = append(wv, windowView{w.From.Unix(), w.To.Unix()})
 		}
 		out["windows"] = wv
 	}
-	var trip []ideaView
+	trip := []ideaView{}
 	for _, id := range rd.Triple {
 		if i, err := a.App.S.Idea(ctx, c.Space.ID, id); err == nil {
 			trip = append(trip, viewIdea(c, i))

@@ -34,7 +34,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
         </div>
       )}
       <Dashboard s={stats.data} home={home} />
-      <ToMark ideas={home.to_mark} onAdd={onAdd} />
+      <ToMark ideas={home.to_mark || []} onAdd={onAdd} />
     </>
   )
 }
