@@ -68,6 +68,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("POST /api/rounds/{id}/{action}", a.roundAction)
 	mux.HandleFunc("GET /api/rounds/{id}/ics", a.authRaw(a.ics))
 	mux.HandleFunc("GET /api/live", a.authRaw(a.liveStream))
+	mux.HandleFunc("POST /api/client-log", a.clientLog)
 	h("GET /api/suggest", a.suggest)
 	h("GET /api/history", a.history)
 	h("GET /api/settings", a.settings)
@@ -163,6 +164,24 @@ func (a *API) auth(f func(w http.ResponseWriter, r *http.Request, c app.Couple) 
 		}
 		a.fail(w, r, err)
 	}
+}
+
+// clientLog: the page reports its boot stages and script errors (sendBeacon), so a hang on a phone is visible in the log.
+func (a *API) clientLog(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Stage string `json:"stage"`
+		Msg   string `json:"msg"`
+		Ms    int    `json:"ms"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 2048)).Decode(&in)
+	cut := func(s string, n int) string {
+		if len(s) > n {
+			return s[:n]
+		}
+		return s
+	}
+	a.Log.Info("client", "stage", cut(in.Stage, 24), "msg", cut(in.Msg, 300), "ms", in.Ms)
+	w.WriteHeader(204)
 }
 
 // clientID: a random id per open tab, so its own changes don't echo back to it.

@@ -4,8 +4,19 @@ import { live } from './live'
 
 // useLoad fetches on mount, on refresh(), every `poll` ms while the page is visible
 // (so the partner's moves appear without reload), and when the app comes back to the foreground.
+// Stale-while-revalidate: the last response per path is kept, so a screen opens instantly with what
+// it showed before and quietly refreshes — no skeleton flash on every tab switch.
+const cache = new Map<string, unknown>()
+export const cached = (path: string) => cache.has(path)
+export function prefetch(paths: string[]) {
+  for (const p of paths) if (!cache.has(p)) get(p).then(d => cache.set(p, d)).catch(() => {})
+}
+
 export function useLoad<T>(path: string | null, poll = 0) {
-  const [data, setData] = useState<T | null>(null)
+  const [data, setDataRaw] = useState<T | null>(() => (path && (cache.get(path) as T)) || null)
+  const setData = useCallback((d: T | null | ((x: T | null) => T | null)) => {
+    setDataRaw(prev => { const v = typeof d === 'function' ? (d as (x: T | null) => T | null)(prev) : d; if (path && v) cache.set(path, v); return v })
+  }, [path])
   const [err, setErr] = useState<unknown>(null)
   const seq = useRef(0)
   const load = useCallback(async () => {
@@ -14,7 +25,7 @@ export function useLoad<T>(path: string | null, poll = 0) {
     try { const d = await get<T>(path); if (my === seq.current) { setData(d); setErr(null) } }
     catch (e) { if (my === seq.current) setErr(e) }
   }, [path])
-  useEffect(() => { setData(null); load() }, [load])
+  useEffect(() => { setDataRaw((path && (cache.get(path) as T)) || null); load() }, [load])
   useEffect(() => {
     const vis = () => { if (document.visibilityState === 'visible') load() }
     document.addEventListener('visibilitychange', vis)

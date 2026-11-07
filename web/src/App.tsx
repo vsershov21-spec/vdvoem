@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRoute, go, navDir, back } from './lib/router'
 import { scheme, onTheme, setBack, statusBar } from './lib/tg'
-import { useLoad, emit, useOn } from './lib/data'
+import { useLoad, emit, useOn, prefetch } from './lib/data'
 import { get, post, humanError } from './lib/api'
 import { startLive } from './lib/live'
 import type { Home as HomeT, Round } from './lib/types'
@@ -44,10 +44,29 @@ function Main() {
   const [surprise, setSurprise] = useState<'' | 'random' | 'best'>('')
   const home = useLoad<HomeT>('/home', 20000)
   useOn('home', home.refresh)
-  useEffect(() => { get_me_theme(); startLive() }, [])
+  useEffect(() => {
+    get_me_theme(); startLive()
+    // warm the other tabs, so the first switch to them is instant too
+    const m = new Date(), ym = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`
+    const t = setTimeout(() => prefetch(['/ideas', '/ideas?status=archived', '/stats', '/calendar?month=' + ym, '/history', '/settings']), 600)
+    return () => clearTimeout(t)
+  }, [])
 
   const top = route[0]
   const tab = TABS.find(t => t.path === top)
+  const key = route.join('/')
+  // transitions: tab → tab slides toward the tab's side, push/back slide like iOS; a screen seen before
+  // skips its staggered entrance (its data is cached, nothing to «arrive»)
+  const prevKey = useRef(key), seen = useRef(new Set<string>()), scrolls = useRef(new Map<string, number>())
+  const anim = useRef<{ dir: string; warm: boolean }>({ dir: 'fwd', warm: false })
+  if (prevKey.current !== key) {
+    const from = TABS.findIndex(t => t.path === prevKey.current), to = TABS.findIndex(t => t.path === key)
+    scrolls.current.set(prevKey.current, window.scrollY)
+    anim.current = { dir: from >= 0 && to >= 0 ? (to > from ? 'right' : 'left') : navDir(), warm: seen.current.has(key) }
+    seen.current.add(prevKey.current)
+    prevKey.current = key
+  }
+  useLayoutEffect(() => { window.scrollTo(0, anim.current.dir === 'back' || tab ? scrolls.current.get(key) || 0 : 0) }, [key])
   useEffect(() => { setBack(route.length > 1 || !tab ? () => back('') : null); return () => setBack(null) }, [route.join('/')])
 
   const start = async () => {
@@ -74,8 +93,9 @@ function Main() {
   const hideIsland = top === 'round' || top === 'idea'
   return (
     <div className="shell">
-      <main key={route.join('/')} className={'screen' + (hideIsland ? ' screen--sub' : '')} data-dir={navDir()}>
-        {!hideIsland && <Island home={home.data} actions={actions} />}
+      {/* the island lives outside the screen: it stays put (and keeps its state) while screens change under it */}
+      {!hideIsland && <Island home={home.data} actions={actions} />}
+      <main key={key} className={'screen' + (hideIsland ? ' screen--sub' : '') + (anim.current.warm ? ' screen--warm' : '')} data-dir={anim.current.dir}>
         {screen}
       </main>
       {!hideIsland && <PillNav current={tab ? top : '-'} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />}

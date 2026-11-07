@@ -15,4 +15,5 @@ import { ready } from './lib/tg'
 clearTimeout((window as any).__vdBoot)
 try { sessionStorage.removeItem('vd-reload') } catch { /* private mode */ }
 ready()
+;(window as any).__vdlog?.('boot', 'tg=' + !!(window as any).Telegram?.WebApp?.initData)
 createRoot(document.getElementById('root')!).render(<App />)

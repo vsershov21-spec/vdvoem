@@ -134,7 +134,7 @@ func main() {
 		w.Write([]byte(`{"ok":true,"late_jobs":` + itoa(late) + `,"ai":` + boolStr(aiClient.Enabled()) + `}`))
 	})
 
-	srv := &http.Server{Addr: env("LISTEN", "127.0.0.1:8099"), Handler: secure(mux), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second}
+	srv := &http.Server{Addr: env("LISTEN", "127.0.0.1:8099"), Handler: accessLog(log, secure(mux)), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second}
 
 	mode := env("TG_MODE", "poll")
 	if env("SETUP", "") == "1" {
@@ -209,6 +209,33 @@ func setup(ctx context.Context, c *tg.Client, public, secret string, webhook boo
 }
 
 // secure adds headers that fit a Telegram Mini App (it is framed by Telegram's web client).
+// rec remembers the status for the access log; Unwrap keeps Flush working for the live stream.
+type rec struct {
+	http.ResponseWriter
+	code int
+}
+
+func (r *rec) WriteHeader(c int)           { r.code = c; r.ResponseWriter.WriteHeader(c) }
+func (r *rec) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+// accessLog: one line per page/API request (no query strings, no bodies) — to see what a phone actually loads.
+func accessLog(log *slog.Logger, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/tg/webhook" {
+			h.ServeHTTP(w, r)
+			return
+		}
+		t0 := time.Now()
+		rw := &rec{ResponseWriter: w, code: 200}
+		h.ServeHTTP(rw, r)
+		ua := r.UserAgent()
+		if len(ua) > 90 {
+			ua = ua[len(ua)-90:]
+		}
+		log.Info("http", "m", r.Method, "p", r.URL.Path, "s", rw.code, "ms", time.Since(t0).Milliseconds(), "ua", ua)
+	})
+}
+
 func secure(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

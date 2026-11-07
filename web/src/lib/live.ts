@@ -10,8 +10,14 @@ let started = false, retry = 1000, ctl: AbortController | null = null
 export function startLive() {
   if (started) return
   started = true
-  connect()
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !live.up) { retry = 1000; connect() } })
+  // the stream opens after the first screen settled, and closes while the app is hidden or being closed —
+  // a webview Telegram keeps around must not hold connections open
+  setTimeout(connect, 1500)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') stop()
+    else if (!live.up) { retry = 1000; connect() }
+  })
+  addEventListener('pagehide', stop)
   addEventListener('online', () => { if (!live.up) { retry = 1000; connect() } })
 }
 
@@ -44,6 +50,8 @@ function handle(block: string) {
   if (ev === 'sync' && d.cid !== CLIENT_ID) emit('sync')
   if (ev === 'presence') { live.online = new Set(d.online || []); emit('live') }
 }
+
+function stop() { const c = ctl; ctl = null; c?.abort(); down() }
 
 function down() { if (live.up) { live.up = false; live.online = new Set(); emit('live') } }
 
