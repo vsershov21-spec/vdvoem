@@ -183,6 +183,7 @@ func (a *API) liveStream(w http.ResponseWriter, r *http.Request, c app.Couple) e
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache, no-transform")
 	h.Set("X-Accel-Buffering", "no")
+	h.Set("Content-Encoding", "identity") // a compressing proxy (Caddy encode) leaves the stream alone
 	w.WriteHeader(200)
 	ch, cancel := a.App.Live.Subscribe(c.Space.ID, c.Me.ID)
 	defer cancel()
