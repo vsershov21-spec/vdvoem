@@ -1,0 +1,12 @@
+name: probe
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          for u in http://vdvoem.vershov.com/healthz http://admin.vershov.com/ http://150.241.65.146/ https://admin.vershov.com/; do
+            echo "== $u"; curl -sS -o /dev/null -w "%{http_code} %{remote_ip} %{time_connect}s\n" --max-time 10 "$u" || true
+          done
+          echo "== tcp 80/443/22"; for p in 80 443 22; do timeout 5 bash -c "echo > /dev/tcp/150.241.65.146/$p" && echo "$p open" || echo "$p fail"; done
+          curl -s https://ipinfo.io/json | grep -E '"(ip|city|country|org)"'
