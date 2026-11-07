@@ -36,3 +36,10 @@ export type Settings = {
   city: string; tz: string; plan_weekday: number; plan_hour: number; budget: number
   suggest_mode: 'best' | 'random' | 'mix' | 'off'; suggest_weekday: number; suggest_hour: number; paired: boolean
 }
+
+export type Stats = {
+  months: { month: string; label: string; done: number; planned: number }[]
+  meetings: number; hours: number; spent: number; ideas: number; both_want: number; both_marked: number
+  match: number; liked: number; unmarked: number; this_month: number; week: number[]; categories: Record<string, number>
+}
+export type CalEvent = { date: string; kind: 'planned' | 'done' | 'deadline' | 'ends' | 'open'; title: string; time?: string; at?: number; round_id?: number; idea_id?: number; category?: string }

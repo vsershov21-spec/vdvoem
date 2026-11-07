@@ -6,6 +6,7 @@ import { go } from '../lib/router'
 import { haptic } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Cover, toast } from '../ui/kit'
+import { Particles } from '../ui/Particles'
 
 const SUGG = ['Куда сходить в субботу вечером?', 'Удиви нас', 'Что у нас запланировано?', 'Где мы были недавно?', 'Что-нибудь до 3000 ₽', 'Какие у нас дела?']
 
@@ -16,6 +17,8 @@ export function Assistant({ home }: { home: Home | null }) {
   const [done, setDone] = useState<Record<string, string>>({})
   const end = useRef<HTMLDivElement>(null)
   const msgs = data?.messages || []
+  const lastAi = [...msgs].reverse().find(m => m.role === 'assistant')
+  const lastPlan = !!lastAi?.reply.actions?.some(a => a.kind === 'plan')
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [msgs.length, busy])
 
   const ask = async (q: string) => {
@@ -43,12 +46,12 @@ export function Assistant({ home }: { home: Home | null }) {
 
   return (
     <>
-      <header className="hdr"><h1 className="display">Помощник</h1><span className="spacer" />
+      <header className="hdr"><span className="mini-orb"><Particles shape={busy ? 'ring' : lastPlan ? 'heart' : 'sphere'} count={700} scale={0.3} interactive={false} /></span><h1 className="display">Помощник</h1><span className="spacer" />
         {msgs.length > 0 && <button className="iconbtn" onClick={clear} aria-label="Очистить"><Icon n="trash" s={19} /></button>}</header>
       <div className="chat">
         {msgs.length === 0 && (
           <div className="rise" style={{ textAlign: 'center' }}>
-            <div className="orb" />
+            <div className="orb-canvas"><Particles shape={busy ? 'ring' : 'sphere'} count={2200} scale={0.34} /></div>
             <h2 className="title">Чем помочь?</h2>
             <p className="callout muted" style={{ margin: '6px auto 18px', maxWidth: 300 }}>Подберу, куда сходить, найду идею под бюджет, напомню, что запланировано. Решаете — вы, я только считаю и подсказываю.</p>
           </div>

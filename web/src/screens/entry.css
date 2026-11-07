@@ -1,0 +1,72 @@
+/* Entry: room + lamp (ported from lamp_login_animation), particle intro, glass login. Always dark, like the donor. */
+.room{position:fixed;inset:0;z-index:200;overflow:hidden;background:#050505;color:#fff;transition:background-color .8s ease;font-family:var(--font-sans)}
+.room[data-on]{background:#111}
+.room__light{position:absolute;top:-38%;left:50%;width:900px;height:900px;margin-left:-450px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(255,220,100,.16) 0%,rgba(255,214,0,.05) 30%,rgba(0,0,0,0) 70%)}
+.room__lamp{position:absolute;left:50%;top:max(env(safe-area-inset-top),24px);transform:translateX(-50%) scale(.78);transform-origin:top center;z-index:5}
+.room__hint{position:absolute;left:0;right:0;top:46%;text-align:center;color:#666;font:500 16px/1 var(--font-sans);margin:0}
+.flies{position:fixed;inset:0;pointer-events:none;z-index:15;overflow:hidden}
+.flies i{position:absolute;top:0;left:0;border-radius:50%;background:#ffea00;box-shadow:0 0 10px 3px rgba(255,234,0,.9),0 0 20px rgba(255,179,0,.6)}
+
+.lamp{position:relative;display:flex;flex-direction:column;align-items:center;-webkit-tap-highlight-color:transparent}
+.lamp__head{width:140px;height:50px;background:#151515;border-radius:140px 140px 4px 4px;box-shadow:inset 0 2px 5px rgba(255,255,255,.1),0 10px 20px rgba(0,0,0,.9);
+  position:relative;z-index:6;transition:box-shadow .4s;border-bottom:2px solid #050505}
+.lamp[data-on] .lamp__head{box-shadow:inset 0 -3px 10px rgba(255,220,150,.4),inset 0 2px 5px rgba(255,255,255,.1)}
+.lamp__glow{position:absolute;top:40px;width:90px;height:20px;background:#fff;border-radius:50%;opacity:0;transition:opacity .4s ease-in-out;z-index:5;pointer-events:none;
+  box-shadow:0 0 40px 20px rgba(255,230,150,.9),0 0 80px 40px rgba(255,200,100,.6)}
+.lamp[data-on] .lamp__glow{opacity:1}
+.lamp__beam{position:absolute;top:45px;width:520px;height:620px;clip-path:polygon(40% 0,60% 0,100% 100%,0 100%);pointer-events:none;z-index:3;filter:blur(8px);
+  background:linear-gradient(to bottom,rgba(255,230,140,.75) 0%,rgba(255,200,80,.18) 55%,transparent 100%);opacity:0;transition:opacity .45s ease-in-out}
+.lamp[data-on] .lamp__beam{opacity:1}
+.lamp__stem{width:6px;height:170px;background:linear-gradient(to right,#050505,#2a2a2a 50%,#050505);position:relative;z-index:4;transition:background .4s}
+.lamp[data-on] .lamp__stem{background:linear-gradient(to right,#050505,#2a2010 50%,#050505);box-shadow:0 0 10px rgba(255,200,100,.15)}
+.lamp__base{width:100px;height:16px;background:#151515;border-radius:30px 30px 4px 4px;position:relative;z-index:5;border-bottom:2px solid #050505;
+  box-shadow:inset 0 2px 5px rgba(255,255,255,.1),0 10px 20px rgba(0,0,0,.9)}
+.lamp__desk{position:absolute;bottom:-40px;width:550px;height:100px;border-radius:50%;opacity:0;transition:opacity .4s;pointer-events:none;z-index:1;
+  background:radial-gradient(ellipse at center,rgba(255,220,120,.25) 0%,rgba(255,180,50,.05) 50%,transparent 70%)}
+.lamp[data-on] .lamp__desk{opacity:1}
+.lamp__cord{position:absolute;top:45px;left:50%;margin-left:55px;width:2px;height:2px;overflow:visible;z-index:5;pointer-events:none}
+.lamp__handle{position:absolute;top:125px;left:50%;margin-left:49px;width:10px;height:20px;border-radius:5px;cursor:grab;z-index:6;touch-action:none;
+  background:linear-gradient(to bottom,#ebd17a,#aa8529);box-shadow:inset 0 2px 3px rgba(255,255,255,.5),0 3px 5px rgba(0,0,0,.7)}
+.lamp__handle::after{content:"";position:absolute;inset:-14px}
+
+/* particle intro */
+.intro{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.intro__canvas{position:absolute;inset:0}
+.intro__word{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 15%);text-align:center;display:flex;flex-direction:column;gap:8px}
+.intro__word b{font:800 44px/1 var(--font-sans);letter-spacing:-1.6px;background:linear-gradient(90deg,#ff9a6b,#fff 50%,#86a8ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.intro__word span{font:500 15px/1.3 var(--font-sans);color:rgba(255,255,255,.62)}
+.intro__skip{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 20px);font:500 12px/1 var(--font-sans);color:rgba(255,255,255,.3);letter-spacing:.3px}
+
+/* glass login (donor .glass) */
+.glass{background:rgba(255,255,255,.05);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.login{position:absolute;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:30;border-radius:28px;padding:28px 20px 22px;display:flex;flex-direction:column;gap:14px;overflow:hidden;max-width:440px;margin:0 auto}
+.login__shine{position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.3) 50%,rgba(255,255,255,0))}
+.login h1{font:800 30px/1.05 var(--font-sans);letter-spacing:-.8px;text-align:center;margin:0}
+.login>p{color:#aaa;font:500 15px/1.3 var(--font-sans);text-align:center;margin:-6px 0 4px}
+.lseg{position:relative;display:grid;grid-template-columns:repeat(3,1fr);height:42px;padding:4px;border-radius:14px;background:rgba(0,0,0,.35);box-shadow:inset 0 2px 4px rgba(0,0,0,.5)}
+.lseg::before{content:"";position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/3);border-radius:10px;background:rgba(255,255,255,.12);
+  transform:translateX(calc(var(--i) * 100%));transition:transform .45s var(--ease-spring)}
+.lseg button{position:relative;z-index:1;appearance:none;border:0;background:none;color:#999;font:600 13.5px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.lseg button[aria-selected="true"]{color:#fff}
+.login__body{display:flex;flex-direction:column;gap:10px;min-height:118px;justify-content:center}
+.login__form{display:flex;flex-direction:column;gap:10px}
+.lfield{position:relative;display:block}
+.lfield svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#888}
+.lfield input{width:100%;padding:15px 16px 15px 46px;border-radius:16px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.4);color:#fff;font:500 16px/1 var(--font-sans);
+  outline:none;transition:border-color .3s;box-shadow:inset 0 2px 4px rgba(0,0,0,.5)}
+.lfield input:focus{border-color:rgba(255,214,0,.55)}
+.lbtn{appearance:none;border:0;height:54px;border-radius:16px;font:700 16px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;
+  transition:transform .15s,box-shadow .3s,opacity .2s}
+.lbtn:active{transform:scale(.98)}
+.lbtn[disabled]{opacity:.5}
+.lbtn--light{background:#ffd600;color:#000}
+.lbtn--light:hover{box-shadow:0 0 20px rgba(255,220,100,.4)}
+.lbtn--tg{background:#2aabee;color:#fff;box-shadow:0 10px 24px -10px rgba(42,171,238,.8)}
+.lbtn--ghost{background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.1);height:44px;font-size:14px}
+.login__note{color:#888;font:500 13px/1.35 var(--font-sans);text-align:center}
+.login__wait{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.login__wait b{font:700 17px/1.2 var(--font-sans)}
+.login__wait>span:not(.lspin){color:#aaa;font:500 14px/1.35 var(--font-sans);max-width:280px}
+.lspin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,214,0,.25);border-top-color:#ffd600;animation:spin .8s linear infinite}
+.login__err{margin:0;color:#ff8a80;font:600 13.5px/1.35 var(--font-sans);text-align:center}

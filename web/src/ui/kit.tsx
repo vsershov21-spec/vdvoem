@@ -3,6 +3,7 @@ import type { Idea, Person, Wish } from '../lib/types'
 import { CATS } from '../lib/format'
 import { haptic } from '../lib/tg'
 import { Icon } from './icons'
+import { Heart } from './Heart'
 import { back as backNav } from '../lib/router'
 
 // ---------- Cover: photo with fade-in, or category gradient with a big glyph ----------
@@ -40,7 +41,7 @@ export function WishPicker({ value, onChange, small }: { value: Wish; onChange: 
       {opts.map(([w, l]) => (
         <button key={w} className={'chip' + (small ? ' chip--sm' : '')} data-w={w} aria-pressed={value === w}
           onClick={e => { e.stopPropagation(); w === 'very' ? haptic.heavy() : haptic.select(); onChange(value === w ? '' : w) }}>
-          {w === 'very' && <Icon n="heart" s={15} w={2.2} />}{l}
+          {w === 'very' && <Heart on={value === 'very'} size={small ? 22 : 26} stroke={2} />}{l}
         </button>
       ))}
     </div>

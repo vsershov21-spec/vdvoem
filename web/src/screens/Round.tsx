@@ -157,7 +157,7 @@ function Deck({ r, top, setTop, onVote, me, small }: { r: Round; top: number; se
         const style = isTop && dx ? { transform: `translateX(${dx}px) rotate(${dx / 18}deg)` } : undefined
         return (
           <div key={i.id} className="dcard" data-pos={pos > 2 ? 'hidden' : isTop ? undefined : pos} data-drag={isTop && drag.current ? '' : undefined} style={{ ...style, zIndex: 10 - pos }}
-            onPointerDown={e => { if (!isTop) return; drag.current = { x: e.clientX, y: e.clientY, id: i.id }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) }}
+            onPointerDown={e => { if (!isTop || (e.target as HTMLElement).closest('button')) return; drag.current = { x: e.clientX, y: e.clientY, id: i.id }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) }}
             onPointerMove={e => { if (drag.current) setDx(e.clientX - drag.current.x) }}
             onPointerUp={end} onPointerCancel={() => { drag.current = null; setDx(0) }}>
             {isTop && <><span className="dcard__stamp dcard__stamp--yes" style={{ opacity: Math.max(0, dx / 90) }}>ГОЛОСУЮ</span>

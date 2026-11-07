@@ -30,7 +30,7 @@ export function AddSheet({ open, onClose, onAdded }: { open: boolean; onClose: (
   const land = (t: string) => {
     const from = btn.current?.getBoundingClientRect()
     onClose()
-    if (from) flyTo(t, from, '#tab-jar', onAdded); else onAdded()
+    if (from) flyTo(t, from, '#tab-bank', onAdded); else onAdded()
   }
   const merge = async () => {
     if (!similar) return

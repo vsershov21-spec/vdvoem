@@ -233,6 +233,15 @@ func main() {
 		e.msgs, e.answers = nil, nil
 		e.mu.Unlock()
 	})
+	// a fake place page for the link parser (og:* + schema.org)
+	mux.HandleFunc("GET /_emu/place/{name}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!doctype html><html><head><title>%[1]s — Яндекс Карты</title>
+<meta property="og:title" content="%[1]s — Яндекс Карты"><meta property="og:description" content="Грузинская кухня, вино. Средний чек 1 800 ₽">
+<meta property="og:image" content="/_emu/img.png">
+<script type="application/ld+json">{"@type":"Restaurant","name":"%[1]s","address":{"streetAddress":"Покровка, 17"},"priceRange":"1800 ₽"}</script>
+</head><body>ok</body></html>`, map[string]string{"khachapuri": "Хачапури и вино", "garage": "Музей Гараж"}[r.PathValue("name")])
+	})
 	mux.HandleFunc("/", e.bot)
 	log.Printf("tgemu on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, mux))

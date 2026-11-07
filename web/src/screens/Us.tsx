@@ -1,12 +1,16 @@
-import { useState } from 'react'
-import type { Home, Round, Settings } from '../lib/types'
+import { useEffect, useState } from 'react'
+import type { Home, Idea, Round, Settings, Stats } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
-import { patch, post, humanError } from '../lib/api'
+import { patch, post, del, humanError, ApiError } from '../lib/api'
 import { go } from '../lib/router'
-import { money } from '../lib/format'
-import { shareLink } from '../lib/tg'
+import { money, plural } from '../lib/format'
+import { shareLink, tg, haptic } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, Empty, Segmented, Sheet, Skel, toast } from '../ui/kit'
+import { Heart } from '../ui/Heart'
+import { Gauge } from '../ui/Charts'
+import { b64, unb64 } from './Entry'
+import { setThemePref } from '../App'
 
 const WD = ['воскресенье', 'понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу']
 const MODES: [Settings['suggest_mode'], string, string][] = [
@@ -16,35 +20,54 @@ const MODES: [Settings['suggest_mode'], string, string][] = [
   ['off', 'Не присылать', 'только когда попросите'],
 ]
 
+type Sec = { login?: string; biometric_lock: boolean; theme: string; passkeys: { id: string; name: string; created_at: number }[]; sessions: { id: string; method: string; device: string; seen_at: number; current: boolean }[] }
+
 export function Us({ home }: { home: Home | null }) {
   const hist = useLoad<{ meetings: Round[] }>('/history')
   const st = useLoad<Settings>('/settings')
-  const [sheet, setSheet] = useState<'' | 'budget' | 'plan' | 'suggest'>('')
+  const stats = useLoad<Stats>('/stats')
+  const ideas = useLoad<{ ideas: Idea[] }>('/ideas?kind=leisure')
+  const [sheet, setSheet] = useState<'' | 'budget' | 'plan' | 'suggest' | 'password'>('')
   if (!home) return <><Skel h={120} /><Skel h={200} /></>
   const save = async (p: Partial<Settings>) => {
     try { const s = await patch<Settings>('/settings', p); st.set(s); toast('Сохранил') } catch (e) { toast(humanError(e)) }
   }
   const s = st.data
   const invite = async () => { try { const { link } = await post<{ link: string }>('/invite'); shareLink(link, 'Давай планировать выходные вместе — в «Вдвоём»') } catch (e) { toast(humanError(e)) } }
+  const liked = (ideas.data?.ideas || []).filter(i => i.liked_before)
+  const n = stats.data?.meetings ?? 0
   return (
     <>
       <header className="hdr"><h1 className="display">Мы</h1></header>
-      <div className="card row rise" style={{ gap: 14 }}>
-        <div className="pairava"><Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} /></div>
-        <div style={{ flex: 1 }}><b className="headline">{home.me.name}{home.partner ? ' и ' + home.partner.name : ''}</b>
-          <div className="caption muted">{home.partner ? `${hist.data?.meetings.length ?? 0} ${['встреч', 'встреча', 'встречи'][pl(hist.data?.meetings.length ?? 0)]} вместе` : 'Партнёр ещё не присоединился'}</div></div>
-        {!home.partner && <Btn sm kind="accent" icon="share" onClick={invite}>Пригласить</Btn>}
+      <div className="card rise" style={{ display: 'grid', gap: 14 }}>
+        <div className="row" style={{ gap: 14 }}>
+          <div className="pairava"><Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} /></div>
+          <div style={{ flex: 1 }}><b className="headline">{home.me.name}{home.partner ? ' и ' + home.partner.name : ''}</b>
+            <div className="caption muted">{home.partner ? `${n} ${plural(n, 'встреча', 'встречи', 'встреч')} вместе` : 'Партнёр ещё не присоединился'}</div></div>
+          {!home.partner && <Btn sm kind="accent" icon="share" onClick={invite}>Пригласить</Btn>}
+        </div>
+        {stats.data && home.partner && (
+          <div className="row" style={{ gap: 12, background: 'var(--surface-soft)', borderRadius: 18, padding: 12 }}>
+            <Gauge value={stats.data.match} tone="pink" size={70} />
+            <div style={{ flex: 1 }}><b className="title" style={{ color: '#ff3b71' }}>{stats.data.match}%</b><div className="caption muted">совпадение вкусов · {stats.data.both_want} из {stats.data.both_marked} идей хотите оба</div></div>
+          </div>
+        )}
       </div>
 
-      <div className="sec"><h2 className="title">Где мы были</h2></div>
+      <div className="sec"><h2 className="title"><span className="orange-ind" />Где мы были</h2></div>
       {!hist.data ? <Skel h={90} /> : hist.data.meetings.length === 0 ? <div className="card"><Empty title="Пока пусто" text="Здесь появятся ваши встречи — с фото и отметкой, хочется ли повторить." /></div> :
         <div className="rail">{hist.data.meetings.map((r, k) => r.chosen && (
           <div key={r.id} className="icard" style={{ width: 200, ['--d' as any]: k }} onClick={() => go('round/' + r.id)}>
-            <Cover idea={r.chosen} h={120}><span>{r.again === 'yes' && <span className="pill pill--glass"><Icon n="heart" s={12} w={2.4} />повторим</span>}</span><div className="cover__title" style={{ fontSize: 15 }}>{r.chosen.title}</div></Cover>
+            <Cover idea={r.chosen} h={120}><span>{r.again === 'yes' && <span className="pill pill--glass"><Icon n="heart" s={12} w={2.4} />повторим</span>}{!!r.photos && <span className="pill pill--glass"><Icon n="photo" s={12} w={2.2} />{r.photos}</span>}</span><div className="cover__title" style={{ fontSize: 15 }}>{r.chosen.title}</div></Cover>
             <span className="caption muted" style={{ padding: '0 6px' }}>{r.when}</span>
           </div>))}</div>}
 
-      <div className="sec"><h2 className="title">Настройки</h2></div>
+      {liked.length > 0 && <>
+        <div className="sec"><h2 className="title"><span className="orange-ind" />Понравилось</h2><button className="link" onClick={() => go('ideas/liked')}>Все</button></div>
+        <div className="list">{liked.slice(0, 5).map(i => <LikedRow key={i.id} i={i} />)}</div>
+      </>}
+
+      <div className="sec"><h2 className="title"><span className="orange-ind" />Настройки</h2></div>
       {!s ? <Skel h={180} /> : (
         <div className="list rise">
           <button className="li" onClick={() => setSheet('suggest')}><span className="li__ico"><Icon n="dice" s={19} /></span>
@@ -55,6 +78,7 @@ export function Us({ home }: { home: Home | null }) {
             <span className="li__main"><b>Бюджет на встречу</b><span>{s.budget ? 'до ' + money(s.budget) + ' на двоих' : 'без лимита'}</span></span><Icon n="chev" s={18} /></button>
         </div>
       )}
+      <Security openPassword={() => setSheet('password')} />
       <p className="caption muted" style={{ margin: '14px 4px' }}>Ночью (23:00–9:00) я молчу — сообщения подождут до утра. Оценки и голоса друг друга вы видите только после своих.</p>
 
       <Sheet open={sheet === 'suggest'} onClose={() => setSheet('')}>
@@ -76,11 +100,112 @@ export function Us({ home }: { home: Home | null }) {
       <Sheet open={sheet === 'budget'} onClose={() => setSheet('')}>
         {s && <Budget value={s.budget} onSave={b => { save({ budget: b }); setSheet(''); emit('home') }} />}
       </Sheet>
+      <Sheet open={sheet === 'password'} onClose={() => setSheet('')}>
+        <PasswordForm onDone={() => { setSheet(''); emit('security') }} />
+      </Sheet>
     </>
   )
 }
 
-const pl = (n: number) => { const a = n % 100, b = n % 10; return a > 10 && a < 20 ? 0 : b === 1 ? 1 : b > 1 && b < 5 ? 2 : 0 }
+function LikedRow({ i }: { i: Idea }) {
+  const [on, setOn] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setOn(true), 250); return () => clearTimeout(t) }, [])
+  return (
+    <button className="li" onClick={() => go('idea/' + i.id)}>
+      <span className="li__ico" style={{ background: 'var(--accent-soft)' }}><Heart on={on} size={26} stroke={2} /></span>
+      <span className="li__main"><b>{i.title}</b><span>{i.meta}</span></span><Icon n="chev" s={18} />
+    </button>
+  )
+}
+
+function Security({ openPassword }: { openPassword: () => void }) {
+  const sec = useLoad<Sec>('/security')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { const f = () => sec.refresh(); addEventListener('vd-security', f); return () => removeEventListener('vd-security', f) }, [sec.refresh])
+  const s = sec.data
+  const bm = tg?.BiometricManager
+  const setPrefs = async (p: object) => { try { sec.set(await patch<Sec>('/security/prefs', p)) } catch (e) { toast(humanError(e)) } }
+  const toggleLock = async () => {
+    if (!s) return
+    if (!s.biometric_lock && bm) {
+      const ok = await new Promise<boolean>(res => { const ask = () => bm.requestAccess({ reason: 'Защищать «Вдвоём» Face ID' }, (g: boolean) => res(g)); bm.isInited ? ask() : bm.init(ask) })
+      if (!ok) { toast('Доступ к Face ID не дан'); return }
+    }
+    setPrefs({ biometric_lock: !s.biometric_lock })
+  }
+  const addPasskey = async () => {
+    if (!window.PublicKeyCredential) { toast('Этот браузер не поддерживает Face ID для сайтов'); return }
+    setBusy(true)
+    try {
+      const b = await post<any>('/security/passkey/begin')
+      const cred = await navigator.credentials.create({ publicKey: {
+        challenge: unb64(b.challenge), rp: b.rp, user: { id: unb64(b.user.id), name: b.user.name, displayName: b.user.display_name },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { residentKey: 'required', userVerification: 'required' }, attestation: 'none', timeout: b.timeout,
+        excludeCredentials: (b.exclude as string[]).map(id => ({ type: 'public-key' as const, id: unb64(id) })),
+      } }) as PublicKeyCredential | null
+      if (!cred) throw new Error('cancel')
+      const r = cred.response as AuthenticatorAttestationResponse
+      const spki = r.getPublicKey()
+      if (!spki) throw new Error('nokey')
+      const name = /iPhone|iPad|Mac/.test(navigator.userAgent) ? 'Face ID · ' + (/Mac/.test(navigator.userAgent) ? 'Mac' : 'iPhone') : 'Passkey · ' + (navigator.platform || 'устройство')
+      sec.set(await post<Sec>('/security/passkey/finish', { id: cred.id, challenge: b.challenge, client_data_json: b64(r.clientDataJSON), authenticator_data: b64(r.getAuthenticatorData()),
+        public_key: b64(spki), alg: r.getPublicKeyAlgorithm(), name }))
+      haptic.ok(); toast('Face ID добавлен — теперь можно входить в браузере')
+    } catch (e) { toast(e instanceof ApiError ? humanError(e) : 'Не получилось добавить Face ID') } finally { setBusy(false) }
+  }
+  const logoutHere = async () => { await post('/auth/logout'); location.href = '/app/' }
+  if (!s) return <Skel h={160} />
+  return (<>
+    <div className="sec"><h2 className="title"><span className="orange-ind" />Вход и безопасность</h2></div>
+    <div className="list rise">
+      <div className="li" style={{ cursor: 'default' }}><span className="li__ico"><Icon n="sun" s={19} /></span><span className="li__main"><b>Тема</b></span></div>
+      <div style={{ padding: '0 16px 14px' }}><Segmented<string> items={[['', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']]} value={s.theme} onChange={v => { setThemePref(v); setPrefs({ theme: v }) }} /></div>
+      {bm && <button className="li" onClick={toggleLock}><span className="li__ico"><Icon n="face" s={19} /></span>
+        <span className="li__main"><b>Защита Face ID</b><span>Спрашивать Face ID при открытии в Telegram</span></span>
+        <span className="toggle" data-on={s.biometric_lock || undefined} /></button>}
+      <button className="li" onClick={addPasskey} disabled={busy}><span className="li__ico"><Icon n="face" s={19} /></span>
+        <span className="li__main"><b>Face ID для браузера</b><span>{s.passkeys.length ? s.passkeys.map(p => p.name).join(', ') : 'Вход на сайте без пароля'}</span></span>
+        <span className="pill">{busy ? '…' : 'Добавить'}</span></button>
+      {s.passkeys.map(p => (
+        <div key={p.id} className="li" style={{ cursor: 'default', paddingLeft: 62 }}><span className="li__main"><b style={{ fontSize: 14 }}>{p.name}</b><span>добавлен {new Date(p.created_at * 1000).toLocaleDateString('ru')}</span></span>
+          <button className="btn btn--ghost btn--sm" onClick={async () => sec.set(await del<Sec>('/security/passkeys/' + encodeURIComponent(p.id)))}>Удалить</button></div>
+      ))}
+      <button className="li" onClick={openPassword}><span className="li__ico"><Icon n="lock" s={19} /></span>
+        <span className="li__main"><b>Логин и пароль</b><span>{s.login ? 'логин: ' + s.login : 'не задан'}</span></span><Icon n="chev" s={18} /></button>
+      {s.sessions.length > 0 && <>
+        {s.sessions.map(x => (
+          <div key={x.id} className="li" style={{ cursor: 'default' }}><span className="li__ico"><Icon n={x.device === 'iPhone' || x.device === 'Android' ? 'user' : 'home'} s={19} /></span>
+            <span className="li__main"><b>{x.device}{x.current ? ' · это устройство' : ''}</b><span>{({ telegram: 'через Telegram', password: 'по паролю', passkey: 'по Face ID' } as Record<string, string>)[x.method]} · {new Date(x.seen_at * 1000).toLocaleDateString('ru')}</span></span>
+            {x.current ? <button className="btn btn--ghost btn--sm" onClick={logoutHere}>Выйти</button> : <button className="btn btn--ghost btn--sm" onClick={async () => sec.set(await del<Sec>('/security/sessions/' + x.id))}>Завершить</button>}
+          </div>
+        ))}
+        <div style={{ padding: 12 }}><Btn kind="danger" block sm onClick={async () => { await post('/security/logout-all'); sec.refresh(); toast('Все браузерные сессии завершены') }}>Выйти на всех браузерах</Btn></div>
+      </>}
+    </div>
+  </>)
+}
+
+function PasswordForm({ onDone }: { onDone: () => void }) {
+  const [login, setLogin] = useState(''), [p1, setP1] = useState(''), [p2, setP2] = useState(''), [err, setErr] = useState('')
+  const save = async () => {
+    setErr('')
+    if (p1 !== p2) { setErr('Пароли не совпадают'); return }
+    try { await post('/security/password', { login, password: p1 }); toast('Логин и пароль сохранены'); dispatchEvent(new Event('vd-security')); onDone() }
+    catch (e) { setErr(e instanceof ApiError ? ({ bad_login_name: 'Логин: 3–32 латинские буквы, цифры, точка, дефис', weak_password: 'Пароль — от 8 символов и не равен логину', login_taken: 'Этот логин уже занят' } as Record<string, string>)[e.code] || humanError(e) : humanError(e)) }
+  }
+  return (
+    <div className="col">
+      <h2 className="title">Логин и пароль</h2>
+      <p className="callout muted" style={{ margin: 0 }}>Для входа в браузере, если под рукой нет Telegram.</p>
+      <div className="field"><label>Логин</label><input className="input" autoComplete="username" value={login} onChange={e => setLogin(e.target.value)} placeholder="например, vova" /></div>
+      <div className="field"><label>Пароль</label><input className="input" type="password" autoComplete="new-password" value={p1} onChange={e => setP1(e.target.value)} /></div>
+      <div className="field"><label>Ещё раз</label><input className="input" type="password" autoComplete="new-password" value={p2} onChange={e => setP2(e.target.value)} /></div>
+      {err && <p className="caption" style={{ color: 'var(--danger)', margin: 0 }} role="alert">{err}</p>}
+      <Btn kind="primary" block onClick={save} disabled={!login || !p1}>Сохранить</Btn>
+    </div>
+  )
+}
 
 function DayHour({ wd, h, onChange }: { wd: number; h: number; onChange: (wd: number, h: number) => void }) {
   const days: [string, string][] = [['1', 'Пн'], ['2', 'Вт'], ['3', 'Ср'], ['4', 'Чт'], ['5', 'Пт'], ['6', 'Сб'], ['0', 'Вс']]
