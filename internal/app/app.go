@@ -451,13 +451,29 @@ func (a *App) sendIdeaCard(ctx context.Context, chatID int64, i store.Idea, simi
 		tg.Row(tg.CB("Хочу", fmt.Sprintf("w:%d:want", i.ID)), tg.CB("Очень хочу", fmt.Sprintf("w:%d:very", i.ID))),
 		tg.Row(tg.CB("Пропущу", fmt.Sprintf("w:%d:skip", i.ID)), tg.App("Исправить", a.appURL(fmt.Sprintf("idea/%d", i.ID)))),
 	}
+	if Generic(i) {
+		city := "Москва"
+		if sp, err := a.S.Space(ctx, i.SpaceID); err == nil && sp.City != "" {
+			city = sp.City
+		}
+		text += "\n\n📍 Это пока общая идея — уточни место: <b>ответь на это сообщение ссылкой</b> (Яндекс Карты, 2ГИС, сайт) или найди на карте."
+		place := []tg.Button{tg.Link("Найти на картах", MapsLink(i.Title, city))}
+		if a.AI.Enabled() {
+			place = append(place, tg.CB("✨ Подобрать места", fmt.Sprintf("sp:%d", i.ID)))
+		}
+		rows = append(rows, place)
+	}
 	if similar != 0 {
 		if s, err := a.S.IdeaAny(ctx, similar); err == nil {
 			text += fmt.Sprintf("\n\nПохоже на «%s» — она уже в копилке.", esc(s.Title))
 			rows = append(rows, tg.Row(tg.CB("Это то же", fmt.Sprintf("mg:%d:%d", i.ID, s.ID)), tg.CB("Оставить обе", fmt.Sprintf("nm:%d", i.ID))))
 		}
 	}
-	a.send(ctx, chatID, text, tg.Keyboard(rows...))
+	if m, err := a.TG.Send(ctx, chatID, text, tg.SendOpts{Markup: tg.Keyboard(rows...)}); err == nil {
+		a.S.SaveCard(ctx, chatID, m.MessageID, i.ID)
+	} else {
+		a.Log.Warn("send failed", "err", err)
+	}
 }
 
 // ---------- rounds ----------
@@ -843,8 +859,12 @@ func (a *App) meetingRows(ctx context.Context, c Couple, r domain.Round) (store.
 	i, _ := a.S.Idea(ctx, c.Space.ID, r.Chosen)
 	var rows []string
 	rows = append(rows, "<b>Когда:</b> "+esc(domain.When(r.StartsAt, c.Loc()))+fmt.Sprintf("–%02d:%02d", r.EndsAt.In(c.Loc()).Hour(), r.EndsAt.In(c.Loc()).Minute()))
-	if i.Address != "" {
+	if p := a.PlaceOf(ctx, c, i); p.Chosen {
+		rows = append(rows, "<b>Где:</b> "+esc(p.Title)+addrLine(p.Address))
+	} else if i.Address != "" {
 		rows = append(rows, "<b>Где:</b> "+esc(i.Address))
+	} else {
+		rows = append(rows, "<b>Где:</b> место ещё не выбрано — добавьте варианты в карточке")
 	}
 	if i.PriceMin > 0 {
 		rows = append(rows, "<b>Сколько:</b> ≈ "+domain.Money(i.PriceMin)+" на двоих")
@@ -892,7 +912,17 @@ func (a *App) ICS(ctx context.Context, c Couple, r domain.Round, seq int, cancel
 	if i.Note != "" {
 		desc = i.Note + "\n\n" + desc
 	}
-	e := domain.ICS{UID: fmt.Sprintf("round-%d@vdvoem", r.ID), Sequence: seq, Title: i.Title, Location: i.Address, URL: i.URL, Desc: desc,
+	p := a.PlaceOf(ctx, c, i)
+	loc := p.Address
+	if p.Chosen {
+		loc = strings.Trim(p.Title+", "+p.Address, ", ")
+		desc = "Место: " + p.Title + "\n" + p.Maps + "\n\n" + desc
+	}
+	link := p.URL
+	if link == "" {
+		link = p.Maps
+	}
+	e := domain.ICS{UID: fmt.Sprintf("round-%d@vdvoem", r.ID), Sequence: seq, Title: i.Title, Location: loc, URL: link, Desc: desc,
 		Start: r.StartsAt, End: r.EndsAt, Stamp: a.now(), Cancelled: cancelled}
 	return []byte(e.Render())
 }
@@ -1151,6 +1181,14 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 		At    int64 `json:"at"`
 	}
 	switch j.Kind {
+	case "option":
+		var p struct {
+			Option int64 `json:"option"`
+			Space  int64 `json:"space"`
+			Member int64 `json:"member"`
+		}
+		jsonUnmarshal(j.Payload, &p)
+		return a.runOptionParse(ctx, p.Option, p.Space, p.Member)
 	case "parse":
 		var p parsePayload
 		if err := jsonUnmarshal(j.Payload, &p); err != nil {
@@ -1182,15 +1220,15 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 		i, _ := a.S.Idea(ctx, p.Space, r.Chosen)
 		for _, m := range ms {
 			if j.Kind == "remind" {
+				cp, _ := a.coupleOf(ctx, m)
+				pl := a.PlaceOf(ctx, cp, i)
 				text := fmt.Sprintf("Через 2 часа: <b>%s</b>, %s.", esc(i.Title), esc(domain.When(r.StartsAt, sp.Loc())))
-				if i.Address != "" {
+				if pl.Chosen {
+					text += "\n📍 " + esc(pl.Title) + addrLine(pl.Address)
+				} else if i.Address != "" {
 					text += "\n" + esc(i.Address)
 				}
-				var mk *tg.Markup
-				if i.Address != "" {
-					mk = tg.Keyboard(tg.Row(tg.Link("Адрес на карте", "https://yandex.ru/maps/?text="+urlq(i.Address)), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID))))
-				}
-				a.send(ctx, m.ChatID, text, mk)
+				a.send(ctx, m.ChatID, text, tg.Keyboard(tg.Row(tg.Link("На карте", pl.Maps), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID)))))
 			} else {
 				a.send(ctx, m.ChatID, fmt.Sprintf("Как прошло — <b>%s</b>? Сходили?", esc(i.Title)),
 					tg.Keyboard(tg.Row(tg.CB("Да", fmt.Sprintf("d:%d:yes", r.ID)), tg.CB("Перенесли", fmt.Sprintf("d:%d:moved", r.ID)), tg.CB("Не получилось", fmt.Sprintf("d:%d:no", r.ID)))))

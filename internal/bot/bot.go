@@ -133,6 +133,19 @@ func (b *Bot) message(ctx context.Context, m *tg.Message) {
 		}
 		return
 	}
+	// a reply to an idea card adds a concrete place to that idea
+	if m.ReplyTo != nil && text != "" && !strings.HasPrefix(text, "/") {
+		if ideaID, err := b.App.S.CardIdea(ctx, chat, m.ReplyTo.MessageID); err == nil {
+			if _, err := b.App.AddOption(ctx, c, ideaID, text); err != nil {
+				b.say(ctx, chat, "Не получилось добавить место — попробуй ещё раз.", nil)
+			} else if parse.FirstURL(text) != "" {
+				b.say(ctx, chat, "Принял ссылку — разбираю, что это за место…", nil)
+			} else {
+				b.say(ctx, chat, "Добавил вариант места: <b>"+html.EscapeString(text)+"</b>", nil)
+			}
+			return
+		}
+	}
 	cmd, arg := splitCmd(text)
 	switch cmd {
 	case "/go":
@@ -392,6 +405,25 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		if q.Message != nil {
 			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, "Вход отменён.", nil)
 		}
+	case "sp":
+		opts, e := b.App.SuggestPlaces(ctx, c, id(1))
+		switch {
+		case errors.Is(e, app.ErrNoAI):
+			toast = "Помощник без AI — пришли ссылку или найди на карте"
+		case e != nil || len(opts) == 0:
+			toast = "Не нашёл вариантов — пришли ссылку на место"
+		default:
+			var lines []string
+			var rows [][]tg.Button
+			for _, o := range opts {
+				lines = append(lines, "• <b>"+html.EscapeString(o.Title)+"</b> — "+html.EscapeString(strings.Split(o.Note, " · ")[0]))
+				rows = append(rows, tg.Row(tg.CB("Берём: "+short(o.Title, 28), fmt.Sprintf("ch:%d:%d", id(1), o.ID)), tg.Link("Карта", o.URL)))
+			}
+			b.say(ctx, chat, "Вот что можно выбрать. Адреса проверь на карте — я мог ошибиться:\n\n"+strings.Join(lines, "\n"), tg.Keyboard(rows...))
+		}
+	case "ch":
+		err = b.App.ChooseOption(ctx, c, id(1), id(2))
+		toast = "Место выбрано"
 	case "aa":
 		rep, e := b.Helper.Act(ctx, c, arg(1))
 		err = e

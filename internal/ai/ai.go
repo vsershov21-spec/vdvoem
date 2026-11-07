@@ -146,3 +146,48 @@ func jsonPart(s string) string {
 	}
 	return s[i : j+1]
 }
+
+// PlaceGuess is one concrete place the model proposes for a generic idea («каток» → «Каток на ВДНХ»).
+// The model never gives addresses: they would be invented; the app adds a map search link instead.
+type PlaceGuess struct {
+	Name string `json:"name"`
+	Why  string `json:"why"`
+}
+
+const placesSystem = `Пара хочет: общая идея досуга. Предложи 3 конкретных, реально существующих и известных места в указанном городе,
+где это можно сделать. Ответь ТОЛЬКО JSON: {"places":[{"name":"название места, как его ищут на картах","why":"чем хорошо, до 60 символов"}]}.
+Без адресов, телефонов и цен. Если не уверен, что место существует, не включай его.`
+
+func (c *Client) SuggestPlaces(ctx context.Context, idea, city string) ([]PlaceGuess, error) {
+	if city == "" {
+		city = "Москва"
+	}
+	out, err := c.complete(ctx, "suggest_places", placesSystem, "Идея: "+idea+"\nГород: "+city)
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Places []PlaceGuess `json:"places"`
+	}
+	if err := json.Unmarshal([]byte(jsonPart(out)), &r); err != nil {
+		return nil, errors.New("ai: invalid places")
+	}
+	var ok []PlaceGuess
+	for _, p := range r.Places {
+		p.Name, p.Why = strings.TrimSpace(p.Name), strings.TrimSpace(p.Why)
+		if p.Name == "" || utf8.RuneCountInString(p.Name) > 80 || strings.ContainsAny(p.Name, "<>") {
+			continue
+		}
+		if utf8.RuneCountInString(p.Why) > 90 {
+			p.Why = string([]rune(p.Why)[:90])
+		}
+		ok = append(ok, p)
+		if len(ok) == 3 {
+			break
+		}
+	}
+	if len(ok) == 0 {
+		return nil, errors.New("ai: no places")
+	}
+	return ok, nil
+}

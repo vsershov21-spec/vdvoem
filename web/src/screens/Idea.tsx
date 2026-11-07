@@ -7,10 +7,11 @@ import { CATS, money, dur } from '../lib/format'
 import { openLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Sheet, Skel, SubHeader, WishPicker, toast, Segmented } from '../ui/kit'
+import { Places } from '../ui/Places'
 
 const wishWord: Record<string, string> = { want: 'хочет', very: 'очень хочет', skip: 'пропустит' }
 
-export function IdeaScreen({ id, me }: { id: number; me?: Person }) {
+export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; partner?: Person }) {
   const { data, set } = useLoad<{ idea: Idea }>('/ideas/' + id, 30000)
   const [edit, setEdit] = useState(false)
   if (!data || !me) return <><SubHeader /><Skel h={280} r={26} /><Skel h={60} /><Skel h={120} /></>
@@ -39,6 +40,7 @@ export function IdeaScreen({ id, me }: { id: number; me?: Person }) {
         {i.note && <p className="callout muted" style={{ margin: 0 }}>{i.note}</p>}
         {i.url && <Btn kind="soft" sm icon="link" onClick={() => openLink(i.url!)}>Открыть ссылку</Btn>}
       </div>
+      {i.kind === 'leisure' && <div className="rise" style={{ ['--d' as any]: 2, marginTop: 12 }}><Places idea={i} me={me} partner={pp} onChange={n => set({ idea: n })} /></div>}
       {i.status === 'active' && i.kind === 'leisure' && <>
         <div className="sec"><h2 className="headline">Твоя оценка</h2></div>
         <WishPicker value={i.my_wish} onChange={wish} />

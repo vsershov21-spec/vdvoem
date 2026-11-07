@@ -54,6 +54,11 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("DELETE /api/ideas/{id}", a.deleteIdea)
 	h("POST /api/ideas/{id}/wish", a.wish)
 	h("POST /api/ideas/{id}/merge", a.merge)
+	h("GET /api/ideas/{id}/options", a.options)
+	h("POST /api/ideas/{id}/options", a.addOption)
+	h("POST /api/ideas/{id}/options/suggest", a.suggestOptions)
+	h("POST /api/ideas/{id}/options/{opt}/choose", a.chooseOption)
+	h("DELETE /api/ideas/{id}/options/{opt}", a.delOption)
 	h("POST /api/rounds", a.newRound)
 	h("POST /api/rounds/with/{idea}", a.roundWith)
 	h("GET /api/rounds/current", a.currentRound)
@@ -217,30 +222,34 @@ type personView struct {
 func person(m store.Member) personView { return personView{m.Name, m.Color, m.PhotoURL} }
 
 type ideaView struct {
-	ID            int64   `json:"id"`
-	Title         string  `json:"title"`
-	Kind          string  `json:"kind"`
-	Category      string  `json:"category"`
-	URL           string  `json:"url,omitempty"`
-	Address       string  `json:"address,omitempty"`
-	Image         string  `json:"image,omitempty"`
-	Note          string  `json:"note,omitempty"`
-	PriceMin      int64   `json:"price_min,omitempty"`
-	PriceMax      int64   `json:"price_max,omitempty"`
-	DurationMin   int     `json:"duration_min,omitempty"`
-	StartsAt      *int64  `json:"starts_at,omitempty"`
-	EndsAt        *int64  `json:"ends_at,omitempty"`
-	Deadline      *int64  `json:"deadline,omitempty"`
-	Assignee      string  `json:"assignee,omitempty"`
-	Status        string  `json:"status"`
-	MyWish        string  `json:"my_wish"`
-	PartnerMarked bool    `json:"partner_marked"`
-	PartnerWish   *string `json:"partner_wish,omitempty"` // only after I marked
-	Mine          bool    `json:"mine"`
-	Parsed        bool    `json:"parsed"`
-	Meta          string  `json:"meta"`
-	LikedBefore   bool    `json:"liked_before,omitempty"`
-	CreatedAt     int64   `json:"created_at"`
+	ID            int64        `json:"id"`
+	Title         string       `json:"title"`
+	Kind          string       `json:"kind"`
+	Category      string       `json:"category"`
+	URL           string       `json:"url,omitempty"`
+	Address       string       `json:"address,omitempty"`
+	Image         string       `json:"image,omitempty"`
+	Note          string       `json:"note,omitempty"`
+	PriceMin      int64        `json:"price_min,omitempty"`
+	PriceMax      int64        `json:"price_max,omitempty"`
+	DurationMin   int          `json:"duration_min,omitempty"`
+	StartsAt      *int64       `json:"starts_at,omitempty"`
+	EndsAt        *int64       `json:"ends_at,omitempty"`
+	Deadline      *int64       `json:"deadline,omitempty"`
+	Assignee      string       `json:"assignee,omitempty"`
+	Status        string       `json:"status"`
+	MyWish        string       `json:"my_wish"`
+	PartnerMarked bool         `json:"partner_marked"`
+	PartnerWish   *string      `json:"partner_wish,omitempty"` // only after I marked
+	Mine          bool         `json:"mine"`
+	Parsed        bool         `json:"parsed"`
+	Meta          string       `json:"meta"`
+	LikedBefore   bool         `json:"liked_before,omitempty"`
+	Maps          string       `json:"maps"`    // Yandex Maps search for the idea
+	Generic       bool         `json:"generic"` // no link and no address: needs a concrete place
+	Options       []optionView `json:"options,omitempty"`
+	Place         *placeView   `json:"place,omitempty"`
+	CreatedAt     int64        `json:"created_at"`
 }
 
 func unix(t *time.Time) *int64 {
@@ -259,7 +268,17 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 	v := ideaView{ID: i.ID, Title: i.Title, Kind: string(i.Kind), Category: i.Category, URL: i.URL, Address: i.Address, Image: i.ImageURL, Note: i.Note,
 		PriceMin: i.PriceMin, PriceMax: i.PriceMax, DurationMin: i.DurationMin, StartsAt: unix(i.StartsAt), EndsAt: unix(i.EndsAt), Deadline: unix(i.Deadline),
 		Assignee: i.Assignee, Status: string(i.Status), MyWish: string(me), PartnerMarked: p != domain.WishNone, Mine: i.AuthorID == c.Me.ID,
-		Parsed: i.Parsed, Meta: app.IdeaMeta(i), LikedBefore: i.AgainYes > 0, CreatedAt: i.CreatedAt.Unix()}
+		Parsed: i.Parsed, Meta: app.IdeaMeta(i), LikedBefore: i.AgainYes > 0, CreatedAt: i.CreatedAt.Unix(),
+		Generic: app.Generic(i)}
+	q := i.Title
+	if i.Address != "" {
+		q = i.Address
+	}
+	city := c.Space.City
+	if city == "" {
+		city = "Москва"
+	}
+	v.Maps = app.MapsLink(q, city)
 	if me != domain.WishNone && p != domain.WishNone {
 		s := string(p)
 		v.PartnerWish = &s
@@ -269,7 +288,7 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 
 func (a *API) me(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
 	out := map[string]any{"me": person(c.Me), "space": map[string]any{"id": c.Space.ID, "status": c.Space.Status, "tz": c.Space.TZ}, "bot": a.App.BotName,
-		"biometric_lock": c.Me.BiometricLock, "theme": c.Me.Theme, "now": a.App.Now().Unix()}
+		"biometric_lock": c.Me.BiometricLock, "theme": c.Me.Theme, "now": a.App.Now().Unix(), "ai": a.App.AI.Enabled()}
 	if c.Partner != nil {
 		out["partner"] = person(*c.Partner)
 	}
@@ -366,7 +385,7 @@ func (a *API) idea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"idea": viewIdea(c, i)}, nil
+	return map[string]any{"idea": a.withPlaces(r.Context(), c, viewIdea(c, i), i)}, nil
 }
 
 func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -563,7 +582,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	out["triple"] = trip
 	if rd.Chosen != 0 {
 		if i, err := a.App.S.Idea(ctx, c.Space.ID, rd.Chosen); err == nil {
-			out["chosen"] = viewIdea(c, i)
+			out["chosen"] = a.withPlaces(ctx, c, viewIdea(c, i), i)
 		}
 	}
 	if !rd.StartsAt.IsZero() {
@@ -876,4 +895,135 @@ func (a *API) devAdvance(w http.ResponseWriter, r *http.Request) {
 	a.App.Tick(r.Context())
 	a.App.NoKick = false
 	writeJSON(w, 200, map[string]any{"now": a.App.Now().Format(time.RFC3339)})
+}
+
+type optionView struct {
+	ID      int64  `json:"id"`
+	Title   string `json:"title"`
+	URL     string `json:"url,omitempty"`
+	Address string `json:"address,omitempty"`
+	Image   string `json:"image,omitempty"`
+	Note    string `json:"note,omitempty"`
+	Price   int64  `json:"price,omitempty"`
+	Author  string `json:"author"` // a | b | ai
+	Chosen  bool   `json:"chosen"`
+	Parsed  bool   `json:"parsed"`
+	Maps    string `json:"maps"`
+}
+
+type placeView struct {
+	Title   string `json:"title"`
+	Address string `json:"address,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Maps    string `json:"maps"`
+	Chosen  bool   `json:"chosen"`
+}
+
+// withPlaces adds the «Где именно» options and the chosen place to an idea view.
+func (a *API) withPlaces(ctx context.Context, c app.Couple, v ideaView, i store.Idea) ideaView {
+	opts, _ := a.App.S.Options(ctx, i.ID)
+	chosen, _ := a.App.S.ChosenOption(ctx, i.ID)
+	city := c.Space.City
+	if city == "" {
+		city = "Москва"
+	}
+	colors := map[int64]string{c.Me.ID: c.Me.Color}
+	if c.Partner != nil {
+		colors[c.Partner.ID] = c.Partner.Color
+	}
+	v.Options = []optionView{}
+	for _, o := range opts {
+		au := colors[o.MemberID]
+		if o.MemberID == 0 {
+			au = "ai"
+		}
+		q := o.Title
+		if o.Address != "" {
+			q = o.Title + ", " + o.Address
+		}
+		v.Options = append(v.Options, optionView{ID: o.ID, Title: o.Title, URL: o.URL, Address: o.Address, Image: o.ImageURL, Note: o.Note, Price: o.PriceKop,
+			Author: au, Chosen: o.ID == chosen, Parsed: o.Parsed, Maps: app.MapsLink(q, city)})
+	}
+	p := a.App.PlaceOf(ctx, c, i)
+	v.Place = &placeView{Title: p.Title, Address: p.Address, URL: p.URL, Maps: p.Maps, Chosen: p.Chosen}
+	return v
+}
+
+func (a *API) options(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"idea": a.withPlaces(r.Context(), c, viewIdea(c, i), i)}, nil
+}
+
+func (a *API) addOption(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Text string `json:"text"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(in.Text) == "" {
+		return nil, bad("empty")
+	}
+	if _, err := a.App.AddOption(r.Context(), c, id, in.Text); err != nil {
+		return nil, err
+	}
+	return a.options(w, r, c)
+}
+
+func (a *API) suggestOptions(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.App.SuggestPlaces(r.Context(), c, id); errors.Is(err, app.ErrNoAI) {
+		return nil, httpErr{409, "no_ai"}
+	} else if err != nil {
+		a.Log.Info("suggest places failed", "err", err)
+		return nil, httpErr{502, "no_places"}
+	}
+	return a.options(w, r, c)
+}
+
+func (a *API) chooseOption(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	opt, err := pathID(r, "opt")
+	if err != nil {
+		return nil, err
+	}
+	if err := a.App.ChooseOption(r.Context(), c, id, opt); err != nil {
+		return nil, err
+	}
+	return a.options(w, r, c)
+}
+
+func (a *API) delOption(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	opt, err := pathID(r, "opt")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.App.S.Idea(r.Context(), c.Space.ID, id); err != nil {
+		return nil, err
+	}
+	if err := a.App.S.DeleteOption(r.Context(), id, opt); err != nil {
+		return nil, err
+	}
+	return a.options(w, r, c)
 }

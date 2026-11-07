@@ -7,6 +7,8 @@ import { dayLabel, hm, money, dur, relLeft, when } from '../lib/format'
 import { haptic, download } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Empty, Marks, Skel, SubHeader, burst, toast } from '../ui/kit'
+import { Places } from '../ui/Places'
+import { openLink } from '../lib/tg'
 
 type R = { round: Round }
 
@@ -30,8 +32,8 @@ export function RoundScreen({ id, home }: { id: number; home: Home | null }) {
   switch (r.state) {
     case 'time': body = <TimeStage r={r} act={act} partner={partner} />; break
     case 'vote': body = <VoteStage r={r} act={act} partner={partner} home={home} />; break
-    case 'confirm': body = <ConfirmStage r={r} act={act} partner={partner} />; break
-    case 'planned': body = <PlannedStage r={r} act={act} />; break
+    case 'confirm': body = <ConfirmStage r={r} act={act} partner={partner} home={home} onPlace={refresh} />; break
+    case 'planned': body = <PlannedStage r={r} act={act} home={home} onPlace={refresh} />; break
     case 'done': body = <DoneStage r={r} act={act} />; break
     default: body = <Closed r={r} />
   }
@@ -180,13 +182,14 @@ function Deck({ r, top, setTop, onVote, me, small }: { r: Round; top: number; se
 }
 
 // ---------- 3. confirm ----------
-function ConfirmStage({ r, act, partner }: { r: Round; act: Act; partner: string }) {
+function ConfirmStage({ r, act, partner, home, onPlace }: { r: Round; act: Act; partner: string; home: Home; onPlace: () => void }) {
   return (
     <div className="col">
       <div className="meet rise" style={{ margin: '4px auto 4px' }}><i /><i /></div>
       <h1 className="display rise" style={{ textAlign: 'center' }}>Совпало!</h1>
       <p className="callout muted rise" style={{ textAlign: 'center', margin: 0 }}>Встреча запланируется, когда подтвердите оба. Молчание не считается согласием.</p>
       <Ticket r={r} />
+      {r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
       <div className="row caption" style={{ justifyContent: 'center', gap: 16 }}>
         <span className="row" style={{ gap: 6 }}><span className="dot" style={{ ['--c' as any]: 'var(--success)', opacity: r.confirmed ? 1 : .3 }} />Ты: {r.confirmed ? 'да' : 'ждём'}</span>
         <span className="row" style={{ gap: 6 }}><span className="dot" style={{ ['--c' as any]: 'var(--success)', opacity: r.partner_confirmed ? 1 : .3 }} />{partner}: {r.partner_confirmed ? 'да' : 'ждём'}</span>
@@ -209,7 +212,10 @@ function Ticket({ r }: { r: Round }) {
       <div className="ticket__rows">
         {r.starts_at && <div className="trow"><Icon n="cal" s={20} /><div><b className="headline">{when(r.starts_at, r.ends_at)}</b>
           {r.windows && r.windows.length > 1 && <div className="caption muted">общее время: {r.windows.map(w => `${hm(w.from)}–${hm(w.to)}`).join(', ')}</div>}</div></div>}
-        {i.address && <div className="trow"><Icon n="pin" s={20} /><span className="callout">{i.address}</span></div>}
+        {i.place?.chosen ? <button className="trow" style={{ appearance: 'none', border: 0, background: 'none', padding: 0, textAlign: 'left', color: 'inherit', cursor: 'pointer' }} onClick={() => openLink(i.place!.maps)}>
+          <Icon n="pin" s={20} /><span><b className="callout" style={{ fontWeight: 650 }}>{i.place.title}</b>{i.place.address && <span className="caption muted" style={{ display: 'block' }}>{i.place.address}</span>}</span></button>
+          : i.address ? <div className="trow"><Icon n="pin" s={20} /><span className="callout">{i.address}</span></div>
+          : <div className="trow"><Icon n="pin" s={20} /><span className="callout muted">Место не выбрано — добавьте варианты ниже</span></div>}
         {!!i.price_min && <div className="trow"><Icon n="wallet" s={20} /><span className="callout">≈ {money(i.price_min)} на двоих</span></div>}
         {(i.category === 'food' || i.category === 'culture') && <div className="trow"><Icon n="bell" s={20} /><span className="callout">Заранее: забронировать или купить билеты</span></div>}
       </div>
@@ -218,11 +224,12 @@ function Ticket({ r }: { r: Round }) {
 }
 
 // ---------- 4. planned ----------
-function PlannedStage({ r, act }: { r: Round; act: Act }) {
+function PlannedStage({ r, act, home, onPlace }: { r: Round; act: Act; home: Home; onPlace: () => void }) {
   const past = (r.starts_at || 0) * 1000 < Date.now()
   return (
     <div className="col">
       <Ticket r={r} />
+      {!past && r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
       {past ? <>
         <h2 className="title" style={{ textAlign: 'center', marginTop: 8 }}>Сходили?</h2>
         <div className="row"><Btn kind="accent" block onClick={() => act('done', { answer: 'yes' }).then(burst).catch(() => {})}>Да!</Btn>

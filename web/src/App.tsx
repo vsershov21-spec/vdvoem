@@ -63,7 +63,7 @@ function Main() {
   let screen
   switch (top) {
     case 'ideas': screen = <Ideas home={home.data} folder={route[1]} />; break
-    case 'idea': screen = <IdeaScreen id={Number(route[1])} me={home.data?.me} />; break
+    case 'idea': screen = <IdeaScreen id={Number(route[1])} me={home.data?.me} partner={home.data?.partner} />; break
     case 'round': screen = <RoundScreen id={Number(route[1])} home={home.data} />; break
     case 'calendar': screen = <CalendarScreen home={home.data} />; break
     case 'assistant': screen = <Assistant home={home.data} />; break

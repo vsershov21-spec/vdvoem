@@ -133,6 +133,7 @@ type in struct {
 	Data  string `json:"data"`
 	Label string `json:"label"`
 	Photo bool   `json:"photo"`
+	Reply int64  `json:"reply"` // message id this message answers
 }
 
 func user(i in) map[string]any {
@@ -147,6 +148,9 @@ func (e *emu) say(w http.ResponseWriter, r *http.Request) {
 	var i in
 	json.NewDecoder(r.Body).Decode(&i)
 	msg := map[string]any{"message_id": time.Now().UnixNano() % 1e9, "from": user(i), "chat": map[string]any{"id": i.From, "type": "private"}, "date": time.Now().Unix(), "text": i.Text}
+	if i.Reply != 0 {
+		msg["reply_to_message"] = map[string]any{"message_id": i.Reply, "chat": map[string]any{"id": i.From, "type": "private"}}
+	}
 	if i.Photo {
 		delete(msg, "text")
 		msg["photo"] = []map[string]any{{"file_id": "photo-small", "width": 90, "height": 90}, {"file_id": fmt.Sprint("photo-", time.Now().UnixNano()), "width": 1280, "height": 960}}
@@ -235,14 +239,37 @@ func main() {
 		e.msgs, e.answers = nil, nil
 		e.mu.Unlock()
 	})
-	// a fake place page for the link parser (og:* + schema.org)
+	// fake place pages for the link parser (og:* + schema.org)
+	places := map[string][4]string{
+		"khachapuri": {"Хачапури и вино", "Restaurant", "Покровка, 17", "1800 ₽"},
+		"garage":     {"Музей Гараж", "Museum", "ул. Крымский Вал, 9, стр. 32", "600 ₽"},
+		"katok":      {"Каток в Парке Горького", "SportsActivityLocation", "ул. Крымский Вал, 9", "700 ₽"},
+	}
 	mux.HandleFunc("GET /_emu/place/{name}", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := places[r.PathValue("name")]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, `<!doctype html><html><head><title>%[1]s — Яндекс Карты</title>
-<meta property="og:title" content="%[1]s — Яндекс Карты"><meta property="og:description" content="Грузинская кухня, вино. Средний чек 1 800 ₽">
-<meta property="og:image" content="/_emu/img.png">
-<script type="application/ld+json">{"@type":"Restaurant","name":"%[1]s","address":{"streetAddress":"Покровка, 17"},"priceRange":"1800 ₽"}</script>
-</head><body>ok</body></html>`, map[string]string{"khachapuri": "Хачапури и вино", "garage": "Музей Гараж"}[r.PathValue("name")])
+<meta property="og:title" content="%[1]s — Яндекс Карты"><meta property="og:description" content="%[1]s. Средний чек %[4]s">
+<script type="application/ld+json">{"@type":"%[2]s","name":"%[1]s","address":{"streetAddress":"%[3]s"},"priceRange":"%[4]s"}</script>
+</head><body>ok</body></html>`, p[0], p[1], p[2], p[3])
+	})
+	// a tiny OpenAI-compatible endpoint: it only knows how to suggest places; everything else fails,
+	// which also exercises the rules fallback of the assistant
+	mux.HandleFunc("POST /_ai/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct{ Role, Content string } `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if len(req.Messages) == 0 || !strings.Contains(req.Messages[0].Content, "реально существующих") {
+			http.Error(w, `{"error":"emulator: not supported"}`, 500)
+			return
+		}
+		content := `{"places":[{"name":"Каток на ВДНХ","why":"самый большой в городе"},{"name":"Каток в Сокольниках","why":"спокойнее и уютнее"},{"name":"Каток «Лужники»","why":"музыка и подсветка"}]}`
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": content}}}})
 	})
 	mux.HandleFunc("/", e.bot)
 	log.Printf("tgemu on %s", *addr)
