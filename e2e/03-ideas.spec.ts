@@ -32,9 +32,18 @@ test('E08 копилка и папки: умные папки, поиск, пр�
   await api(n, 'POST', `/ideas/${ужин}/wish`, { wish: 'want' })
   const ctx = await phone(browser)
   const p = await open(ctx, v, 'ideas')
-  await expect(p.locator('.folder', { hasText: 'Хотим оба' })).toContainText('1')
+  // folders are categories only: every idea sits in exactly one of them
+  await expect(p.locator('.folder', { hasText: 'Еда' })).toBeVisible()
+  const total = await p.locator('.folder').evaluateAll(fs => fs.reduce((n, f) => n + Number(f.getAttribute('aria-label')!.split(': ')[1]), 0))
+  expect(total, 'no idea is counted twice').toBe(5)
   await expect(p.locator('.folder', { hasText: 'Дела' })).toContainText('1')
   await shot(p, 'E08-folders')
+  // «Хотим оба» is a filter, not a folder
+  await p.getByRole('tab', { name: /Хотим оба/ }).click()
+  await expect(p.locator('.icard')).toHaveCount(1)
+  await expect(p.locator('.icard')).toContainText('Ужин в грузинском ресторане')
+  await shot(p, 'E08-filter-both')
+  await p.getByRole('tab', { name: 'Папки' }).click()
   const food = p.locator('.folder', { hasText: 'Еда' })
   await food.click()                       // first tap fans the cards
   await expect(food.locator('.folder__wrap.is-fan')).toBeVisible()

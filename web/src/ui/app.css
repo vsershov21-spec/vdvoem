@@ -539,3 +539,9 @@ button,a,[role=tab]{touch-action:manipulation}
 @media (prefers-reduced-motion:reduce){.ava__live::after{animation:none}}
 .here{display:inline-flex;align-items:center;gap:6px;font:600 13px/1 var(--font-sans);color:#16a34a}
 .here::before{content:"";width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px color-mix(in srgb,#22c55e 25%,transparent)}
+
+/* copilka: filters on top of category folders */
+.fchips{margin-top:12px;margin-bottom:14px}
+.fchips .wkchip{height:34px}
+.fchips .wkchip[data-on] b{background:#ff701e}
+.archrow{appearance:none;border:0;width:100%;margin-top:14px;height:48px;padding:0 16px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow-card);display:flex;align-items:center;gap:10px;font:600 15px/1 var(--font-sans);color:var(--ink);cursor:pointer}
