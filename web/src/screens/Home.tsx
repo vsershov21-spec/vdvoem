@@ -3,7 +3,7 @@ import type { Home as HomeT, Idea, Round, Stats, Wish } from '../lib/types'
 import { go } from '../lib/router'
 import { post, humanError } from '../lib/api'
 import { emit, useLoad, useOn } from '../lib/data'
-import { relLeft, plural, money } from '../lib/format'
+import { relLeft, plural, money, ncase } from '../lib/format'
 import { shareLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, CountUp, Empty, Skel, WishPicker, toast } from '../ui/kit'
@@ -20,7 +20,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
       <header className="hdr" style={{ height: 'auto', margin: '4px 0 14px' }}>
         <div style={{ flex: 1 }}>
           <h1 className="title">{hello}, {home.me.name} 👋</h1>
-          <p className="caption muted" style={{ margin: '2px 0 0' }}>{home.partner ? `Планируем вдвоём с ${home.partner.name}` : 'Пригласи партнёра — и начнём'}</p>
+          <p className="caption muted" style={{ margin: '2px 0 0' }}>{home.partner ? `Планируем вдвоём с ${ncase(home.partner.name, 'ins')}` : 'Пригласи партнёра — и начнём'}</p>
         </div>
         <button className="pairava" style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer' }} onClick={() => go('us')} aria-label="Мы">
           <Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} />
@@ -45,9 +45,9 @@ function Dashboard({ s, home }: { s: Stats | null; home: HomeT }) {
   return (<>
     <div className="sec"><h2 className="title"><span className="orange-ind" />Наша статистика</h2></div>
     <div className="metrics">
-      <Metric label="Встреч" icon="cal" tone="orange" value={<CountUp to={s.meetings} />} unit={`${s.this_month} в этом мес.`} graph={<Bars values={months} tone="orange" />} onClick={() => go('calendar')} />
+      <Metric label="Встречи" icon="cal" tone="orange" value={<CountUp to={s.meetings} />} unit={`${s.this_month} в этом мес.`} graph={<Bars values={months} tone="orange" />} onClick={() => go('calendar')} />
       <Metric label="Совпадение" icon="heart" tone="pink" value={<><CountUp to={s.match} />%</>} unit={`${s.both_want} хотите оба`} graph={<Gauge value={s.match} tone="pink" />} onClick={() => go('ideas/both')} />
-      <Metric label="Идей" icon="folder" tone="green" value={<CountUp to={s.ideas} />} unit={s.unmarked ? `${s.unmarked} без отметки` : 'все отмечены'} graph={s.week.some(Boolean) ? <Bars values={s.week} tone="green" /> : <Pulse tone="green" />} onClick={() => go('ideas')} />
+      <Metric label="Идеи" icon="folder" tone="green" value={<CountUp to={s.ideas} />} unit={s.unmarked ? `${s.unmarked} без отметки` : 'все отмечены'} graph={s.week.some(Boolean) ? <Bars values={s.week} tone="green" /> : <Pulse tone="green" />} onClick={() => go('ideas')} />
       <Metric label="Вместе" icon="clock" tone="blue" value={<CountUp to={Math.round(s.hours)} />} unit={s.spent ? `ч · ${money(s.spent)}` : 'часов'} graph={<Bars values={s.months.map(m => m.done)} tone="blue" />} onClick={() => go('us')} />
     </div>
     <div className="chartcard rise" style={{ ['--d' as any]: 3, marginTop: 10 }}>

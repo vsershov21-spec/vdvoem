@@ -302,3 +302,11 @@ func TestSlotsAnyDay(t *testing.T) {
 		t.Fatalf("a common evening three weeks ahead must start the vote: %s", r.State)
 	}
 }
+
+func TestNameIns(t *testing.T) {
+	for in, want := range map[string]string{"Настя": "Настей", "Вова": "Вовой", "Саша": "Сашей", "Иван": "Иваном", "Андрей": "Андреем", "Игорь": "Игорем", "Kate": "Kate", "Маша-Мила": "Маша-Мила"} {
+		if got := app.NameIns(in); got != want {
+			t.Errorf("%s → %s, want %s", in, got, want)
+		}
+	}
+}

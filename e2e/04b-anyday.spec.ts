@@ -38,7 +38,7 @@ test('E24 время на любой день: недели, календарь,
   await expect(p.locator(`.cell[data-k="${k}"]`)).toHaveAttribute('aria-pressed', 'true')
   await shot(p, 'E24-far-week')
   await p.getByRole('button', { name: /Готово · 1 слот/ }).click()
-  await expect(p.getByText(/Ждём Настя/)).toBeVisible()
+  await expect(p.getByText(/Ждём Настю/)).toBeVisible()
   const { round } = await api(n, 'GET', '/rounds/current')
   const r = (await api(n, 'POST', `/rounds/${round.id}/slots`, { slots: [k] })).round
   expect(r.state).toBe('vote')

@@ -4,7 +4,7 @@ import type { Home, Idea, Round } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, humanError, ApiError } from '../lib/api'
 import { go } from '../lib/router'
-import { dayLabel, hm, money, dur, relLeft, when, parseDay } from '../lib/format'
+import { dayLabel, hm, money, dur, relLeft, when, parseDay, ncase } from '../lib/format'
 import { haptic, download } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Empty, Marks, Sheet, Skel, SubHeader, burst, toast } from '../ui/kit'
@@ -87,7 +87,7 @@ function TimeStage({ r, act, partner }: { r: Round; act: Act; partner: string })
             <h2 className="title">Время не совпало</h2>
             <p className="callout muted">Ни одного общего слота. Добавьте ещё варианты — можно на любой день, хоть через неделю.</p>
           </> : <>
-            <h2 className="title">Ждём {partner}</h2>
+            <h2 className="title">Ждём {ncase(partner, 'acc')}</h2>
             <p className="callout muted">Как только {partner} отметит время, я найду пересечение и пришлю варианты вам обоим.</p>
           </>}
           <Btn kind="soft" sm icon="edit" onClick={() => setEditing(true)}>Изменить моё время</Btn>
@@ -169,7 +169,7 @@ function VoteStage({ r, act, partner, home }: { r: Round; act: Act; partner: str
         <div className="frame rise"><div className="frame__in" style={{ textAlign: 'center' }}>
           <div className="meet" style={{ margin: '8px auto 16px' }}><i /><i /></div>
           <h2 className="title">Твой голос принят</h2>
-          <p className="callout muted">Ты выбрал(а) «{mine?.title || 'ни один'}». Голос {partner} откроется, когда он(а) проголосует — так честнее.</p>
+          <p className="callout muted">Ты выбрал(а) «{mine?.title || 'ни один'}». Голос {ncase(partner, 'gen')} откроется, когда он(а) проголосует — так честнее.</p>
         </div></div>
         <p className="caption muted" style={{ textAlign: 'center', margin: '4px 0 0' }}>Передумал(а)? Можно переголосовать, пока {partner} не ответил(а).</p>
         <Deck r={r} top={top} setTop={setTop} onVote={vote} me={home.me} small />
@@ -249,7 +249,7 @@ function ConfirmStage({ r, act, partner, home, onPlace }: { r: Round; act: Act; 
         <span className="row" style={{ gap: 6 }}><span className="dot" style={{ ['--c' as any]: 'var(--success)', opacity: r.partner_confirmed ? 1 : .3 }} />{partner}: {r.partner_confirmed ? 'да' : 'ждём'}</span>
       </div>
       {!r.confirmed ? <Btn kind="accent" block shine icon="check" onClick={() => act('confirm').then(() => {}).catch(() => {})}>Подтверждаю</Btn>
-        : <div className="pill pill--ok" style={{ alignSelf: 'center', height: 36, padding: '0 14px' }}><Icon n="check" s={16} w={2.6} />Ты подтвердил(а) — ждём {partner}</div>}
+        : <div className="pill pill--ok" style={{ alignSelf: 'center', height: 36, padding: '0 14px' }}><Icon n="check" s={16} w={2.6} />Ты подтвердил(а) — ждём {ncase(partner, 'acc')}</div>}
       <Btn kind="soft" block icon="clock" onClick={() => act('other-time').then(() => {}).catch(() => {})}>Другое время</Btn>
       <Btn kind="ghost" block onClick={() => act('cancel').then(() => go('', true)).catch(() => {})}>Отменить выбор</Btn>
     </div>

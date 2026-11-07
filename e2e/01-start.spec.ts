@@ -4,7 +4,7 @@ import { people, say, waitMsg, pair, open, phone, shot, tab, api, chat } from '.
 test('E01 знакомство через бота: приглашение работает один раз', async () => {
   const [v, n] = people('Вова', 'Настя')
   const code = await pair(v, n)
-  await waitMsg(n, /Вы с Вова теперь вдвоём/)
+  await waitMsg(n, /Вы с Вовой теперь вдвоём/)
   const [x] = people('Третий', 'Нет')
   await say(x, '/start ' + code)
   await waitMsg(x, /уже использована или устарела|уже двое/)

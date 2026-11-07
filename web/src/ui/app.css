@@ -7,7 +7,7 @@ input,textarea{-webkit-user-select:text;user-select:text}
 button{font-family:inherit;color:inherit}
 :root{--safe-b:max(env(safe-area-inset-bottom),var(--tg-safe-area-inset-bottom,0px),12px);--dock-h:68px;--hdr:56px;
   /* top inset: the notch in a home-screen app, or Telegram's fullscreen buttons (safe + content insets) */
-  --safe-t:max(var(--safe-t),calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px)))}
+  --safe-t:max(env(safe-area-inset-top),calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px)))}
 button,a,[role=tab]{touch-action:manipulation}
 
 /* ---------- shell & screen transitions ---------- */
@@ -423,7 +423,7 @@ button,a,[role=tab]{touch-action:manipulation}
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .metric{appearance:none;border:0;text-align:left;background:var(--surface);border-radius:20px;padding:12px 12px 12px;display:flex;flex-direction:column;gap:8px;cursor:pointer;
   box-shadow:0 10px 26px -14px rgba(255,112,30,.25),var(--shadow-card);font-family:inherit;color:var(--ink);animation:rise .5s var(--ease-out) both;animation-delay:calc(var(--d,0)*50ms)}
-.metric__top{display:flex;align-items:center;justify-content:space-between}
+.metric__top{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
 .metric__label{font:600 12.5px/1 var(--font-sans);color:var(--ink-muted)}
 .metric__badge{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 14%,transparent)}
 .metric__graph{height:30px;display:flex;align-items:flex-end}

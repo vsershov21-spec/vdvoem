@@ -283,7 +283,7 @@ func (b *Bot) start(ctx context.Context, m *tg.Message) {
 		return
 	}
 	if c.Partner != nil {
-		b.say(ctx, m.Chat.ID, fmt.Sprintf("Привет, %s! Вы с %s теперь вдвоём. Кидайте сюда ссылки и идеи — я сложу их в общую копилку.", html.EscapeString(c.Me.Name), html.EscapeString(c.Partner.Name)), b.openApp(""))
+		b.say(ctx, m.Chat.ID, fmt.Sprintf("Привет, %s! Вы с %s теперь вдвоём. Кидайте сюда ссылки и идеи — я сложу их в общую копилку.", html.EscapeString(c.Me.Name), html.EscapeString(app.NameIns(c.Partner.Name))), b.openApp(""))
 		return
 	}
 	b.say(ctx, m.Chat.ID, fmt.Sprintf("Привет, %s! Я помогаю паре решить, куда сходить и когда — без бесконечного «не знаю, а ты?».", html.EscapeString(c.Me.Name)), nil)

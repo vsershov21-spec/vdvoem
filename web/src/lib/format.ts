@@ -32,3 +32,18 @@ export const CATS: Record<string, { name: string; tone: string; emoji: string }>
   home: { name: 'Дела', tone: 'onyx', emoji: '🏠' },
   other: { name: 'Другое', tone: 'ocean', emoji: '✨' },
 }
+
+// Russian name cases for partner names in UI text: «ждём Настю», «с Настей», «голос Насти».
+// Simple endings only; anything unusual (Latin, -о, -и, compound) stays as is.
+export function ncase(name: string, c: 'gen' | 'acc' | 'ins'): string {
+  const n = name.trim()
+  if (!/^[А-ЯЁ][а-яё]+$/.test(n)) return n
+  const stem = n.slice(0, -1), last = n.slice(-1), pre = n.slice(-2, -1)
+  const hush = /[жшщчц]/.test(pre), soft = /[гкхжшщч]/.test(pre)
+  if (last === 'я') return stem + (c === 'gen' ? 'и' : c === 'acc' ? 'ю' : 'ей')
+  if (last === 'а') return stem + (c === 'gen' ? (soft ? 'и' : 'ы') : c === 'acc' ? 'у' : (hush ? 'ей' : 'ой'))
+  if (last === 'й') return stem + (c === 'ins' ? 'ем' : 'я')
+  if (last === 'ь') return stem + (c === 'ins' ? 'ем' : 'я')
+  if (/[бвгджзклмнпрстфхцчшщ]/.test(last)) return n + (c === 'ins' ? (/[жшщчц]/.test(last) ? 'ем' : 'ом') : 'а')
+  return n
+}
