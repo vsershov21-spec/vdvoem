@@ -99,7 +99,7 @@ function TimeStage({ r, act, partner }: { r: Round; act: Act; partner: string })
   const days = [...Array(7)].map((_, i) => ymd(addDays(week, i)))
   const fri = (() => { const wd = t0.getDay(); return wd === 0 || wd === 6 ? t0 : addDays(t0, 5 - wd) })()
   const nextMon = addDays(monday(t0), 7)
-  const quick: [string, Date][] = [['Ближайшие дни', t0], ['Выходные', fri], ['След. неделя', nextMon]]
+  const quick = ([['Ближайшие дни', t0], ['Выходные', fri], ['След. неделя', nextMon]] as [string, Date][]).filter(([, d], i, all) => i === 0 || +d !== +all[0][1])
   const shown = new Set(days)
   // marks outside the visible window get a chip that leads to them
   const otherWeeks = Object.entries(perWeek).filter(([w]) => Object.keys(perDay).some(d => ymd(monday(parseDay(d))) === w && !shown.has(d))).sort()
