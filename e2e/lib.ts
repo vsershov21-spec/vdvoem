@@ -5,9 +5,8 @@ export const TOKEN = process.env.DEV_TOKEN!
 export const BASE = process.env.BASE || 'http://localhost:18099'
 
 export type U = { id: number; name: string }
-let seq = 0
-// unique people per test: one database serves the whole run
-export const people = (a: string, b: string): [U, U] => { const n = 1000 + (++seq) * 10 + Math.floor(Math.random() * 5) * 1000; return [{ id: n, name: a }, { id: n + 1, name: b }] }
+// unique people per test: one database serves the whole run (random ids, never reused across files)
+export const people = (a: string, b: string): [U, U] => { const n = 2 * (50_000 + Math.floor(Math.random() * 400_000_000)); return [{ id: n, name: a }, { id: n + 1, name: b }] }
 
 export const shot = (p: Page, n: string) => p.screenshot({ path: `shots/${n}.png` })
 
@@ -89,12 +88,12 @@ export async function advance(opt: { minutes?: number; to?: number }) {
 export async function phone(browser: Browser, opts: { dark?: boolean; reduced?: boolean } = {}) {
   const ctx = await browser.newContext({ ...devices['iPhone 13'], baseURL: BASE, locale: 'ru-RU', timezoneId: 'Europe/Moscow',
     colorScheme: opts.dark ? 'dark' : 'light', reducedMotion: opts.reduced ? 'reduce' : 'no-preference' })
-  ctx.on('page', p => { if (!p.url().startsWith(BASE)) p.close().catch(() => {}) })
   return ctx
 }
 export async function open(ctx: BrowserContext, u: U | null, path = '', intro = false) {
   const p = await ctx.newPage()
   p.on('pageerror', e => console.log('pageerror:', e.message))
+  p.on('popup', pp => { pp.close().catch(() => {}) }) // t.me links opened by the login screen
   const q = new URLSearchParams()
   if (u) { q.set('dev', `${u.id}:${u.name}`); q.set('devtoken', TOKEN) }
   if (!intro) q.set('nointro', '1')
