@@ -246,3 +246,20 @@ func TestPickOne(t *testing.T) {
 		t.Fatal("mix must resolve")
 	}
 }
+
+func TestRoute(t *testing.T) {
+	msk, _ := time.LoadLocation("Europe/Moscow")
+	end := time.Date(2026, 11, 14, 16, 30, 0, 0, msk) // museum 14:00–16:30
+	win := time.Date(2026, 11, 14, 23, 0, 0, 0, msk)
+	legs := Route(end, []int{0, 120}, win, msk)
+	if got := legs[0].Start.Format("15:04"); got != "17:00" || legs[0].End.Format("15:04") != "18:30" || legs[0].Tight {
+		t.Fatalf("dinner: %v", legs[0])
+	}
+	if legs[1].Start.Format("15:04") != "19:00" || legs[1].Tight {
+		t.Fatalf("second: %v", legs[1])
+	}
+	late := Route(time.Date(2026, 11, 14, 21, 10, 0, 0, msk), []int{120}, win, msk)
+	if late[0].Start.Format("15:04") != "21:45" || !late[0].Tight {
+		t.Fatalf("late stop must be tight and start on a quarter: %v", late[0])
+	}
+}

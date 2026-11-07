@@ -32,6 +32,7 @@ type ICS struct {
 	End       time.Time
 	Stamp     time.Time
 	Cancelled bool
+	More      []ICS // next stops of the same meeting (museum → dinner), one VEVENT each
 }
 
 func icsEscape(s string) string {
@@ -70,7 +71,6 @@ func fold(line string) string {
 }
 
 func (e ICS) Render() string {
-	ts := func(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
 	lines := []string{
 		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Vdvoem//RU", "CALSCALE:GREGORIAN",
 	}
@@ -79,13 +79,27 @@ func (e ICS) Render() string {
 	} else {
 		lines = append(lines, "METHOD:PUBLISH")
 	}
-	lines = append(lines, "BEGIN:VEVENT",
-		"UID:"+e.UID,
+	lines = append(lines, e.vevent(true)...)
+	for _, m := range e.More {
+		m.Cancelled, m.Stamp = e.Cancelled, e.Stamp
+		lines = append(lines, m.vevent(false)...)
+	}
+	lines = append(lines, "END:VCALENDAR")
+	for i, l := range lines {
+		lines[i] = fold(l)
+	}
+	return strings.Join(lines, "\r\n") + "\r\n"
+}
+
+func (e ICS) vevent(alarm bool) []string {
+	ts := func(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
+	lines := []string{"BEGIN:VEVENT",
+		"UID:" + e.UID,
 		fmt.Sprintf("SEQUENCE:%d", e.Sequence),
-		"DTSTAMP:"+ts(e.Stamp),
-		"DTSTART:"+ts(e.Start),
-		"DTEND:"+ts(e.End),
-		"SUMMARY:"+icsEscape(e.Title))
+		"DTSTAMP:" + ts(e.Stamp),
+		"DTSTART:" + ts(e.Start),
+		"DTEND:" + ts(e.End),
+		"SUMMARY:" + icsEscape(e.Title)}
 	if e.Location != "" {
 		lines = append(lines, "LOCATION:"+icsEscape(e.Location))
 	}
@@ -98,14 +112,12 @@ func (e ICS) Render() string {
 	if e.Cancelled {
 		lines = append(lines, "STATUS:CANCELLED")
 	} else {
-		lines = append(lines, "STATUS:CONFIRMED",
-			"BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY", "DESCRIPTION:"+icsEscape(e.Title), "END:VALARM")
+		lines = append(lines, "STATUS:CONFIRMED")
+		if alarm {
+			lines = append(lines, "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY", "DESCRIPTION:"+icsEscape(e.Title), "END:VALARM")
+		}
 	}
-	lines = append(lines, "END:VEVENT", "END:VCALENDAR")
-	for i, l := range lines {
-		lines[i] = fold(l)
-	}
-	return strings.Join(lines, "\r\n") + "\r\n"
+	return append(lines, "END:VEVENT")
 }
 
 // Money formats kopecks as «4 000 ₽» with a narrow no-break space.

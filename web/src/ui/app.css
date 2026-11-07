@@ -554,3 +554,26 @@ button,a,[role=tab]{touch-action:manipulation}
 .slots__day.is-focus b,.slots__day.is-focus span{color:#ff701e}
 .slots__day.is-focus{animation:focus-day 1.2s ease-in-out 2}
 @keyframes focus-day{50%{transform:scale(1.12)}}
+
+/* «А потом?» — the meeting as a route */
+.route{display:grid;gap:12px}
+.route__head{display:grid;gap:4px}
+.route__line{list-style:none;margin:0;padding:0;display:grid;gap:12px;position:relative}
+.route__line::before{content:"";position:absolute;left:55px;top:10px;bottom:10px;width:2px;border-radius:1px;background:linear-gradient(#ff701e,color-mix(in srgb,#ff701e 25%,transparent))}
+.route__stop{display:grid;grid-template-columns:44px 14px 1fr auto;gap:0 8px;align-items:start;position:relative;overflow:hidden}
+.route__t{font:700 14px/20px var(--font-sans);font-variant-numeric:tabular-nums;color:var(--ink-muted)}
+.route__dot{width:12px;height:12px;margin-top:4px;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 3px #ff701e;z-index:1}
+.route__stop.is-main .route__dot,.route__stop[data-state="accepted"] .route__dot{background:#ff701e}
+.route__stop[data-state="proposed"] .route__dot{box-shadow:inset 0 0 0 2px #ff701e;background:var(--surface);border:2px dashed transparent}
+.route__body{display:grid;gap:4px;min-width:0}
+.route__name{appearance:none;border:0;background:none;padding:0;text-align:left;font:650 15px/20px var(--font-sans);color:var(--ink);cursor:pointer}
+.route__stop.is-main .route__name{cursor:default}
+.route__wait{font:500 13px/1.3 var(--font-sans);color:var(--ink-muted);display:flex;gap:10px;align-items:center}
+.route__ask{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.route__x{width:30px;height:30px;box-shadow:none}
+.route__sug{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.route__card{appearance:none;border:0;background:none;padding:0;text-align:left;cursor:pointer;display:grid;gap:6px;min-width:0}
+.route__card:active{transform:scale(.97)}
+.route__card .cover{border-radius:14px}
+.route__plus{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.92);color:#111;display:grid;place-items:center;justify-self:end}
+.route__ctitle{font:600 12.5px/1.25 var(--font-sans);color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

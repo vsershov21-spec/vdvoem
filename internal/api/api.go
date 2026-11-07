@@ -66,6 +66,9 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("GET /api/rounds/current", a.currentRound)
 	h("GET /api/rounds/{id}", a.round)
 	h("POST /api/rounds/{id}/{action}", a.roundAction)
+	h("POST /api/rounds/{id}/extras", a.addExtra)
+	h("POST /api/extras/{id}/{answer}", a.answerExtra)
+	h("DELETE /api/extras/{id}", a.delExtra)
 	mux.HandleFunc("GET /api/rounds/{id}/ics", a.authRaw(a.ics))
 	mux.HandleFunc("GET /api/live", a.authRaw(a.liveStream))
 	mux.HandleFunc("POST /api/client-log", a.clientLog)
@@ -693,6 +696,21 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 		out["starts_at"], out["ends_at"] = rd.StartsAt.Unix(), rd.EndsAt.Unix()
 		out["when"] = domain.When(rd.StartsAt, c.Loc())
 	}
+	if rd.State == domain.StateConfirm || rd.State == domain.StatePlanned || rd.State == domain.StateDone {
+		route := []map[string]any{}
+		for _, st := range a.App.Route(ctx, c, rd) {
+			route = append(route, map[string]any{"id": st.Extra.ID, "idea": viewIdea(c, st.Idea), "starts_at": st.Start.Unix(), "ends_at": st.End.Unix(),
+				"state": st.Extra.State, "mine": st.Extra.ProposedBy == c.Me.ID, "tight": st.Tight})
+		}
+		out["route"] = route
+		if rd.State != domain.StateDone && len(route) < app.MaxExtras {
+			sug := []ideaView{}
+			for _, i := range a.App.SuggestExtras(ctx, c, rd) {
+				sug = append(sug, viewIdea(c, i))
+			}
+			out["extra_suggest"] = sug
+		}
+	}
 	if rd.State == domain.StateVote && rd.VotedBoth() {
 		if cp := a.App.Compromise(ctx, c, rd); cp != nil {
 			out["compromise"] = viewIdea(c, *cp)
@@ -766,6 +784,68 @@ func (a *API) round(w http.ResponseWriter, r *http.Request, c app.Couple) (any, 
 		return nil, err
 	}
 	return map[string]any{"round": a.viewRound(r.Context(), c, rd)}, nil
+}
+
+func (a *API) addExtra(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		IdeaID int64  `json:"idea_id"`
+		Text   string `json:"text"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, err
+	}
+	if _, err := a.App.ProposeExtra(r.Context(), c, id, in.IdeaID, in.Text); err != nil {
+		return nil, extraErr(err)
+	}
+	rd, err := a.App.S.Round(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"round": a.viewRound(r.Context(), c, rd)}, nil
+}
+
+func (a *API) answerExtra(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	ans := r.PathValue("answer")
+	if ans != "accept" && ans != "decline" {
+		return nil, bad("bad_answer")
+	}
+	rd, err := a.App.AnswerExtra(r.Context(), c, id, ans == "accept")
+	if err != nil {
+		return nil, extraErr(err)
+	}
+	return map[string]any{"round": a.viewRound(r.Context(), c, rd)}, nil
+}
+
+func (a *API) delExtra(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	rd, err := a.App.RemoveExtra(r.Context(), c, id)
+	if err != nil {
+		return nil, extraErr(err)
+	}
+	return map[string]any{"round": a.viewRound(r.Context(), c, rd)}, nil
+}
+
+func extraErr(err error) error {
+	switch {
+	case errors.Is(err, app.ErrExtraState):
+		return httpErr{409, "extra_state"}
+	case errors.Is(err, app.ErrExtraLimit):
+		return httpErr{409, "extra_limit"}
+	case errors.Is(err, app.ErrExtraOwn):
+		return httpErr{409, "extra_own"}
+	}
+	return err
 }
 
 func (a *API) roundAction(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -308,5 +309,64 @@ func TestNameIns(t *testing.T) {
 		if got := app.NameIns(in); got != want {
 			t.Errorf("%s → %s, want %s", in, got, want)
 		}
+	}
+}
+
+// «А потом?»: museum, then dinner — proposed by one, confirmed by the other, in the calendar as a second event.
+func TestExtras(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	mus, _ := a.AddIdea(ctx, v, "Музей космонавтики")
+	din, _ := a.AddIdea(ctx, v, "Ужин в грузинском ресторане")
+	a.SetWish(ctx, v, din.Idea.ID, domain.WishVery)
+	a.SetWish(ctx, n, din.Idea.ID, domain.WishWant)
+	r, err := a.GoWith(ctx, v, mus.Idea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.ProposeExtra(ctx, v, r.ID, din.Idea.ID, ""); !errors.Is(err, app.ErrExtraState) {
+		t.Fatalf("no next stop before the main one is matched: %v", err)
+	}
+	day := app.SlotDays(ck.t, v.Loc())[1].Format("2006-01-02")
+	a.SubmitSlots(ctx, v, r.ID, []string{day + ":1", day + ":2"})
+	r, _ = a.SubmitSlots(ctx, n, r.ID, []string{day + ":1", day + ":2"})
+	if r.State != domain.StateConfirm {
+		t.Fatalf("state %s", r.State)
+	}
+	sug := a.SuggestExtras(ctx, v, r)
+	if len(sug) == 0 || sug[0].ID != din.Idea.ID {
+		t.Fatalf("dinner both want comes first after a museum: %+v", sug)
+	}
+	e, err := a.ProposeExtra(ctx, v, r.ID, din.Idea.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(2), "предлагает после «Музей космонавтики»") {
+		t.Fatalf("partner asked: %q", f.last(2))
+	}
+	if _, err := a.AnswerExtra(ctx, v, e.ID, true); !errors.Is(err, app.ErrExtraOwn) {
+		t.Fatal("the proposer cannot confirm their own stop")
+	}
+	route := a.Route(ctx, v, r)
+	if len(route) != 1 || !route[0].Start.After(r.EndsAt) {
+		t.Fatalf("route: %+v", route)
+	}
+	a.AnswerExtra(ctx, n, e.ID, true)
+	a.Confirm(ctx, v, r.ID)
+	r, _ = a.Confirm(ctx, n, r.ID)
+	ics := string(a.ICS(ctx, v, r, 0, false))
+	if strings.Count(ics, "BEGIN:VEVENT") != 2 || !strings.Contains(ics, "SUMMARY:Ужин в грузинском ресторане") {
+		t.Fatalf("calendar has both stops:\n%s", ics)
+	}
+	if !strings.Contains(f.last(1), "Потом:") {
+		t.Fatalf("planned message shows the route: %q", f.last(1))
+	}
+	// text proposal creates the idea; the limit is two stops
+	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Прогулка по Арбату"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Кино"); !errors.Is(err, app.ErrExtraLimit) {
+		t.Fatalf("limit: %v", err)
 	}
 }

@@ -897,6 +897,9 @@ func (a *App) meetingRows(ctx context.Context, c Couple, r domain.Round) (store.
 	if i.Category == "food" || i.Category == "culture" {
 		rows = append(rows, "<b>Сделать заранее:</b> забронировать или купить билеты")
 	}
+	if rl := a.routeLine(ctx, c, r); rl != "" {
+		rows = append(rows, rl)
+	}
 	return i, strings.Join(rows, "\n")
 }
 
@@ -949,6 +952,15 @@ func (a *App) ICS(ctx context.Context, c Couple, r domain.Round, seq int, cancel
 	}
 	e := domain.ICS{UID: fmt.Sprintf("round-%d@vdvoem", r.ID), Sequence: seq, Title: i.Title, Location: loc, URL: link, Desc: desc,
 		Start: r.StartsAt, End: r.EndsAt, Stamp: a.now(), Cancelled: cancelled}
+	for _, st := range a.AcceptedRoute(ctx, c, r) {
+		sp := a.PlaceOf(ctx, c, st.Idea)
+		l := st.Idea.Address
+		if sp.Chosen {
+			l = strings.Trim(sp.Title+", "+sp.Address, ", ")
+		}
+		e.More = append(e.More, domain.ICS{UID: fmt.Sprintf("extra-%d@vdvoem", st.Extra.ID), Sequence: seq, Title: st.Idea.Title, Location: l,
+			URL: sp.Maps, Desc: "После «" + i.Title + "». Запланировано во «Вдвоём».", Start: st.Start, End: st.End})
+	}
 	return []byte(e.Render())
 }
 
@@ -1255,6 +1267,9 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 					text += "\n📍 " + esc(pl.Title) + addrLine(pl.Address)
 				} else if i.Address != "" {
 					text += "\n" + esc(i.Address)
+				}
+				if rl := a.routeLine(ctx, cp, r); rl != "" {
+					text += "\n" + rl
 				}
 				a.send(ctx, m.ChatID, text, tg.Keyboard(tg.Row(tg.Link("На карте", pl.Maps), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID)))))
 			} else {

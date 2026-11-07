@@ -21,7 +21,10 @@ export type Round = {
   confirmed: boolean; partner_confirmed: boolean; again: string; budget: number
   windows?: { from: number; to: number }[]; triple: Idea[]; chosen?: Idea
   starts_at?: number; ends_at?: number; when?: string; compromise?: Idea; photos?: number
+  route?: RouteStop[]; extra_suggest?: Idea[]
 }
+
+export type RouteStop = { id: number; idea: Idea; starts_at: number; ends_at: number; state: 'proposed' | 'accepted'; mine: boolean; tight: boolean }
 
 export type Home = {
   me: Person; partner?: Person; paired: boolean

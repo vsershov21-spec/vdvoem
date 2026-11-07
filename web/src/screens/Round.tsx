@@ -11,6 +11,7 @@ import { Btn, Cover, Empty, Marks, Sheet, Skel, SubHeader, burst, toast } from '
 import { MonthGrid, type DayMark } from '../ui/Charts'
 import { Places } from '../ui/Places'
 import { useOnline } from '../lib/live'
+import { RouteBlock } from '../ui/Route'
 import { openLink } from '../lib/tg'
 
 type R = { round: Round }
@@ -36,8 +37,8 @@ export function RoundScreen({ id, home }: { id: number; home: Home | null }) {
   switch (r.state) {
     case 'time': body = <TimeStage r={r} act={act} partner={partner} here={here} />; break
     case 'vote': body = <VoteStage r={r} act={act} partner={partner} home={home} />; break
-    case 'confirm': body = <ConfirmStage r={r} act={act} partner={partner} home={home} onPlace={refresh} />; break
-    case 'planned': body = <PlannedStage r={r} act={act} home={home} onPlace={refresh} />; break
+    case 'confirm': body = <ConfirmStage r={r} act={act} partner={partner} home={home} onPlace={refresh} onRound={set} />; break
+    case 'planned': body = <PlannedStage r={r} act={act} home={home} onPlace={refresh} onRound={set} />; break
     case 'done': body = <DoneStage r={r} act={act} />; break
     default: body = <Closed r={r} />
   }
@@ -246,7 +247,7 @@ function Deck({ r, top, setTop, onVote, me, small }: { r: Round; top: number; se
 }
 
 // ---------- 3. confirm ----------
-function ConfirmStage({ r, act, partner, home, onPlace }: { r: Round; act: Act; partner: string; home: Home; onPlace: () => void }) {
+function ConfirmStage({ r, act, partner, home, onPlace, onRound }: { r: Round; act: Act; partner: string; home: Home; onPlace: () => void; onRound: (x: R) => void }) {
   return (
     <div className="col">
       <div className="meet rise" style={{ margin: '4px auto 4px' }}><i /><i /></div>
@@ -254,6 +255,7 @@ function ConfirmStage({ r, act, partner, home, onPlace }: { r: Round; act: Act; 
       <p className="callout muted rise" style={{ textAlign: 'center', margin: 0 }}>Встреча запланируется, когда подтвердите оба. Молчание не считается согласием.</p>
       <Ticket r={r} />
       {r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
+      <RouteBlock r={r} home={home} onRound={onRound} />
       <div className="row caption" style={{ justifyContent: 'center', gap: 16 }}>
         <span className="row" style={{ gap: 6 }}><span className="dot" style={{ ['--c' as any]: 'var(--success)', opacity: r.confirmed ? 1 : .3 }} />Ты: {r.confirmed ? 'да' : 'ждём'}</span>
         <span className="row" style={{ gap: 6 }}><span className="dot" style={{ ['--c' as any]: 'var(--success)', opacity: r.partner_confirmed ? 1 : .3 }} />{partner}: {r.partner_confirmed ? 'да' : 'ждём'}</span>
@@ -280,6 +282,7 @@ function Ticket({ r }: { r: Round }) {
           <Icon n="pin" s={20} /><span><b className="callout" style={{ fontWeight: 650 }}>{i.place.title}</b>{i.place.address && <span className="caption muted" style={{ display: 'block' }}>{i.place.address}</span>}</span></button>
           : i.address ? <div className="trow"><Icon n="pin" s={20} /><span className="callout">{i.address}</span></div>
           : <div className="trow"><Icon n="pin" s={20} /><span className="callout muted">Место не выбрано — добавьте варианты ниже</span></div>}
+        {(r.route || []).filter(s => s.state === 'accepted').map(s => <div key={s.id} className="trow"><Icon n="chev" s={20} /><span className="callout">Потом {hm(s.starts_at)} — <b style={{ fontWeight: 650 }}>{s.idea.title}</b></span></div>)}
         {!!i.price_min && <div className="trow"><Icon n="wallet" s={20} /><span className="callout">≈ {money(i.price_min)} на двоих</span></div>}
         {(i.category === 'food' || i.category === 'culture') && <div className="trow"><Icon n="bell" s={20} /><span className="callout">Заранее: забронировать или купить билеты</span></div>}
       </div>
@@ -288,12 +291,13 @@ function Ticket({ r }: { r: Round }) {
 }
 
 // ---------- 4. planned ----------
-function PlannedStage({ r, act, home, onPlace }: { r: Round; act: Act; home: Home; onPlace: () => void }) {
+function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; home: Home; onPlace: () => void; onRound: (x: R) => void }) {
   const past = (r.starts_at || 0) * 1000 < Date.now()
   return (
     <div className="col">
       <Ticket r={r} />
       {!past && r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
+      {!past && <RouteBlock r={r} home={home} onRound={onRound} />}
       {past ? <>
         <h2 className="title" style={{ textAlign: 'center', marginTop: 8 }}>Сходили?</h2>
         <div className="row"><Btn kind="accent" block onClick={() => act('done', { answer: 'yes' }).then(burst).catch(() => {})}>Да!</Btn>

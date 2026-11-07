@@ -294,3 +294,40 @@ func contains(xs []int64, x int64) bool {
 	}
 	return false
 }
+
+// Route places the next stops after the main one: each starts after the previous ends plus a gap for the way,
+// rounded up to a quarter hour. A stop is «tight» when it runs past the end of the common free window
+// (or past 23:30, when the window is unknown).
+type Leg struct {
+	Start, End time.Time
+	Tight      bool
+}
+
+const (
+	LegGap      = 30 * time.Minute
+	DefaultLeg  = 90 // minutes for a stop that doesn't say
+	latestEndHM = 23*60 + 30
+)
+
+func Route(mainEnd time.Time, durations []int, windowEnd time.Time, loc *time.Location) []Leg {
+	out := make([]Leg, 0, len(durations))
+	prev := mainEnd
+	for _, d := range durations {
+		if d <= 0 {
+			d = DefaultLeg
+		}
+		start := prev.Add(LegGap)
+		if q := start.In(loc); q.Minute()%15 != 0 || q.Second() != 0 {
+			start = start.Truncate(time.Minute).Add(time.Duration(15-q.Minute()%15) * time.Minute)
+		}
+		end := start.Add(time.Duration(d) * time.Minute)
+		limit := windowEnd
+		if limit.IsZero() {
+			s := start.In(loc)
+			limit = time.Date(s.Year(), s.Month(), s.Day(), 0, latestEndHM, 0, 0, loc)
+		}
+		out = append(out, Leg{Start: start, End: end, Tight: end.After(limit)})
+		prev = end
+	}
+	return out
+}

@@ -395,6 +395,13 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		toast = "Голос принят"
 	case "rs":
 		_, err = b.App.Reshuffle(ctx, c, id(1))
+	case "ex": // «А потом?»: the partner answers a proposed next stop
+		_, err = b.App.AnswerExtra(ctx, c, id(1), arg(2) == "y")
+		if errors.Is(err, app.ErrExtraOwn) {
+			toast, err = "Это твоё предложение — ждём ответа партнёра", nil
+		} else if err == nil {
+			toast = map[bool]string{true: "Добавили в маршрут", false: "Хорошо, без этого"}[arg(2) == "y"]
+		}
 	case "c":
 		_, err = b.App.Confirm(ctx, c, id(1))
 		toast = "Подтверждено"
