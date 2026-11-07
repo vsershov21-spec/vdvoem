@@ -4,17 +4,20 @@
 # No shell, no arguments, no passwords — just these verbs.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
-Q=/var/lib/vdvoem-ops
-install -d -m 0733 -o root -g root "$Q/queue"          # commander may create files, not list or read others
-install -d -m 0755 -o root -g root "$Q/out"
+# the commander runs sandboxed (DynamicUser, read-only /var/lib); its own state dir is the only place it can write
+Q=/var/lib/private/vershov-commander/vdvoem-ops
+OWNER=$(stat -c %u /var/lib/private/vershov-commander)
+install -d -m 0700 -o "$OWNER" -g "$OWNER" "$Q" "$Q/queue" "$Q/out"
 
 cat > /usr/local/sbin/vdvoem-ops <<'SH'
 #!/bin/bash
-# runs allow-listed actions requested in /var/lib/vdvoem-ops/queue
-Q=/var/lib/vdvoem-ops
+# runs allow-listed actions requested in the commander's queue; output goes back owned by the commander
+Q=/var/lib/private/vershov-commander/vdvoem-ops
+OWNER=$(stat -c %u "$Q")
 shopt -s nullglob
 for f in "$Q"/queue/*; do
   a=$(basename "$f"); rm -f "$f"
+  [[ "$a" =~ ^[a-z-]{3,20}$ ]] || continue
   out="$Q/out/$a.log"
   {
     echo "# $a $(date -Is)"
@@ -31,7 +34,7 @@ for f in "$Q"/queue/*; do
     esac
     echo "# exit $?"
   } > "$out" 2>&1
-  chmod 0644 "$out"
+  chown "$OWNER:$OWNER" "$out"; chmod 0600 "$out"
 done
 SH
 chmod 0755 /usr/local/sbin/vdvoem-ops
@@ -47,7 +50,7 @@ cat > /etc/systemd/system/vdvoem-ops.path <<'UNIT'
 [Unit]
 Description=Вдвоём — watch operator requests
 [Path]
-DirectoryNotEmpty=/var/lib/vdvoem-ops/queue
+DirectoryNotEmpty=/var/lib/private/vershov-commander/vdvoem-ops/queue
 [Install]
 WantedBy=paths.target
 UNIT
