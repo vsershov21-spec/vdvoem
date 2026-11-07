@@ -75,6 +75,12 @@ if ! grep -q "^$DOMAIN" /etc/caddy/Caddyfile; then
   cat >> /etc/caddy/Caddyfile <<CADDY
 
 $DOMAIN {
+	# the hoster blocks the TLS-ALPN challenge: issue over HTTP-01 (as admin.vershov.com does)
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8099
 }
