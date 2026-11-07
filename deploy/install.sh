@@ -1,5 +1,6 @@
 #!/bin/bash
-# One-time install of «Вдвоём» on the Studio VPS. Run as root:  sudo bash install.sh
+# One-time install of «Вдвоём» on the Studio VPS, on the server itself (over ssh), as root:
+#   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/vsershov21-spec/vdvoem/main/deploy/install.sh)"
 # Creates the vdvoem user and service, auto-update and backup timers, and the Caddy site.
 # The bot token is asked interactively and stored only in /etc/vdvoem/vdvoem.env (root:vdvoem 0640).
 set -euo pipefail
@@ -17,7 +18,7 @@ chmod 755 /opt/vdvoem/update.sh /opt/vdvoem/backup.sh
 mv /opt/vdvoem/vdvoem.service /etc/systemd/system/vdvoem.service
 
 if [ ! -f /etc/vdvoem/vdvoem.env ]; then
-  read -rsp "Токен бота от @BotFather: " TOKEN; echo
+  read -rsp "Токен бота от @BotFather: " TOKEN < /dev/tty; echo
   [ -n "$TOKEN" ] || { echo "пустой токен"; exit 1; }
   umask 027
   cat > /etc/vdvoem/vdvoem.env <<ENV

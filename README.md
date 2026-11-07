@@ -13,9 +13,8 @@ Telegram-бот и Mini App для пары: общая копилка идей,
 
 ## Установка на сервер (один раз, под root)
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/vsershov21-spec/vdvoem/main/deploy/install.sh
-less install.sh   # посмотреть
-sudo bash install.sh   # спросит токен бота
+ssh root@150.241.65.146   # именно на сервер, не на своём компьютере
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/vsershov21-spec/vdvoem/main/deploy/install.sh)"   # спросит токен бота
 ```
 Нужна A-запись `vdvoem.vershov.com` на IP сервера. Логи: `journalctl -u vdvoem -f`.
 Настройки — `/etc/vdvoem/vdvoem.env` (токен, `AI_URL`/`AI_KEY`/`AI_MODEL` для помощника; без них он работает на правилах).
