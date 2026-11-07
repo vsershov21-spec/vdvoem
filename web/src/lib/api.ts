@@ -13,7 +13,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   const h: Record<string, string> = { 'Content-Type': 'application/json' }
   const d = devUser()
   if (d) { const [id, name] = d.split(':'); h['X-Dev-User'] = id; h['X-Dev-Name'] = encodeURIComponent(name || 'Dev'); h['X-Dev-Token'] = sessionStorage.getItem('vd-devtoken') || '' }
-  else h['Authorization'] = 'tma ' + initData()
+  else if (initData()) h['Authorization'] = 'tma ' + initData() // outside Telegram the session cookie is used
   const res = await fetch('/api' + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error || 'error')

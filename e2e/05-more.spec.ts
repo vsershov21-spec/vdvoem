@@ -92,7 +92,7 @@ test('E20 настройки: режим предложений, бюджет о
   await expect.poll(async () => (await api(v, 'GET', '/settings')).suggest_mode).toBe('random')
   await shot(p, 'E20-suggest')
   await p.keyboard.press('Escape')
-  await p.locator('.scrim').click()
+  await expect(p.locator('.sheet')).toHaveCount(0)
   await p.getByText('Бюджет на встречу').click()
   await p.locator('.sheet .input').fill('5000')
   await p.getByRole('button', { name: 'Сохранить' }).click()

@@ -102,6 +102,11 @@ export function Sheet({ open, onClose, children }: { open: boolean; onClose: () 
     if (open) { setShown(true); setOut(false) }
     else if (shown) { setOut(true); const t = setTimeout(() => setShown(false), 280); return () => clearTimeout(t) }
   }, [open])
+  useEffect(() => {
+    if (!open) return
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    addEventListener('keydown', k); return () => removeEventListener('keydown', k)
+  }, [open, onClose])
   if (!shown) return null
   // a portal: a transformed ancestor would turn position:fixed into position:absolute
   return createPortal(<>

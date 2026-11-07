@@ -110,7 +110,8 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func (a *API) couple(r *http.Request) (app.Couple, error) {
 	u, err := a.user(r)
 	if err != nil {
-		if r.Header.Get("Authorization") == "" || r.Header.Get("Authorization") == "tma " {
+		// no initData (Go trims "tma " to "tma"): a browser session cookie may be there instead
+		if strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "tma")) == "" {
 			if id, ok := a.sessionMember(r); ok {
 				return a.App.CoupleByMember(r.Context(), id)
 			}
