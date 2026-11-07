@@ -26,8 +26,8 @@ export function RouteBlock({ r, home, onRound }: { r: Round; home: Home; onRound
     setBusy(key); haptic.tap()
     try { onRound(await f()); emit('home') } catch (e) { fail(e) } finally { setBusy(0) }
   }
-  const add = (i: Idea) => run(i.id, () => post<R>(`/rounds/${r.id}/extras`, { idea_id: i.id }))
-  const addText = () => { const t = text.trim(); if (!t) return; setText(''); run(-1, () => post<R>(`/rounds/${r.id}/extras`, { text: t })) }
+  const add = (i: Idea) => run(i.id, () => post<R>(`/route/${r.id}`, { idea_id: i.id }))
+  const addText = () => { const t = text.trim(); if (!t) return; setText(''); run(-1, () => post<R>(`/route/${r.id}`, { text: t })) }
   const answer = (s: RouteStop, ok: boolean) => run(s.id, () => post<R>(`/extras/${s.id}/${ok ? 'accept' : 'decline'}`))
   const remove = (s: RouteStop) => run(s.id, () => del<R>(`/extras/${s.id}`))
   if (!r.chosen || !r.starts_at) return null

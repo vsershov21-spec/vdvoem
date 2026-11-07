@@ -66,7 +66,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("GET /api/rounds/current", a.currentRound)
 	h("GET /api/rounds/{id}", a.round)
 	h("POST /api/rounds/{id}/{action}", a.roundAction)
-	h("POST /api/rounds/{id}/extras", a.addExtra)
+	h("POST /api/route/{id}", a.addExtra) // not under /api/rounds/{id}/…: it would clash with /api/rounds/with/{idea}
 	h("POST /api/extras/{id}/{answer}", a.answerExtra)
 	h("DELETE /api/extras/{id}", a.delExtra)
 	mux.HandleFunc("GET /api/rounds/{id}/ics", a.authRaw(a.ics))
