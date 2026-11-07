@@ -14,7 +14,11 @@ test('E14 молчание: напоминания, через 48 часов в�
   if (!got) await advance({ minutes: 10 * 60 }) // landed in the night: it comes in the morning
   await waitMsg(n, /Напоминаю: отметь, когда тебе удобно/, 8000, before)
   await noMsg(v, /Напоминаю: отметь/, 0) // the one who answered is not nagged
-  await advance({ minutes: 28 * 60 })
+  // 48 hours after opening the round closes; the message may land in the quiet hours and wait for 09:00
+  if (Date.parse(await advance({ minutes: 0 })) / 1000 < round.expires_at + 120) await advance({ to: round.expires_at + 120 })
+  const closed = async () => (await (await fetch(process.env.EMU + '/_emu/chat/' + v.id)).json()).some((m: any) => /Выбор закрылся/.test(m.text))
+  await new Promise(r => setTimeout(r, 2500))
+  if (!(await closed())) await advance({ minutes: 10 * 60 })
   await waitMsg(v, /Выбор закрылся/, 8000)
   expect((await api(v, 'GET', `/rounds/${round.id}`)).round.state).toBe('expired')
 })

@@ -283,6 +283,7 @@ func TestAssistantRules(t *testing.T) {
 // Free time is not limited to the three suggested days: any day up to the horizon works, past and far days are dropped.
 func TestSlotsAnyDay(t *testing.T) {
 	a, _, ck := setup(t)
+	ck.t = ck.t.Add(2 * time.Hour) // 14:00: the morning (9–13) is over
 	ctx := context.Background()
 	v, n := pair(t, a)
 	a.AddIdea(ctx, v, "Ужин в ресторане")
@@ -294,7 +295,7 @@ func TestSlotsAnyDay(t *testing.T) {
 	today := ck.t.Format("2006-01-02")
 	r, _ = a.SubmitSlots(ctx, v, r.ID, []string{far, today + ":0", ck.t.AddDate(0, 0, -1).Format("2006-01-02") + ":2", ck.t.AddDate(0, 0, 90).Format("2006-01-02") + ":1"})
 	if len(r.SlotsA) != 1 || r.SlotsA[0].Key() != far {
-		t.Fatalf("only the far evening is valid (today's morning has passed at 12:00): %+v", r.SlotsA)
+		t.Fatalf("only the far evening is valid (today's morning is over at 14:00): %+v", r.SlotsA)
 	}
 	r, _ = a.SubmitSlots(ctx, n, r.ID, []string{far, today + ":2"})
 	if r.State != domain.StateVote || len(r.Triple) == 0 {
