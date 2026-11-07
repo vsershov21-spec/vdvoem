@@ -50,7 +50,7 @@ export function Places({ idea, me, partner, ai, onChange, compact }: { idea: Ide
       <AnimatePresence initial={false}>
         {opts.map(o => (
           <motion.div key={o.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }} className={'popt' + (o.chosen ? ' is-chosen' : '')} data-testid="place-option">
-            <span className="popt__who" data-p={o.author}>{o.author === 'ai' ? <Icon n="spark" s={13} w={2.4} /> : who(o.author).slice(0, 1).toUpperCase()}</span>
+            <span className="popt__who" data-p={o.author}>{o.author === 'ai' ? <Icon n="spark" s={13} w={2.4} /> : ((o.author === me.color ? me.name : partner?.name) || '?').slice(0, 1).toUpperCase()}</span>
             <span className="popt__main">
               <b>{o.parsed ? o.title : <span className="popt__parsing"><span className="spin" />разбираю ссылку…</span>}</b>
               <span>{[o.address, o.price ? '≈ ' + money(o.price) : '', o.note || 'добавил(а) ' + who(o.author)].filter(Boolean).join(' · ')}</span>

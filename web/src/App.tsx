@@ -46,7 +46,6 @@ function Main() {
 
   const top = route[0]
   const tab = TABS.find(t => t.path === top)
-  const isTab = !!tab && (route.length === 1 || top === 'ideas')
   useEffect(() => { setBack(route.length > 1 || !tab ? () => back('') : null); return () => setBack(null) }, [route.join('/')])
 
   const start = async () => {
@@ -77,7 +76,7 @@ function Main() {
         {!hideIsland && <Island home={home.data} actions={actions} />}
         {screen}
       </main>
-      <PillNav current={isTab ? top : tab ? top : ''} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />
+      <PillNav current={tab ? top : '-'} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />
       <AddSheet open={adding} onClose={() => setAdding(false)} onAdded={() => { emit('ideas'); emit('home') }} />
       <SurpriseSheet mode={surprise} onClose={() => setSurprise('')} />
     </div>
