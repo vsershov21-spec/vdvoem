@@ -10,7 +10,8 @@
 //	WEB_DIR         ./web/dist
 //	TG_API_BASE     https://api.telegram.org (emulator in tests)
 //	AI_URL, AI_KEY, AI_MODEL   OpenAI-compatible endpoint; empty = rules only
-//	SETUP=1         register webhook, commands, menu button and description at start
+//	TG_MODE         poll (default: the server fetches updates, no inbound connections) | webhook
+//	SETUP=1         register commands, menu button, description (and the webhook in webhook mode) at start
 //	DEV_TOKEN       e2e only: accept X-Dev-User when X-Dev-Token matches (never in production)
 package main
 
@@ -133,8 +134,12 @@ func main() {
 
 	srv := &http.Server{Addr: env("LISTEN", "127.0.0.1:8099"), Handler: secure(mux), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second}
 
+	mode := env("TG_MODE", "poll")
 	if env("SETUP", "") == "1" {
-		setup(ctx, client, public, secret, log)
+		setup(ctx, client, public, secret, mode == "webhook", log)
+	}
+	if mode != "webhook" {
+		go b.Poll(ctx)
 	}
 
 	go func() {
@@ -173,12 +178,17 @@ func main() {
 	}
 }
 
-func setup(ctx context.Context, c *tg.Client, public, secret string, log *slog.Logger) {
+func setup(ctx context.Context, c *tg.Client, public, secret string, webhook bool, log *slog.Logger) {
 	steps := []struct {
 		name string
 		f    func() error
 	}{
-		{"webhook", func() error { return c.SetWebhook(ctx, public+"/tg/webhook", secret) }},
+		{"webhook", func() error {
+			if !webhook {
+				return nil // polling mode: Poll() removes any webhook
+			}
+			return c.SetWebhook(ctx, public+"/tg/webhook", secret)
+		}},
 		{"commands", func() error { return c.SetCommands(ctx, bot.Commands, bot.CommandOrder) }},
 		{"menu", func() error { return c.SetMenuButton(ctx, "Вдвоём", public+"/app/") }},
 		{"description", func() error {

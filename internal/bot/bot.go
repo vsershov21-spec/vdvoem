@@ -477,3 +477,50 @@ func urlEscape(s string) string {
 	}
 	return sb.String()
 }
+
+// Poll receives updates by long polling — for servers that Telegram cannot reach (inbound filtered).
+func (b *Bot) Poll(ctx context.Context) {
+	if err := b.TG.DeleteWebhook(ctx); err != nil {
+		b.Log.Warn("deleteWebhook", "err", err)
+	}
+	var offset int64
+	backoff := time.Second
+	b.Log.Info("polling Telegram for updates")
+	for ctx.Err() == nil {
+		ups, err := b.TG.GetUpdates(ctx, offset, 50*time.Second)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			b.Log.Warn("getUpdates", "err", err, "retry_in", backoff.String())
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < time.Minute {
+				backoff *= 2
+			}
+			continue
+		}
+		backoff = time.Second
+		for _, u := range ups {
+			if u.UpdateID >= offset {
+				offset = u.UpdateID + 1
+			}
+			func() {
+				hctx, cancel := context.WithTimeout(ctx, 40*time.Second)
+				defer cancel()
+				defer func() {
+					if p := recover(); p != nil {
+						b.Log.Error("panic in update", "panic", p)
+					}
+				}()
+				if fresh, err := b.App.S.FirstSeen(hctx, u.UpdateID, b.App.Now()); err == nil && !fresh {
+					return
+				}
+				b.Handle(hctx, u)
+			}()
+		}
+	}
+}

@@ -202,3 +202,31 @@ func (c *Client) Me(ctx context.Context) (User, error) {
 	err := c.call(ctx, "getMe", map[string]any{}, &u)
 	return u, err
 }
+
+// ---------- long polling (no inbound connections needed) ----------
+
+func (c *Client) DeleteWebhook(ctx context.Context) error {
+	return c.call(ctx, "deleteWebhook", map[string]any{"drop_pending_updates": false}, nil)
+}
+
+// GetUpdates waits up to `wait` for new updates after `offset`.
+func (c *Client) GetUpdates(ctx context.Context, offset int64, wait time.Duration) ([]Update, error) {
+	b, _ := json.Marshal(map[string]any{"offset": offset, "timeout": int(wait / time.Second), "allowed_updates": []string{"message", "callback_query"}})
+	req, _ := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/bot%s/getUpdates", c.Base, c.Token), bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	hc := &http.Client{Timeout: wait + 15*time.Second, Transport: c.HTTP.Transport}
+	res, err := hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("tg getUpdates: %w", err)
+	}
+	defer res.Body.Close()
+	var r apiResp
+	if err := json.NewDecoder(io.LimitReader(res.Body, 16<<20)).Decode(&r); err != nil {
+		return nil, fmt.Errorf("tg getUpdates: decode: %w", err)
+	}
+	if !r.OK {
+		return nil, fmt.Errorf("tg getUpdates: %d %s", r.ErrorCode, r.Description)
+	}
+	var out []Update
+	return out, json.Unmarshal(r.Result, &out)
+}

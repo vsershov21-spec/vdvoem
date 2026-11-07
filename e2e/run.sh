@@ -12,7 +12,7 @@ TOKEN=e2e-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
 "$WORK/tgemu" -listen 127.0.0.1:18098 > "$WORK/tgemu.log" 2>&1 &
 EMU=$!
 BOT_TOKEN=000:test PUBLIC_URL=http://localhost:18099 WEBHOOK_SECRET=e2e-secret LISTEN=127.0.0.1:18099 \
-  DB_PATH="$WORK/e2e.db" WEB_DIR="$ROOT/web/dist" TG_API_BASE=http://127.0.0.1:18098 AI_URL=http://127.0.0.1:18098/_ai AI_MODEL=emu SETUP=1 DEV_TOKEN=$TOKEN \
+  DB_PATH="$WORK/e2e.db" WEB_DIR="$ROOT/web/dist" TG_API_BASE=http://127.0.0.1:18098 TG_MODE=webhook AI_URL=http://127.0.0.1:18098/_ai AI_MODEL=emu SETUP=1 DEV_TOKEN=$TOKEN \
   "$WORK/vdvoem" > "$WORK/app.log" 2>&1 &
 APP=$!
 trap 'kill $APP $EMU 2>/dev/null || true' EXIT
