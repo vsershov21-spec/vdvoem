@@ -106,3 +106,28 @@ export async function open(ctx: BrowserContext, u: U | null, path = '', intro = 
   return p
 }
 export const tab = (p: Page, id: 'home' | 'bank' | 'cal' | 'ai' | 'us') => p.locator('#tab-' + id).click()
+
+// ---------- a fake Telegram client (served instead of telegram-web-app.js) ----------
+// platform 'ios' + bio:true = an iPhone with Face ID; 'tdesktop' + bio:false = the desktop app (no sensor)
+export async function fakeTelegram(ctx: BrowserContext, o: { platform: string; bio: boolean; authOk?: boolean }) {
+  const js = `(() => {
+    const ev = {}, cfg = ${JSON.stringify(o)}
+    const root = document.documentElement
+    const bm = { isInited: false, isBiometricAvailable: false, isAccessGranted: false, biometricType: 'unknown',
+      init(cb) { setTimeout(() => { this.isInited = true; this.isBiometricAvailable = cfg.bio; this.biometricType = cfg.bio ? 'face' : 'unknown'; cb && cb() }, 30) },
+      requestAccess(p, cb) { this.isAccessGranted = cfg.bio; window.__bio = (window.__bio || []).concat('request'); setTimeout(() => cb(cfg.bio), 10) },
+      authenticate(p, cb) { window.__bio = (window.__bio || []).concat('auth'); setTimeout(() => cb(!!cfg.authOk), 10) } }
+    window.Telegram = { WebApp: {
+      initData: 'query_id=e2e&user=%7B%22id%22%3A1%7D&auth_date=1&hash=e2e', initDataUnsafe: {}, version: '8.0', platform: cfg.platform,
+      colorScheme: 'light', themeParams: {}, isFullscreen: false, isExpanded: true,
+      isVersionAtLeast: v => parseFloat(v) <= 8.0,
+      ready() {}, expand() {}, disableVerticalSwipes() {}, setHeaderColor() {}, setBackgroundColor() {}, setBottomBarColor() {},
+      requestFullscreen() { this.isFullscreen = true; root.style.setProperty('--tg-safe-area-inset-top', '47px'); root.style.setProperty('--tg-content-safe-area-inset-top', '46px'); window.__fullscreen = true },
+      onEvent(n, f) { (ev[n] ||= []).push(f) }, offEvent() {},
+      BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
+      HapticFeedback: { impactOccurred() {}, selectionChanged() {}, notificationOccurred() {} },
+      BiometricManager: bm, openLink(u) { window.open(u) }, openTelegramLink(u) { window.open(u) },
+    } }
+  })()`
+  await ctx.route('**/telegram-web-app.js*', r => r.fulfill({ contentType: 'application/javascript', body: js }))
+}

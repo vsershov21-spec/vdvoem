@@ -5,7 +5,7 @@ import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-mo
 import { Particles, type Shape } from '../ui/Particles'
 import { Icon } from '../ui/icons'
 import { get, post, humanError, ApiError } from '../lib/api'
-import { openLink, haptic, tg } from '../lib/tg'
+import { openLink, haptic, biometric, bioAuth, bioRequest, bioName } from '../lib/tg'
 import './entry.css'
 
 type Phase = 'dark' | 'on' | 'intro' | 'login' | 'locked' | 'out'
@@ -78,7 +78,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
 
   useEffect(() => {
     // who is it? (inside Telegram initData; in a browser, a session cookie)
-    get<{ biometric_lock?: boolean }>('/me').then(m => { authed.current = true; lock.current = !!m.biometric_lock && !!tg?.BiometricManager })
+    get<{ biometric_lock?: boolean }>('/me').then(m => { authed.current = true; lock.current = !!m.biometric_lock })
       .catch(e => { authed.current = !(e instanceof ApiError && e.status === 401) ? null : false })
     later(noIntro ? 0 : 650, () => { setLit(true); setPhase('on'); haptic.soft() })
     return () => timers.current.forEach(clearTimeout)
@@ -89,7 +89,11 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     const decide = () => {
       if (authed.current === null) { later(200, decide); return }
       if (!authed.current) { later(450, () => setPhase('login')); return }
-      if (lock.current) { setPhase('locked'); unlock(); return }
+      if (lock.current) {
+        // the lock only applies where Telegram has a sensor (not on desktop clients)
+        biometric().then(b => { if (!b.available) { intro(); return } setBioType(b.type); setPhase('locked'); unlock() })
+        return
+      }
       intro()
     }
     later(noIntro ? 0 : 500, decide)
@@ -117,11 +121,33 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     setDissolve(true); setPhase('out')
     later(650, onEnter)
   }
-  const unlock = () => {
-    const bm = tg?.BiometricManager
-    if (!bm) { intro(); return }
-    const ask = () => bm.authenticate({ reason: 'Войти во «Вдвоём»' }, (ok: boolean) => { if (ok) { haptic.ok(); intro() } else haptic.err() })
-    if (bm.isInited) ask(); else bm.init(ask)
+  const [bioType, setBioType] = useState('')
+  const [lockErr, setLockErr] = useState('')
+  const [asked, setAsked] = useState(false)
+  const unlock = async () => {
+    setLockErr('')
+    const b = await biometric()
+    if (!b.available) { intro(); return }
+    if (!b.granted && !(await bioRequest('Открывать «Вдвоём» по ' + (b.type === 'finger' ? 'отпечатку' : 'Face ID')))) { setLockErr('Доступ к ' + bioName(b.type) + ' не дан — подтверди вход в боте'); return }
+    if (await bioAuth('Войти во «Вдвоём»')) { haptic.ok(); intro() } else { haptic.err(); setLockErr('Не получилось — попробуй ещё раз или подтверди в боте') }
+  }
+  // the way past the lock when the sensor fails: the bot asks «Это ты?» in your own chat
+  const poll = useRef(0)
+  useEffect(() => () => clearInterval(poll.current), [])
+  const viaBot = async () => {
+    setLockErr('')
+    try {
+      const r = await post<{ code: string }>('/security/unlock')
+      setAsked(true)
+      clearInterval(poll.current)
+      poll.current = window.setInterval(async () => {
+        try {
+          const s = await get<{ ok: boolean; alive: boolean }>('/auth/telegram/' + r.code)
+          if (s.ok) { clearInterval(poll.current); haptic.ok(); intro() }
+          else if (!s.alive) { clearInterval(poll.current); setAsked(false); setLockErr('Запрос устарел — попробуй ещё раз') }
+        } catch { /* keep polling */ }
+      }, 1500)
+    } catch (e) { setLockErr(humanError(e)) }
   }
 
   return (
@@ -148,8 +174,18 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
       {phase === 'locked' && (
         <motion.div className="glass login" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
           <h1>С возвращением</h1>
-          <p>Приложение защищено Face ID</p>
-          <button className="lbtn lbtn--light" onClick={unlock}><Icon n="face" s={22} />Разблокировать</button>
+          <p>Приложение защищено {bioType === 'finger' ? 'отпечатком' : 'Face ID'}</p>
+          {asked ? (
+            <div className="login__wait">
+              <span className="lspin" />
+              <b>Подтверди в боте</b>
+              <span>Нажми «Да, это я» в чате с ботом — приложение откроется само.</span>
+            </div>
+          ) : <>
+            <button className="lbtn lbtn--light" onClick={unlock}><Icon n="face" s={22} />Разблокировать</button>
+            <button className="lbtn lbtn--ghost" onClick={viaBot}><Icon n="plane" s={20} w={2.2} />Подтвердить в боте</button>
+          </>}
+          {lockErr && <p className="login__err" role="alert">{lockErr}</p>}
         </motion.div>
       )}
 

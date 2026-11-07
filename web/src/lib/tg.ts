@@ -12,6 +12,13 @@ export function ready() {
   tg.expand()
   try { tg.disableVerticalSwipes?.() } catch { /* old clients */ }
   try { tg.setHeaderColor?.('bg_color'); tg.setBackgroundColor?.('bg_color') } catch { /* */ }
+  // phones: fullscreen like a native app (Telegram 8.0+); its buttons float on top, --tg-content-safe-area-inset-top keeps content clear
+  try { if (/^(ios|android)$/.test(tg.platform) && tg.isVersionAtLeast?.('8.0') && !tg.isFullscreen) tg.requestFullscreen?.() } catch { /* old clients */ }
+}
+
+// fullscreen status bar text must contrast with the page
+export function statusBar(dark: boolean) {
+  try { if (tg?.isVersionAtLeast?.('8.0')) { tg.setHeaderColor?.(dark ? '#0f0f11' : '#f4f4f4'); tg.setBackgroundColor?.(dark ? '#0f0f11' : '#f4f4f4'); tg.setBottomBarColor?.(dark ? '#0f0f11' : '#f4f4f4') } } catch { /* */ }
 }
 
 export function scheme(): 'light' | 'dark' {
@@ -59,3 +66,21 @@ export function download(url: string, name: string) {
 }
 
 export const startParam = (): string => tg?.initDataUnsafe?.start_param || ''
+
+// Face ID / fingerprint through Telegram. Desktop clients expose BiometricManager but have no sensor
+// (isBiometricAvailable=false) — the lock is a per-device extra and never applies there.
+type Bio = { available: boolean; granted: boolean; type: string }
+let bioInit: Promise<Bio> | null = null
+export function biometric(): Promise<Bio> {
+  const bm = tg?.BiometricManager
+  if (!bm || !tg?.isVersionAtLeast?.('7.2')) return Promise.resolve({ available: false, granted: false, type: '' })
+  if (!bioInit) bioInit = new Promise<Bio>(res => {
+    const done = () => res({ available: !!bm.isBiometricAvailable, granted: !!bm.isAccessGranted, type: bm.biometricType || '' })
+    const t = setTimeout(() => res({ available: false, granted: false, type: '' }), 2500) // a client that never answers
+    try { if (bm.isInited) { clearTimeout(t); done() } else bm.init(() => { clearTimeout(t); done() }) } catch { clearTimeout(t); res({ available: false, granted: false, type: '' }) }
+  })
+  return bioInit
+}
+export const bioRequest = (reason: string) => new Promise<boolean>(res => { try { tg.BiometricManager.requestAccess({ reason }, (g: boolean) => res(!!g)) } catch { res(false) } })
+export const bioAuth = (reason: string) => new Promise<boolean>(res => { try { tg.BiometricManager.authenticate({ reason }, (ok: boolean) => res(!!ok)) } catch { res(false) } })
+export const bioName = (t: string) => t === 'finger' ? 'отпечаток' : 'Face ID'

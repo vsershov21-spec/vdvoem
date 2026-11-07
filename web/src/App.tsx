@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useRoute, go, navDir, back } from './lib/router'
-import { scheme, onTheme, setBack } from './lib/tg'
+import { scheme, onTheme, setBack, statusBar } from './lib/tg'
 import { useLoad, emit, useOn } from './lib/data'
 import { get, post, humanError } from './lib/api'
 import type { Home as HomeT, Round } from './lib/types'
@@ -23,6 +23,7 @@ function applyTheme() {
   const s = themePref === 'light' || themePref === 'dark' ? themePref : scheme()
   document.documentElement.dataset.theme = s
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', s === 'dark' ? '#0f0f11' : '#f4f4f4')
+  statusBar(s === 'dark')
 }
 
 export function App() {

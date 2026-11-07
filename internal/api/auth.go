@@ -74,6 +74,7 @@ func (a *API) AuthRoutes(mux *http.ServeMux) {
 	h("POST /api/security/passkey/finish", a.regFinish)
 	h("DELETE /api/security/passkeys/{id}", a.delPasskey)
 	h("PATCH /api/security/prefs", a.prefs)
+	h("POST /api/security/unlock", a.unlockAsk)
 	h("POST /api/security/logout-all", a.logoutAll)
 	h("DELETE /api/security/sessions/{id}", a.delSession)
 	h("GET /api/stats", a.stats)
@@ -90,6 +91,11 @@ func (a *API) authState(w http.ResponseWriter, r *http.Request) (any, error) {
 func (a *API) tgStart(w http.ResponseWriter, r *http.Request) (any, error) {
 	code, link, err := a.App.LoginCode(r.Context())
 	return map[string]any{"code": code, "link": link, "expires_in": int(app.LoginCodeTTL / time.Second)}, err
+}
+
+func (a *API) unlockAsk(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	code, err := a.App.AskUnlock(r.Context(), c)
+	return map[string]any{"code": code}, err
 }
 
 func (a *API) tgPoll(w http.ResponseWriter, r *http.Request) (any, error) {

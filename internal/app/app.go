@@ -558,25 +558,44 @@ func (a *App) save(ctx context.Context, r domain.Round, ver int) error {
 	return a.S.SaveRound(ctx, r, ver, a.now())
 }
 
-func parseSlotKeys(keys []string, loc *time.Location, allowed []time.Time) []domain.Slot {
-	ok := map[string]bool{}
-	for _, d := range allowed {
-		ok[d.Format("2006-01-02")] = true
-	}
+// SlotHorizon: how far ahead free time can be marked (the round suggests three days, any day up to this is fine).
+const (
+	SlotHorizon = 60 // days
+	maxSlots    = 3 * 31
+)
+
+// SlotRange is the first and last day a member may mark now.
+func SlotRange(now time.Time, loc *time.Location) (time.Time, time.Time) {
+	n := now.In(loc)
+	today := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, loc)
+	return today, today.AddDate(0, 0, SlotHorizon)
+}
+
+// parseSlotKeys keeps valid "YYYY-MM-DD:part" keys inside the horizon whose time has not passed yet.
+func parseSlotKeys(keys []string, loc *time.Location, now time.Time) []domain.Slot {
+	first, last := SlotRange(now, loc)
 	var out []domain.Slot
 	seen := map[string]bool{}
 	for _, k := range keys {
 		parts := strings.SplitN(k, ":", 2)
-		if len(parts) != 2 || !ok[parts[0]] || len(parts[1]) != 1 || parts[1][0] < '0' || parts[1][0] > '2' || seen[k] {
+		if len(parts) != 2 || len(parts[1]) != 1 || parts[1][0] < '0' || parts[1][0] > '2' || seen[k] {
 			continue
 		}
 		d, err := time.ParseInLocation("2006-01-02", parts[0], loc)
-		if err != nil {
+		if err != nil || d.Before(first) || d.After(last) {
+			continue
+		}
+		sl := domain.Slot{Day: d, Part: int(parts[1][0] - '0')}
+		if !sl.End(loc).After(now) {
 			continue
 		}
 		seen[k] = true
-		out = append(out, domain.Slot{Day: d, Part: int(parts[1][0] - '0')})
+		out = append(out, sl)
+		if len(out) == maxSlots {
+			break
+		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Start(loc).Before(out[j].Start(loc)) })
 	return out
 }
 
@@ -586,7 +605,7 @@ func (a *App) SubmitSlots(ctx context.Context, c Couple, roundID int64, keys []s
 		return r, err
 	}
 	ver := r.Version
-	slots := parseSlotKeys(keys, c.Loc(), RoundDays(r, c.Loc()))
+	slots := parseSlotKeys(keys, c.Loc(), a.now())
 	both, err := r.SubmitSlots(c.Me.Color, slots, a.now())
 	if err != nil {
 		return r, err

@@ -279,3 +279,25 @@ func TestAssistantRules(t *testing.T) {
 		t.Fatal("assistant must not add without a press")
 	}
 }
+
+// Free time is not limited to the three suggested days: any day up to the horizon works, past and far days are dropped.
+func TestSlotsAnyDay(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	a.AddIdea(ctx, v, "Ужин в ресторане")
+	r, err := a.Go(ctx, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	far := ck.t.AddDate(0, 0, 20).Format("2006-01-02") + ":2"
+	today := ck.t.Format("2006-01-02")
+	r, _ = a.SubmitSlots(ctx, v, r.ID, []string{far, today + ":0", ck.t.AddDate(0, 0, -1).Format("2006-01-02") + ":2", ck.t.AddDate(0, 0, 90).Format("2006-01-02") + ":1"})
+	if len(r.SlotsA) != 1 || r.SlotsA[0].Key() != far {
+		t.Fatalf("only the far evening is valid (today's morning has passed at 12:00): %+v", r.SlotsA)
+	}
+	r, _ = a.SubmitSlots(ctx, n, r.ID, []string{far, today + ":2"})
+	if r.State != domain.StateVote || len(r.Triple) == 0 {
+		t.Fatalf("a common evening three weeks ahead must start the vote: %s", r.State)
+	}
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Вдвоём",
+  "short_name": "Вдвоём",
+  "description": "Решаем вдвоём, куда сходить и когда",
+  "lang": "ru",
+  "start_url": "/app/?source=home",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0f11",
+  "theme_color": "#f4f4f4",
+  "icons": [
+    { "src": "/app/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

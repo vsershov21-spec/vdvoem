@@ -4,7 +4,7 @@ import { useLoad, emit } from '../lib/data'
 import { patch, post, del, humanError, ApiError } from '../lib/api'
 import { go } from '../lib/router'
 import { money, plural } from '../lib/format'
-import { shareLink, tg, haptic } from '../lib/tg'
+import { shareLink, haptic, biometric, bioRequest, bioAuth, bioName } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, Empty, Segmented, Sheet, Skel, toast } from '../ui/kit'
 import { Heart } from '../ui/Heart'
@@ -123,13 +123,14 @@ function Security({ openPassword }: { openPassword: () => void }) {
   const [busy, setBusy] = useState(false)
   useEffect(() => { const f = () => sec.refresh(); addEventListener('vd-security', f); return () => removeEventListener('vd-security', f) }, [sec.refresh])
   const s = sec.data
-  const bm = tg?.BiometricManager
+  const [bio, setBio] = useState<{ available: boolean; type: string } | null>(null)
+  useEffect(() => { biometric().then(setBio) }, [])
   const setPrefs = async (p: object) => { try { sec.set(await patch<Sec>('/security/prefs', p)) } catch (e) { toast(humanError(e)) } }
   const toggleLock = async () => {
     if (!s) return
-    if (!s.biometric_lock && bm) {
-      const ok = await new Promise<boolean>(res => { const ask = () => bm.requestAccess({ reason: 'Защищать «Вдвоём» Face ID' }, (g: boolean) => res(g)); bm.isInited ? ask() : bm.init(ask) })
-      if (!ok) { toast('Доступ к Face ID не дан'); return }
+    if (!s.biometric_lock && bio?.available) {
+      if (!(await bioRequest('Защищать «Вдвоём» — ' + bioName(bio.type)))) { toast('Доступ к ' + bioName(bio.type) + ' не дан'); return }
+      if (!(await bioAuth('Проверим, что всё работает'))) { toast('Не получилось подтвердить — защита не включена'); return }
     }
     setPrefs({ biometric_lock: !s.biometric_lock })
   }
@@ -161,8 +162,8 @@ function Security({ openPassword }: { openPassword: () => void }) {
     <div className="list rise">
       <div className="li" style={{ cursor: 'default' }}><span className="li__ico"><Icon n="sun" s={19} /></span><span className="li__main"><b>Тема</b></span></div>
       <div style={{ padding: '0 16px 14px' }}><Segmented<string> items={[['', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']]} value={s.theme} onChange={v => { setThemePref(v); setPrefs({ theme: v }) }} /></div>
-      {bm && <button className="li" onClick={toggleLock}><span className="li__ico"><Icon n="face" s={19} /></span>
-        <span className="li__main"><b>Защита Face ID</b><span>Спрашивать Face ID при открытии в Telegram</span></span>
+      {(bio?.available || s.biometric_lock) && <button className="li" onClick={toggleLock}><span className="li__ico"><Icon n="face" s={19} /></span>
+        <span className="li__main"><b>Защита {bio ? bioName(bio.type) : 'Face ID'}</b><span>Спрашивать при открытии на телефоне. На компьютере не спрашивает</span></span>
         <span className="toggle" data-on={s.biometric_lock || undefined} /></button>}
       <button className="li" onClick={addPasskey} disabled={busy}><span className="li__ico"><Icon n="face" s={19} /></span>
         <span className="li__main"><b>Face ID для браузера</b><span>{s.passkeys.length ? s.passkeys.map(p => p.name).join(', ') : 'Вход на сайте без пароля'}</span></span>

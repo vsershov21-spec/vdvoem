@@ -81,6 +81,22 @@ func (a *App) AskLogin(ctx context.Context, chatID int64, code string) {
 		tg.Keyboard(tg.Row(tg.CB("Да, это я", "lg:"+code), tg.CB("Нет", "lgx"))))
 }
 
+// AskUnlock is the way past the Face ID lock when the sensor fails: the bot asks in the member's own chat.
+func (a *App) AskUnlock(ctx context.Context, c Couple) (string, error) {
+	code := strings.ToUpper(Token(9))
+	if err := a.S.CreateLoginCode(ctx, code, LoginCodeTTL, a.now()); err != nil {
+		return "", err
+	}
+	if c.Me.ChatID == 0 {
+		return "", ErrNoChat
+	}
+	a.send(ctx, c.Me.ChatID, "<b>Открыть «Вдвоём» без Face ID?</b>\nЕсли это не ты — просто ничего не нажимай.",
+		tg.Keyboard(tg.Row(tg.CB("Да, это я", "lg:"+code), tg.CB("Нет", "lgx"))))
+	return code, nil
+}
+
+var ErrNoChat = errors.New("no_chat")
+
 func (a *App) ConfirmLogin(ctx context.Context, c Couple, code string) error {
 	return a.S.ConfirmLoginCode(ctx, code, c.Me.ID, a.now())
 }

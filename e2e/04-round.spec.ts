@@ -1,8 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
 import { people, press, waitMsg, pair, open, phone, shot, api, addIdeas, chat, lastId, planMeeting } from './lib'
 
-const cells = (p: Page) => p.locator('.cell')
-async function mark(p: Page, idx: number[]) { for (const i of idx) await cells(p).nth(i).click(); await p.getByRole('button', { name: /Готово/ }).click() }
+const cell = (p: Page, k: string) => p.locator(`.cell[data-k="${k}"]`)
+// open the week that holds the day (the grid shows a week at a time)
+async function show(p: Page, k: string) {
+  for (let i = 0; i < 10 && !(await cell(p, k).count()); i++) await p.getByLabel('Следующая неделя').click()
+  await expect(cell(p, k)).toBeVisible()
+}
+async function mark(p: Page, keys: string[]) { for (const k of keys) { await show(p, k); await cell(p, k).click() } await p.getByRole('button', { name: /Готово/ }).click() }
+const days = async (u: any) => (await api(u, 'GET', '/rounds/current')).round.days as string[]
 
 test('E10 выбор: время → колода → совпало → подтверждения → .ics', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
@@ -13,8 +19,10 @@ test('E10 выбор: время → колода → совпало → под�
   await shot(vp, 'E10-home')
   await vp.getByRole('button', { name: 'Выбрать вместе' }).click()
   await expect(vp.getByText('Когда удобно')).toBeVisible()
-  // paint by dragging across the evening column
-  const a = await cells(vp).nth(2).boundingBox(), b = await cells(vp).nth(8).boundingBox()
+  // paint by dragging across one day: morning → evening
+  const d = await days(v)
+  await show(vp, d[1] + ':0')
+  const a = await cell(vp, d[1] + ':0').boundingBox(), b = await cell(vp, d[1] + ':2').boundingBox()
   await vp.mouse.move(a!.x + 20, a!.y + 20); await vp.mouse.down(); await vp.mouse.move(b!.x + 20, b!.y + 20, { steps: 8 }); await vp.mouse.up()
   await expect(vp.locator('.cell[aria-pressed=true]')).toHaveCount(3)
   await shot(vp, 'E10-slots')
@@ -25,7 +33,7 @@ test('E10 выбор: время → колода → совпало → под�
   await expect(np.getByTestId('round-card')).toContainText('Твой ход')
   await expect(np.getByTestId('island')).toContainText('Твой ход')
   await np.getByTestId('round-card').click()
-  await mark(np, [5, 8])
+  await mark(np, [d[1] + ':2'])
   await expect(np.getByText('Выбираем')).toBeVisible()
   await np.waitForTimeout(600)
   await shot(np, 'E10-deck-dark')
@@ -87,15 +95,14 @@ test('E12 время не совпало: подсказка и повторна
   await pair(v, n)
   await addIdeas(v, ['Ужин в ресторане', 'Кино'])
   const { round } = await api(v, 'POST', '/rounds')
-  await api(v, 'POST', `/rounds/${round.id}/slots`, { slots: [round.days[0] + ':0'] })
+  await api(v, 'POST', `/rounds/${round.id}/slots`, { slots: [round.days[1] + ':0'] })
   const np = await open(await phone(browser), n, 'round/' + round.id)
-  await mark(np, [8])
+  await mark(np, [round.days[2] + ':2'])
   await expect(np.getByText('Время не совпало')).toBeVisible()
   await waitMsg(v, /Время не совпало/)
   await shot(np, 'E12-no-overlap')
   await np.getByRole('button', { name: 'Изменить моё время' }).click()
-  await cells(np).nth(0).click()
-  await np.getByRole('button', { name: /Готово/ }).click()
+  await mark(np, [round.days[1] + ':0'])
   await expect(np.getByText('Выбираем')).toBeVisible()
 })
 
@@ -110,7 +117,7 @@ test('E13 другое время сохраняет идею, отмена пр
   await expect(vp.getByText('Решили')).toBeVisible()
   await expect(vp.getByText(chosen).first()).toBeVisible()
   await waitMsg(n, /просит другое время/)
-  await mark(vp, [5])
+  await mark(vp, [planned.days[1] + ':2'])
   const r = (await api(n, 'POST', `/rounds/${planned.id}/slots`, { slots: [planned.days[1] + ':2'] })).round
   expect(r.state).toBe('confirm')
   expect(r.chosen.title).toBe(chosen)

@@ -99,10 +99,10 @@ const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-export type DayMark = { planned?: boolean; done?: boolean; deadline?: boolean; ends?: boolean }
+export type DayMark = { planned?: boolean; done?: boolean; deadline?: boolean; ends?: boolean; picked?: number }
 
-export function MonthGrid({ month, marks, today, selected, onSelect, onMonth }: {
-  month: Date; marks: Record<string, DayMark>; today: string; selected: string; onSelect: (d: string) => void; onMonth: (delta: number) => void
+export function MonthGrid({ month, marks, today, selected, onSelect, onMonth, last, legend = true }: {
+  month: Date; marks: Record<string, DayMark>; today: string; selected: string; onSelect: (d: string) => void; onMonth: (delta: number) => void; last?: string; legend?: boolean
 }) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1)
   const lead = (first.getDay() + 6) % 7
@@ -122,16 +122,18 @@ export function MonthGrid({ month, marks, today, selected, onSelect, onMonth }: 
         {cells.map((d, i) => {
           if (!d) return <span key={i} />
           const k = ymd(d), m = marks[k] || {}
-          const cls = ['mcal__day', m.planned && 'is-planned', m.done && 'is-done', k === today && 'is-today', k === selected && 'is-sel', k < today && 'is-past'].filter(Boolean).join(' ')
+          const cls = ['mcal__day', m.planned && 'is-planned', m.done && 'is-done', k === today && 'is-today', k === selected && 'is-sel', k < today && 'is-past', m.picked && 'is-picked', last && k > last && 'is-past'].filter(Boolean).join(' ')
+          const off = !!last && (k < today || k > last)
           return (
-            <motion.button key={k} className={cls} whileTap={{ scale: 0.88 }} onClick={() => onSelect(k)} aria-label={k} aria-pressed={k === selected}>
+            <motion.button key={k} className={cls} whileTap={{ scale: 0.88 }} disabled={off} onClick={() => onSelect(k)} aria-label={k} aria-pressed={k === selected}>
               {d.getDate()}
               {(m.deadline || m.ends) && <i className={'mcal__dot' + (m.ends ? ' is-ends' : '')} />}
+              {!!m.picked && <i className="mcal__count">{m.picked}</i>}
             </motion.button>
           )
         })}
       </div>
-      <div className="mcal__legend"><span><i style={{ background: '#ff701e' }} />встреча</span><span><i style={{ background: '#22c55e' }} />были</span><span><i style={{ background: '#3b82f6' }} />дедлайн</span><span><i style={{ background: '#ff3b71' }} />сегодня</span></div>
+      {legend && <div className="mcal__legend"><span><i style={{ background: '#ff701e' }} />встреча</span><span><i style={{ background: '#22c55e' }} />были</span><span><i style={{ background: '#3b82f6' }} />дедлайн</span><span><i style={{ background: '#ff3b71' }} />сегодня</span></div>}
     </div>
   )
 }

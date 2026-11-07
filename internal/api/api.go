@@ -557,7 +557,8 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	for _, d := range app.RoundDays(rd, c.Loc()) {
 		days = append(days, d.Format("2006-01-02"))
 	}
-	out := map[string]any{"id": rd.ID, "state": string(rd.State), "version": rd.Version, "opened_at": rd.OpenedAt.Unix(), "expires_at": rd.ExpiresAt.Unix(),
+	first, last := app.SlotRange(a.App.Now(), c.Loc())
+	out := map[string]any{"id": rd.ID, "today": first.Format("2006-01-02"), "horizon": last.Format("2006-01-02"), "state": string(rd.State), "version": rd.Version, "opened_at": rd.OpenedAt.Unix(), "expires_at": rd.ExpiresAt.Unix(),
 		"days": days, "my_slots": keys, "sent": sentMe, "partner_sent": sentOther, "voted": voteMe != 0, "partner_voted": voteOther != 0,
 		"confirmed": confMe, "partner_confirmed": confOther, "again": againMe, "budget": rd.BudgetKop}
 	if voteMe != 0 {
@@ -864,6 +865,9 @@ func (a *API) static(w http.ResponseWriter, r *http.Request) {
 	if st, err := os.Stat(p); err == nil && !st.IsDir() {
 		if strings.HasPrefix(rel, "assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		if strings.HasSuffix(rel, ".webmanifest") {
+			w.Header().Set("Content-Type", "application/manifest+json")
 		}
 		http.ServeFile(w, r, p)
 		return
