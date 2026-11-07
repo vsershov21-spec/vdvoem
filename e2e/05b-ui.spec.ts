@@ -15,7 +15,7 @@ const probe = () => {
   }).observe({ type: 'layout-shift', buffered: true })
 }
 
-async function settle(p: Page) { await p.waitForLoadState('networkidle'); await p.waitForTimeout(900) }
+async function settle(p: Page) { await p.waitForLoadState('load'); await p.waitForTimeout(1400) } // not networkidle: the live stream stays open
 async function audit(p: Page, name: string) {
   await settle(p)
   const r = await p.evaluate(() => {
