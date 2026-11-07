@@ -12,5 +12,7 @@ import './ui/app.css'
 import { App } from './App'
 import { ready } from './lib/tg'
 
+clearTimeout((window as any).__vdBoot)
+try { sessionStorage.removeItem('vd-reload') } catch { /* private mode */ }
 ready()
 createRoot(document.getElementById('root')!).render(<App />)

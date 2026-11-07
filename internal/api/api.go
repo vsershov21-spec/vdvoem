@@ -946,6 +946,17 @@ func (a *API) clearChat(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 func (a *API) static(w http.ResponseWriter, r *http.Request) {
 	rel := strings.TrimPrefix(r.URL.Path, "/app/")
 	p := filepath.Join(a.WebDir, filepath.FromSlash(filepath.Clean("/"+rel)))
+	if strings.HasPrefix(rel, "assets/") {
+		if _, err := os.Stat(p); err != nil {
+			// an app opened before an update still asks for the old hashed files: serve them from a previous release
+			if old := a.oldAsset(rel); old != "" {
+				p = old
+			} else {
+				http.NotFound(w, r) // never index.html for a script: the page would hang on Telegram's loading screen
+				return
+			}
+		}
+	}
 	if st, err := os.Stat(p); err == nil && !st.IsDir() {
 		if strings.HasPrefix(rel, "assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -956,8 +967,25 @@ func (a *API) static(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, p)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-store") // the page always comes fresh; hashed assets are cached forever
 	http.ServeFile(w, r, filepath.Join(a.WebDir, "index.html"))
+}
+
+// oldAsset looks for a hashed asset in the other releases next to the current one (/opt/vdvoem/releases/*/web).
+func (a *API) oldAsset(rel string) string {
+	name := filepath.Base(rel)
+	if name == "." || strings.ContainsAny(name, `/\`) {
+		return ""
+	}
+	web, err := filepath.EvalSymlinks(a.WebDir)
+	if err != nil {
+		return ""
+	}
+	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(filepath.Dir(web)), "*", "web", "assets", name))
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
 }
 
 // devAdvance moves the e2e clock forward and runs the scheduler (only with DEV_TOKEN).

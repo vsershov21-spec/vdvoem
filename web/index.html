@@ -14,6 +14,16 @@
     <meta name="format-detection" content="telephone=no" />
     <title>Вдвоём</title>
     <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+    <script>
+      // self-heal: if the app has not started in 9 s (a stale cached page asking for old files, a flaky network),
+      // reload once or twice with a fresh URL; main.tsx cancels this as soon as it runs
+      window.__vdBoot = setTimeout(function () {
+        try {
+          var n = +(sessionStorage.getItem('vd-reload') || 0)
+          if (n < 2) { sessionStorage.setItem('vd-reload', String(n + 1)); var u = new URL(location.href); u.searchParams.set('r', String(Date.now())); location.replace(u.toString()) }
+        } catch (e) { location.reload() }
+      }, 9000)
+    </script>
   </head>
   <body>
     <div id="root"></div>
