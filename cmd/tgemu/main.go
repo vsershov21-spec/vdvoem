@@ -64,7 +64,9 @@ func (e *emu) bot(w http.ResponseWriter, r *http.Request) {
 			fileName, file = h.Filename, string(b)
 		}
 	} else {
-		json.NewDecoder(r.Body).Decode(&body)
+		d := json.NewDecoder(r.Body)
+		d.UseNumber() // big chat ids must not become 8e+08
+		d.Decode(&body)
 	}
 	ok := func(res any) { json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": res}) }
 	e.mu.Lock()
