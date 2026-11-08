@@ -228,12 +228,14 @@ func (s *Store) UseInvite(ctx context.Context, code string, now time.Time) (int6
 // ---------- ideas ----------
 
 const ideaCols = `id, space_id, author_id, title, kind, category, url, address, image_url, note, price_min, price_max, duration_min,
-starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, again_yes, again_no, ever_shown, last_met_at, parsed, created_at`
+starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, again_yes, again_no, ever_shown, last_met_at, parsed, created_at, source, why`
 
 type Idea struct {
 	domain.Idea
 	Note   string
 	Parsed bool
+	Source string // "" — added by a person, "scout" — found by the afisha agent
+	Why    string // the scout's reason, in a sentence
 }
 
 func tp(v sql.NullInt64) *time.Time {
@@ -259,7 +261,7 @@ func scanIdea(sc interface{ Scan(...any) error }) (Idea, error) {
 	var created int64
 	err := sc.Scan(&i.ID, &i.SpaceID, &i.AuthorID, &i.Title, &kind, &i.Category, &i.URL, &i.Address, &i.ImageURL, &i.Note,
 		&i.PriceMin, &i.PriceMax, &i.DurationMin, &st, &en, &dl, &i.Assignee, &status, &i.Fingerprint, &wa, &wb,
-		&i.AgainYes, &i.AgainNo, &ever, &lm, &parsed, &created)
+		&i.AgainYes, &i.AgainNo, &ever, &lm, &parsed, &created, &i.Source, &i.Why)
 	if errors.Is(err, sql.ErrNoRows) {
 		return i, ErrNotFound
 	}
@@ -282,11 +284,11 @@ func (s *Store) CreateIdea(ctx context.Context, i Idea, now time.Time) (Idea, er
 	}
 	i.Fingerprint = domain.Fingerprint(i.URL, i.Title)
 	r, err := s.DB.ExecContext(ctx, `INSERT INTO ideas(space_id, author_id, title, kind, category, url, address, image_url, note, price_min, price_max,
-duration_min, starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, created_at, updated_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+duration_min, starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, created_at, updated_at, source, why, parsed)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		i.SpaceID, i.AuthorID, i.Title, string(i.Kind), i.Category, i.URL, i.Address, i.ImageURL, i.Note, i.PriceMin, i.PriceMax,
 		i.DurationMin, nt(i.StartsAt), nt(i.EndsAt), nt(i.Deadline), i.Assignee, string(i.Status), i.Fingerprint, string(i.WishA), string(i.WishB),
-		now.Unix(), now.Unix())
+		now.Unix(), now.Unix(), i.Source, i.Why, b2i(i.Parsed))
 	if err != nil {
 		return i, err
 	}
@@ -612,3 +614,10 @@ func (s *Store) DeleteSpace(ctx context.Context, spaceID int64) error {
 	}
 	return tx.Commit()
 }
+
+// LogScout records an agent run (for the admin view and to not repeat itself).
+func (s *Store) LogScout(ctx context.Context, spaceID int64, picks, prices int, note string, now time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO scout_runs(space_id, picks, prices, note, created_at) VALUES (?,?,?,?,?)`, spaceID, picks, prices, note, now.Unix())
+	return err
+}
+
