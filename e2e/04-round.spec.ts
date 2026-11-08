@@ -52,8 +52,14 @@ test('E10 выбор: время → колода → совпало → под�
   await expect(vp.getByText(/ждём Настю/)).toBeVisible()
   await waitMsg(n, /подтвердил\(а\)/)
   await press(n, 'Подтвердить')
-  await waitMsg(v, /Встреча запланирована/)
-  expect((await chat(v)).some(m => m.method === 'sendDocument' && m.file_name === 'vdvoem.ics' && /BEGIN:VEVENT/.test(m.file || ''))).toBeTruthy()
+  const planned = await waitMsg(v, /Мы идём/)
+  // «в календарь» opens the event itself (an https .ics — iPhone shows «Добавить»), not a file to share
+  const btns = JSON.stringify(planned.reply_markup)
+  const link = btns.match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
+  const one = await fetch(link)
+  expect(one.headers.get('content-type')).toContain('text/calendar')
+  expect(await one.text()).toContain('BEGIN:VEVENT')
+  expect(btns).toContain('calendar.google.com')
   await vp.reload()
   await expect(vp.getByRole('button', { name: 'В календарь' })).toBeVisible()
   await shot(vp, 'E10-ticket')
@@ -122,7 +128,7 @@ test('E12b календарь на телефоне: личная ссылка-�
   expect((await fetch(BASE + '/cal/' + f.url.split('/cal/')[1])).status).toBe(404) // the old link is dead
 })
 
-test('E13 другое время сохраняет идею, отмена присылает cancel-.ics', async ({ browser }) => {
+test('E13 другое время сохраняет идею, отмена напоминает убрать из календаря', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   await addIdeas(v, ['Ужин в ресторане', 'Кино', 'Прогулка'])
@@ -142,6 +148,6 @@ test('E13 другое время сохраняет идею, отмена пр
   const before = await lastId(n)
   await vp.getByRole('button', { name: 'Отменить' }).click()
   await waitMsg(n, /отменил\(а\) выбор/, 10000, before)
-  expect((await chat(n)).some(m => m.file_name === 'vdvoem-cancel.ics' && /STATUS:CANCELLED/.test(m.file || ''))).toBeTruthy()
+  await waitMsg(n, /удали её там/, 10000, before)
 })
 

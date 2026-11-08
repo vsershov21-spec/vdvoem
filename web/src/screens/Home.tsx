@@ -10,6 +10,7 @@ import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, CountUp, Empty, Skel, WishPicker, toast } from '../ui/kit'
 import { AreaChart, Bars, Gauge, Metric, Pulse } from '../ui/Charts'
 import { UrgentList } from '../ui/Urgent'
+import { Going } from '../ui/Going'
 
 export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null; onAdd: () => void; onSurprise: (m: 'random' | 'best') => void; onStart: () => void }) {
   const stats = useLoad<Stats>('/stats', 60000)
@@ -37,6 +38,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
           <Btn kind="surface" block icon="spark" onClick={() => onSurprise('best')}>Подскажи</Btn>
         </div>
       )}
+      {(home.going?.length || 0) > 1 && <Going list={home.going!} />}
       <Dashboard s={stats.data} home={home} />
       <ToMark ideas={home.to_mark || []} total={home.counts.unmarked} onAdd={onAdd} />
     </>

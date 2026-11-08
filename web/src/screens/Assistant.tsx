@@ -16,11 +16,15 @@ const canRecord = () => typeof window !== 'undefined' && !!navigator.mediaDevice
 
 export function Assistant({ home }: { home: Home | null }) {
   const { data, set } = useLoad<{ messages: ChatMsg[]; ai: boolean; voice?: boolean }>('/assistant')
-  const [text, setText] = useState('')
+  const [text, setTextRaw] = useState(() => { try { return localStorage.getItem('vd-draft') || '' } catch { return '' } })
+  const setText = (t: string) => { setTextRaw(t); try { t ? localStorage.setItem('vd-draft', t) : localStorage.removeItem('vd-draft') } catch { /* private mode */ } }
+  const [failed, setFailed] = useState<Record<number, string>>({}) // my message id → its text, to retry
+  const [atBottom, setAtBottom] = useState(true)
+  const first = useRef(true)
   const [hints, setHints] = useState<{ phrases: string[]; titles: string[] }>({ phrases: [], titles: [] })
   const [rec, setRec] = useState<{ r: MediaRecorder; started: number } | null>(null)
   const [secs, setSecs] = useState(0)
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { get<{ phrases: string[]; titles: string[] }>('/assistant/hints').then(setHints).catch(() => {}) }, [])
   const typed = useMemo(() => complete(text, hints.phrases, hints.titles), [text, hints])
   useEffect(() => { if (!rec) return; const t = setInterval(() => setSecs(Math.round((Date.now() - rec.started) / 1000)), 250); return () => clearInterval(t) }, [rec])
@@ -30,20 +34,39 @@ export function Assistant({ home }: { home: Home | null }) {
   const msgs = data?.messages || []
   const lastAi = [...msgs].reverse().find(m => m.role === 'assistant')
   const lastPlan = !!lastAi?.reply.actions?.some(a => a.kind === 'plan' || a.kind === 'book')
-  useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [msgs.length, busy])
+  // like a messenger: open at the last message without a scroll show; follow new ones only when already at the bottom
+  useEffect(() => {
+    if (!msgs.length) return
+    if (first.current) { first.current = false; end.current?.scrollIntoView({ block: 'end' }); return }
+    if (atBottom) end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [msgs.length, busy])
+  useEffect(() => {
+    const on = () => { const el = document.scrollingElement || document.documentElement; setAtBottom(el.scrollHeight - el.scrollTop - window.innerHeight < 160) }
+    window.addEventListener('scroll', on, { passive: true }); return () => window.removeEventListener('scroll', on)
+  }, [])
+  // the keyboard: the composer rides on top of it, the tab bar steps aside
+  useEffect(() => {
+    const vv = window.visualViewport; if (!vv) return
+    const on = () => { const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--kb', kb + 'px'); document.body.classList.toggle('kb-open', kb > 80) }
+    vv.addEventListener('resize', on); vv.addEventListener('scroll', on); on()
+    return () => { vv.removeEventListener('resize', on); vv.removeEventListener('scroll', on); document.body.classList.remove('kb-open'); document.documentElement.style.removeProperty('--kb') }
+  }, [])
+  // the field grows with the text, up to five lines
+  useEffect(() => { const el = input.current; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 5 * 21 + 20) + 'px' }, [text])
 
-  const ask = async (q: string) => {
+  const ask = async (q: string, retry?: number) => {
     q = q.trim()
     if (!q || busy) return
-    haptic.tap(); setText('')
-    const mine: ChatMsg = { id: Date.now(), role: 'user', at: Date.now() / 1000, reply: { text: q } }
-    set(d => ({ ...d, ai: d?.ai ?? false, messages: [...(d?.messages || []), mine] }))
-    setBusy(true)
+    haptic.tap(); if (!retry) setText('')
+    const id = retry || Date.now()
+    if (retry) setFailed(f => { const n = { ...f }; delete n[retry]; return n })
+    else set(d => ({ ...d, ai: d?.ai ?? false, messages: [...(d?.messages || []), { id, role: 'user', at: Date.now() / 1000, reply: { text: q } }] }))
+    setBusy(true); setAtBottom(true)
     try {
       const r = await post<{ reply: Reply }>('/assistant', { text: q })
       say(r.reply)
       haptic.soft()
-    } catch (e) { toast(humanError(e)) } finally { setBusy(false) }
+    } catch (e) { setFailed(f => ({ ...f, [id]: q })); toast(humanError(e)) } finally { setBusy(false) }
   }
   const say = (r: Reply) => set(d => ({ ...d, ai: d?.ai ?? false, messages: [...(d?.messages || []), { id: Date.now() + 1, role: 'assistant', at: Date.now() / 1000, reply: r }] }))
   const press = async (a: ActionBtn) => {
@@ -99,12 +122,20 @@ export function Assistant({ home }: { home: Home | null }) {
             <p className="callout muted" style={{ margin: '6px auto 18px', maxWidth: 300 }}>Подберу, куда сходить, найду идею под бюджет, напомню, что запланировано. Решаете — вы, я только считаю и подсказываю.</p>
           </div>
         )}
-        {msgs.map(m => m.role === 'user'
-          ? <div key={m.id} className="msg msg--me">{m.reply.text}</div>
-          : <AiMsg key={m.id} r={m.reply} done={done} onPress={press} />)}
+        {msgs.map((m, k) => {
+          const day = dayOf(m.at), prev = k ? dayOf(msgs[k - 1].at) : ''
+          return <div key={m.id} className="col" style={{ gap: 4 }}>
+            {day !== prev && <div className="chat__day">{dayLabel(m.at)}</div>}
+            {m.role === 'user'
+              ? <div className="msg msg--me" data-failed={failed[m.id] ? '' : undefined}>{m.reply.text}<span className="msg__time">{hm(m.at)}{failed[m.id] ? ' · не отправлено' : busy && k === msgs.length - 1 ? ' · ⏱' : ' ✓'}</span></div>
+              : <AiMsg r={m.reply} at={m.at} done={done} onPress={press} />}
+            {failed[m.id] && <button className="msg__retry" onClick={() => ask(failed[m.id], m.id)}><Icon n="spark" s={14} />Повторить</button>}
+          </div>
+        })}
         {busy && <div className="msg msg--ai typing" aria-label="Печатает"><i /><i /><i /></div>}
         <div ref={end} style={{ scrollMarginBottom: "calc(var(--dock-h) + var(--safe-b) + 90px)" }} /* stop above the composer and the tab bar */ />
       </div>
+      {!atBottom && msgs.length > 3 && <button className="chat__down" aria-label="К последнему сообщению" onClick={() => { setAtBottom(true); end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }}><Icon n="chev" s={18} w={2.4} /></button>}
       {text.trim() && typed.length > 0 && !busy
         ? <div className="sugg sugg--dock" data-testid="type-hints">{typed.map(s => <button key={s} onClick={() => pick(s)}>{s.trim()}</button>)}</div>
         : !text.trim() && msgs.length >= 2 && !busy && next.length > 0 && lastAi === msgs[msgs.length - 1]
@@ -113,19 +144,31 @@ export function Assistant({ home }: { home: Home | null }) {
       <form className="composer" data-rec={rec ? '' : undefined} onSubmit={e => { e.preventDefault(); ask(text) }}>
         {rec
           ? <div className="composer__rec" aria-live="polite"><i />Слушаю… {secs} с</div>
-          : <input ref={input} className="input" placeholder={home?.paired ? 'Спроси про ваши планы…' : 'Спроси что-нибудь…'} value={text} maxLength={600} onChange={e => setText(e.target.value)} enterKeyHint="send" />}
+          : <textarea ref={input} rows={1} className="input composer__field" placeholder={home?.paired ? 'Спроси про ваши планы…' : 'Спроси что-нибудь…'} value={text} maxLength={600}
+              onChange={e => setText(e.target.value)} enterKeyHint="send"
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(text) } }} />}
         {voice && !text.trim()
           ? <button className="send" type="button" data-testid="mic" onClick={record} disabled={busy} aria-label={rec ? 'Остановить' : 'Сказать голосом'}><Icon n={rec ? 'stop' : 'mic'} s={20} w={2.2} /></button>
-          : <button className="send" type="submit" disabled={!text.trim() || busy} aria-label="Отправить"><Icon n="send" s={20} w={2.4} /></button>}
+          : <button className="send" type="submit" disabled={!text.trim() || busy} aria-label="Отправить" onPointerDown={e => e.preventDefault() /* keep the keyboard open, like a messenger */}><Icon n="send" s={20} w={2.4} /></button>}
       </form>
     </>
   )
 }
 
-function AiMsg({ r, done, onPress }: { r: Reply; done: Record<string, string>; onPress: (a: ActionBtn) => void }) {
+const pad = (n: number) => String(n).padStart(2, '0')
+const hm = (t: number) => { const d = new Date(t * 1000); return pad(d.getHours()) + ':' + pad(d.getMinutes()) }
+const dayOf = (t: number) => new Date(t * 1000).toDateString()
+function dayLabel(t: number) {
+  const d = new Date(t * 1000), now = new Date(), y = new Date(Date.now() - 86400_000)
+  if (d.toDateString() === now.toDateString()) return 'Сегодня'
+  if (d.toDateString() === y.toDateString()) return 'Вчера'
+  return d.toLocaleDateString('ru', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
+}
+
+function AiMsg({ r, at, done, onPress }: { r: Reply; at: number; done: Record<string, string>; onPress: (a: ActionBtn) => void }) {
   return (
     <div className="col" style={{ gap: 8 }}>
-      <div className="msg msg--ai">{linkify(r.text)}</div>
+      <div className="msg msg--ai">{linkify(r.text)}<span className="msg__time">{hm(at)}</span></div>
       {!!r.cards?.length && (
         <div className="ai-cards">
           {r.cards.map((c, k) => (

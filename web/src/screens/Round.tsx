@@ -327,8 +327,20 @@ function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; 
           <Btn kind="soft" block onClick={() => act('done', { answer: 'moved' }).then(() => {}).catch(() => {})}>Перенесли</Btn></div>
         <Btn kind="ghost" block onClick={() => act('done', { answer: 'no' }).then(() => {}).catch(() => {})}>Не получилось</Btn>
       </> : <>
-        <Btn kind="primary" block icon="cal" onClick={() => download(`${location.origin}/api/rounds/${r.id}/ics`, 'vdvoem.ics')}>В календарь</Btn>
-        <p className="caption muted" style={{ textAlign: 'center', margin: 0 }}>Напомню за 2 часа. После встречи спрошу, как прошло.</p>
+        {r.book && <div className="frame rise" data-testid="tickets"><div className="frame__in col" style={{ gap: 10 }}>
+          {r.tickets ? <p className="callout" style={{ margin: 0 }}>✓ {r.tickets === 'me' ? 'Ты взял(а)' : `${home.partner?.name || 'Партнёр'} взял(а)`} {r.chosen?.category === 'food' ? 'стол' : 'билеты'} — всё готово.</p> : <>
+            <p className="callout" style={{ margin: 0 }}><b>{r.book.label}</b> — места разбирают, лучше сразу. Отметь, когда возьмёшь, чтобы {home.partner?.name || 'партнёр'} не купил(а) вторые.</p>
+            <div className="row" style={{ gap: 8 }}><Btn kind="accent" block icon="link" onClick={() => openLink(r.book!.url)}>{r.book.label}</Btn>
+              <Btn kind="soft" block icon="check" onClick={() => act('tickets').then(() => {}).catch(() => {})}>{r.chosen?.category === 'food' ? 'Стол есть' : 'Билеты есть'}</Btn></div>
+          </>}
+        </div></div>}
+        {r.cal?.subscribed
+          ? <p className="callout muted" style={{ textAlign: 'center', margin: 0 }}><Icon n="check" s={16} /> Уже в твоём календаре — он подключён</p>
+          : <div className="row" style={{ gap: 8 }}>
+            <Btn kind="primary" block icon="cal" onClick={() => r.cal?.ics ? openLink(r.cal.ics) : download(`${location.origin}/api/rounds/${r.id}/ics`, 'vdvoem.ics')}>В календарь</Btn>
+            {r.cal?.google && <Btn kind="soft" block onClick={() => openLink(r.cal!.google)}>Google</Btn>}
+          </div>}
+        <p className="caption muted" style={{ textAlign: 'center', margin: 0 }}>{r.cal?.subscribed ? '' : 'Откроется календарь с заполненным событием. '}Напомню за 2 часа. После встречи спрошу, как прошло.</p>
         <div className="row"><Btn kind="soft" block icon="clock" onClick={() => act('other-time').then(() => {}).catch(() => {})}>Перенести</Btn>
           <Btn kind="ghost" block onClick={() => act('cancel').then(() => go('', true)).catch(() => {})}>Отменить</Btn></div>
       </>}

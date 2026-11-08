@@ -25,6 +25,7 @@ export type Round = {
   windows?: { from: number; to: number }[]; triple: Idea[]; chosen?: Idea
   starts_at?: number; ends_at?: number; when?: string; compromise?: Idea; photos?: number
   route?: RouteStop[]; extra_suggest?: Idea[]
+  cal?: { ics: string; google: string; subscribed: boolean }; book?: { label: string; url: string }; tickets?: 'me' | 'partner'
 }
 
 export type RouteStop = { id: number; idea: Idea; starts_at: number; ends_at: number; state: 'proposed' | 'accepted'; mine: boolean; tight: boolean }
@@ -34,6 +35,7 @@ export type Home = {
   counts: { ideas: number; chores: number; both_want: number; unmarked: number }
   to_mark: Idea[]; round?: Round; next?: Round
   urgent?: { idea_id: number; title: string; note?: string; when?: string; fixed: boolean }[]
+  going?: Round[]
 }
 
 export type Card = { type: 'idea' | 'meeting'; idea_id?: number; round_id?: number; title: string; meta?: string; image?: string; category?: string; why?: string; when?: string }

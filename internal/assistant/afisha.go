@@ -30,6 +30,8 @@ type afishaQ struct {
 	Limit     int               `json:"limit"`
 	Moods     []string          `json:"moods"`
 	Sem       map[int64]float64 `json:"-"` // similarity by meaning to the request (nil — off)
+	All       bool              `json:"-"` // the whole list (cards: the first few)
+	Whose     string            `json:"-"` // ours | new | ""
 }
 
 func (r *run) afisha(ctx context.Context, q afishaQ) any {
@@ -39,6 +41,9 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	now := r.as.now().In(loc)
 	if q.Limit <= 0 || q.Limit > 6 {
 		q.Limit = 4
+	}
+	if q.All {
+		q.Limit = listMax
 	}
 	in := func(list []string, v string) bool {
 		for _, x := range list {
@@ -55,6 +60,9 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	var hits, late []hit
 	for _, i := range ideas {
 		if i.Kind != domain.KindLeisure || (!q.WholeBank && !app.Afisha(i)) {
+			continue
+		}
+		if q.Whose == "ours" && !Ours(i) || q.Whose == "new" && Ours(i) {
 			continue
 		}
 		hz := i.Horizon

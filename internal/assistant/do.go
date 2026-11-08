@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -134,7 +136,7 @@ func (r *run) choresText(ctx context.Context) Reply {
 
 func (in Intent) afisha() afishaQ {
 	return afishaQ{Date: in.Date, Weekend: in.Wknd, Part: in.Part, MaxRub: in.Max, Include: in.Cats, Exclude: in.Not, NotWords: in.NotW,
-		Query: in.Q, Horizon: in.Hz, WholeBank: !in.Scout, Moods: in.Moods, Limit: 4}
+		Query: in.Q, Horizon: in.Hz, WholeBank: !in.Scout, Moods: in.Moods, Limit: 4, All: in.All, Whose: in.Whose}
 }
 
 var moodWords = map[string]string{"chill": "отдохнуть", "active": "подвигаться", "romantic": "романтика", "culture": "культурно", "fun": "повеселиться",
@@ -223,6 +225,10 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 			r.catalogButtons(ctx, in, 2)
 		}
 		found, _ := res["found"].(int)
+		if in.All {
+			r.propose(ctx, "open", map[string]any{"path": "ideas/scout"}, "Вся афиша")
+			return Reply{Text: r.list(events, found, in, cond)}
+		}
 		return Reply{Text: r.talk(events, found, in, cond)}
 	}
 	// nothing in the data: ideas of the kind, as buttons to add — and a question to the scout
@@ -307,6 +313,12 @@ func contains(l []string, v string) bool {
 // ---------- suggest: one pick from the bank ----------
 
 func (r *run) suggestText(ctx context.Context, in Intent) Reply {
+	switch {
+	case in.All:
+		r.from = "all"
+	case in.Scout || in.Whose == "new":
+		r.from = "afisha"
+	}
 	cat := ""
 	if len(in.Cats) == 1 {
 		cat = in.Cats[0]
@@ -507,6 +519,9 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 	}
 	top := events[0]
 	b.WriteString(" Лучше всего вам двоим — «" + fmt.Sprint(top["title"]) + "»")
+	if o, _ := top["ours"].(bool); !o {
+		b.WriteString(" (🆕 новое, вы ещё не видели)")
+	}
 	var meta []string
 	if w, ok := top["when"].(string); ok && w != "" {
 		meta = append(meta, w)
@@ -531,6 +546,9 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 		var more []string
 		for _, e := range events[1:] {
 			t := "«" + fmt.Sprint(e["title"]) + "»"
+			if o, _ := e["ours"].(bool); !o {
+				t = "🆕 " + t
+			}
 			if w, ok := e["when"].(string); ok && w != "" {
 				t += " (" + w + ")"
 			}
@@ -540,6 +558,80 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 	}
 	b.WriteString("\nМожно уточнить: «подешевле», «а в воскресенье?», «без театра».")
 	return b.String()
+}
+
+// list: «вообще всё» — every event by date (the soonest first), places without a date at the end
+func (r *run) list(events []map[string]any, found int, in Intent, cond string) string {
+	loc := r.c.Loc()
+	at := func(e map[string]any) int64 {
+		if t, ok := e["starts_at"].(int64); ok && t > 0 {
+			return t
+		}
+		return 1 << 62
+	}
+	sort.SliceStable(events, func(a, b int) bool { return at(events[a]) < at(events[b]) })
+	var ours, news []map[string]any
+	for _, e := range events {
+		if o, _ := e["ours"].(bool); o {
+			ours = append(ours, e)
+		} else {
+			news = append(news, e)
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Всё, что есть%s — %s.", condSuffix(cond), plural(found, "вариант", "варианта", "вариантов"))
+	shown := 0
+	section := func(title string, list []map[string]any) {
+		if len(list) == 0 || shown >= listMax {
+			return
+		}
+		b.WriteString("\n\n" + title)
+		month := ""
+		for _, e := range list {
+			if shown == listMax {
+				break
+			}
+			if t := at(e); t < 1<<62 {
+				if k := time.Unix(t, 0).In(loc).Format("2006-01"); k != month && len(list) > 8 {
+					month = k
+					b.WriteString("\n— " + ruMonth(time.Unix(t, 0).In(loc)))
+				}
+			} else if month != "none" && len(list) > 8 {
+				month = "none"
+				b.WriteString("\n— без даты")
+			}
+			line := "\n• "
+			if w, ok := e["when"].(string); ok && w != "" {
+				line += w + " — "
+			}
+			line += fmt.Sprint(e["title"])
+			if p, ok := e["price_rub"].(int64); ok && p > 0 {
+				line += " · ≈ " + domain.Money(p*100)
+			}
+			switch e["partner_wish"] {
+			case "want", "very":
+				line += " · " + r.c.PartnerName() + " хочет"
+			}
+			if e["my_wish"] == "want" || e["my_wish"] == "very" {
+				line += " · ты хочешь"
+			}
+			b.WriteString(line)
+			shown++
+		}
+	}
+	section(fmt.Sprintf("🗂 Ваше — из копилки (%d):", len(ours)), ours)
+	section(fmt.Sprintf("🆕 Новое — вы ещё не видели, нашли скаут и каналы (%d):", len(news)), news)
+	if found > shown {
+		fmt.Fprintf(&b, "\n\n…и ещё %d — все в «Афише».", found-shown)
+	}
+	b.WriteString("\n\nСпроси про любое: «расскажи про …», «сколько стоит …», «запиши нас на …» — или «только новое», «только наше».")
+	return b.String()
+}
+
+const listMax = 40
+
+func ruMonth(t time.Time) string {
+	return [...]string{"", "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"}[t.Month()] + " " + strconv.Itoa(t.Year())
 }
 
 func condSuffix(c string) string {

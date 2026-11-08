@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +83,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/client-log", a.clientLog)
 	h("GET /api/suggest", a.suggest)
 	h("GET /api/history", a.history)
+	h("GET /api/going", a.going)
 	h("GET /api/settings", a.settings)
 	h("PATCH /api/settings", a.patchSettings)
 	h("POST /api/invite", a.invite)
@@ -450,6 +452,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	}
 	unmarked := []ideaView{}
 	leisure, chores, both, nUnmarked := 0, 0, 0, 0
+	going := a.goingIdeas(ctx, c)
 	for _, i := range ideas {
 		v := viewIdea(c, i)
 		if i.Kind == domain.KindChore {
@@ -457,7 +460,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 			continue
 		}
 		leisure++
-		if v.MyWish == "" {
+		if v.MyWish == "" && !going[i.ID] {
 			nUnmarked++
 			if len(unmarked) < 10 {
 				unmarked = append(unmarked, v)
@@ -470,6 +473,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	out["counts"] = map[string]int{"ideas": leisure, "chores": chores, "both_want": both, "unmarked": nUnmarked}
 	out["to_mark"] = unmarked
 	out["urgent"] = a.App.UrgentForMe(ctx, c)
+	out["going"] = a.goingRounds(ctx, c)
 	if rd, err := a.App.S.OpenRound(ctx, c.Space.ID); err == nil {
 		out["round"] = a.viewRound(ctx, c, rd)
 	}
@@ -784,6 +788,21 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	if !rd.StartsAt.IsZero() {
 		out["starts_at"], out["ends_at"] = rd.StartsAt.Unix(), rd.EndsAt.Unix()
 		out["when"] = domain.When(rd.StartsAt, c.Loc())
+		if rd.State == domain.StatePlanned || rd.State == domain.StateConfirm {
+			ics, g := a.App.EventLinks(ctx, c, c.Me.ID, rd)
+			out["cal"] = map[string]any{"ics": ics, "google": g, "subscribed": a.App.Subscribed(ctx, c.Me.ID)}
+			if i, err := a.App.S.Idea(ctx, c.Space.ID, rd.Chosen); err == nil {
+				if l, u := app.BookLink(i); u != "" {
+					out["book"] = map[string]string{"label": l, "url": u}
+				}
+			}
+			switch t := a.App.Tickets(ctx, c.Space.ID, rd.ID); {
+			case t == c.Me.ID:
+				out["tickets"] = "me"
+			case t != 0:
+				out["tickets"] = "partner"
+			}
+		}
 	}
 	if rd.State == domain.StateConfirm || rd.State == domain.StatePlanned || rd.State == domain.StateDone {
 		route := []map[string]any{}
@@ -978,6 +997,10 @@ func (a *API) roundAction(w http.ResponseWriter, r *http.Request, c app.Couple) 
 			return nil, bad("bad_answer")
 		}
 		rd, err = a.App.Again(ctx, c, id, in.Answer)
+	case "tickets":
+		if err = a.App.GotTickets(ctx, c, id); err == nil {
+			rd, err = a.App.S.Round(ctx, c.Space.ID, id)
+		}
 	default:
 		return nil, httpErr{404, "not_found"}
 	}
@@ -1016,11 +1039,47 @@ func (a *API) suggest(w http.ResponseWriter, r *http.Request, c app.Couple) (any
 			ex = append(ex, id)
 		}
 	}
-	s, err := a.App.Suggest(r.Context(), c, domain.SuggestMode(r.URL.Query().Get("mode")), ex)
+	s, err := a.App.SuggestFrom(r.Context(), c, domain.SuggestMode(r.URL.Query().Get("mode")), ex, r.URL.Query().Get("from"))
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"idea": viewIdea(c, s.Idea), "why": s.Why, "mode": string(s.Mode)}, nil
+	return map[string]any{"idea": viewIdea(c, s.Idea), "why": s.Why, "mode": string(s.Mode), "from": r.URL.Query().Get("from")}, nil
+}
+
+// going: «Мы идём» — meetings both said yes to, still ahead (the soonest first), and a choice that has agreed on
+// time and waits for the last «да»
+func (a *API) going(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return map[string]any{"meetings": a.goingRounds(r.Context(), c)}, nil
+}
+
+func (a *API) goingRounds(ctx context.Context, c app.Couple) []map[string]any {
+	rs, _ := a.App.S.RecentRounds(ctx, c.Space.ID, 60)
+	now := a.App.Now()
+	var list []domain.Round
+	for _, rd := range rs {
+		if rd.State == domain.StatePlanned && rd.StartsAt.After(now.Add(-2*time.Hour)) || rd.State == domain.StateConfirm {
+			list = append(list, rd)
+		}
+	}
+	sort.SliceStable(list, func(x, y int) bool { return list[x].StartsAt.Before(list[y].StartsAt) })
+	out := []map[string]any{}
+	for _, rd := range list {
+		out = append(out, a.viewRound(ctx, c, rd))
+	}
+	return out
+}
+
+// goingIdeas: ideas already on the way (planned, or in a choice that is going on) — not asked to be marked again
+func (a *API) goingIdeas(ctx context.Context, c app.Couple) map[int64]bool {
+	rs, _ := a.App.S.RecentRounds(ctx, c.Space.ID, 60)
+	now := a.App.Now()
+	out := map[int64]bool{}
+	for _, rd := range rs {
+		if rd.Chosen != 0 && (rd.State == domain.StatePlanned && rd.StartsAt.After(now) || rd.State == domain.StateConfirm || rd.State == domain.StateTime || rd.State == domain.StateVote) {
+			out[rd.Chosen] = true
+		}
+	}
+	return out
 }
 
 func (a *API) history(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {

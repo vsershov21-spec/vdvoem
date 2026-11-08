@@ -172,8 +172,12 @@ func TestFullFlow(t *testing.T) {
 		t.Fatal("one confirmation must not plan")
 	}
 	r, _ = a.Confirm(ctx, n, r.ID)
-	if r.State != domain.StatePlanned || f.docs != 2 {
-		t.Fatalf("planned? %s docs %d", r.State, f.docs)
+	if r.State != domain.StatePlanned || f.count(1, "Мы идём") != 1 || f.count(2, "Мы идём") != 1 {
+		t.Fatalf("planned? %s", r.State)
+	}
+	// «в календарь» is a link that opens the event, not a file to share
+	if mk := f.lastMarkup(1); !strings.Contains(mk, "/cal/") || !strings.Contains(mk, "calendar.google.com") {
+		t.Fatalf("calendar buttons: %s", mk)
 	}
 
 	// 2h before → reminder; +3h after end → «Сходили?»
@@ -644,6 +648,23 @@ func TestTimeTalk(t *testing.T) {
 	if _, err := a.Feed(ctx, strings.Repeat("0", 36)); err != app.ErrNoFeed {
 		t.Fatal("unknown token must not open a feed")
 	}
+}
+
+func (f *fakeTG) lastMarkup(chat int64) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.msgs) - 1; i >= 0; i-- {
+		if f.msgs[i].chat == chat && f.msgs[i].mk != nil {
+			var b strings.Builder
+			for _, row := range f.msgs[i].mk.InlineKeyboard {
+				for _, x := range row {
+					b.WriteString(x.Text + " " + x.URL + " " + x.CallbackData + "\n")
+				}
+			}
+			return b.String()
+		}
+	}
+	return ""
 }
 
 func (f *fakeTG) count(chat int64, sub string) int {

@@ -1073,16 +1073,25 @@ func (a *App) icsEvent(ctx context.Context, c Couple, r domain.Round, seq int, c
 
 func (a *App) planned(ctx context.Context, c Couple, r domain.Round, seq int) {
 	i, rows := a.meetingRows(ctx, c, r)
-	ics := a.ICS(ctx, c, r, seq, false)
 	for _, m := range a.both(c) {
-		a.send(ctx, m.ChatID, fmt.Sprintf("<b>Встреча запланирована.</b> %s\n\n%s", esc(i.Title), rows),
-			tg.Keyboard(tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID))), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID)), tg.CB("Отменить", fmt.Sprintf("xq:%d", r.ID)))))
+		keys := [][]tg.Button{}
+		if cal := a.calKeys(ctx, c, m, r); len(cal) > 0 {
+			keys = append(keys, cal)
+		}
+		if b := a.bookButton(i); b != nil {
+			keys = append(keys, tg.Row(*b, tg.CB("✓ Билеты есть", fmt.Sprintf("tk:%d", r.ID))))
+		}
+		keys = append(keys, tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID))), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID)), tg.CB("Отменить", fmt.Sprintf("xq:%d", r.ID))))
+		tail := ""
 		if a.Subscribed(ctx, m.ID) {
-			continue // the subscribed calendar picks it up by itself
+			tail = "\n\nУже в твоём календаре — он подключён. Напомню за 2 часа."
+		} else {
+			tail = "\n\nНажми «В календарь» — событие откроется уже заполненным. Напомню за 2 часа."
 		}
-		if err := a.TG.SendDocument(ctx, m.ChatID, "vdvoem.ics", ics, "Добавь в свой календарь — напомню за 2 часа. А чтобы встречи попадали туда сами и переносились вместе с приложением — подключи календарь в разделе «Календарь»."); err != nil {
-			a.Log.Warn("ics send failed", "err", err)
+		if a.bookButton(i) != nil {
+			tail += "\nНе забудьте билеты: «" + bookWord(i) + "» — и отметь «Билеты есть», чтобы " + NameDat(otherName(c, m)) + " не купил(а) вторые."
 		}
+		a.send(ctx, m.ChatID, fmt.Sprintf("<b>Мы идём! 🎉</b> %s\n\n%s%s", esc(i.Title), rows, tail), tg.Keyboard(keys...))
 	}
 	remind := domain.QuietShift(r.StartsAt.Add(-2*time.Hour), c.Loc())
 	if remind.After(a.now()) {
@@ -1140,7 +1149,7 @@ func (a *App) Cancel(ctx context.Context, c Couple, roundID int64) (domain.Round
 		}
 		a.send(ctx, m.ChatID, who+" выбор. Ничего страшного — идеи остаются в копилке.", nil)
 		if was == domain.StatePlanned && !a.Subscribed(ctx, m.ID) {
-			_ = a.TG.SendDocument(ctx, m.ChatID, "vdvoem-cancel.ics", a.ICS(ctx, c, r, 99, true), "Удалит встречу из календаря.")
+			a.sendQuiet(ctx, m.ChatID, "Если добавлял(а) встречу в календарь — удали её там. Чтобы такое происходило само, подключи календарь в разделе «Календарь».", nil)
 		}
 	}
 	return r, nil

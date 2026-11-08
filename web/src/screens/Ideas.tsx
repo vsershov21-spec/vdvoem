@@ -9,6 +9,7 @@ import { Folder, type TONES } from '../ui/Folder'
 import { haptic } from '../lib/tg'
 import { Afisha } from './Afisha'
 import { Icon } from '../ui/icons'
+import { Going } from '../ui/Going'
 
 type Def = { id: string; label: string; tone: keyof typeof TONES; icon: React.ReactNode; test: (i: Idea, now: number) => boolean; always?: boolean; chores?: boolean }
 
@@ -88,6 +89,8 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
         filtered.length === 0 ? <Empty title="Пусто" text={active.empty} /> :
           <div className="grid" key={active.id}>{filtered.map((i, k) => <IdeaTile key={i.id} idea={i} me={home.me} d={k} onOpen={() => go('idea/' + i.id)} />)}</div>
       ) : (<>
+        <Going list={home.going || []} />
+        {!!home.going?.length && <div className="sec"><h2 className="title"><span className="orange-ind" />Идеи</h2></div>}
         <div className="folders">
           {shown.map(({ f, list }, k) => <Folder key={f.id} d={k} label={f.label} count={list.length} ideas={list.slice(0, 3)} tone={f.tone} icon={f.icon} onOpen={() => go('ideas/' + f.id)} />)}
         </div>

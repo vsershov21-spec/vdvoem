@@ -501,6 +501,9 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		if err == nil && q.Message != nil {
 			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>Ты выбрал(а) это время</i>", nil)
 		}
+	case "tk": // «билеты есть»
+		err = b.App.GotTickets(ctx, c, id(1))
+		toast = "Отметил — партнёр знает, что билеты есть"
 	case "ur": // «важно»: ur:<idea>:yes|no|later
 		var msg string
 		msg, err = b.App.AnswerUrgent(ctx, c, id(1), arg(2))

@@ -39,6 +39,8 @@ test('E30 скаут: агент изнутри сервера, драфт не�
 
   // «Афиша»: the week and announcements; marking a draft puts it in the bank
   const p = await open(await phone(browser), v, 'ideas/scout')
+  await p.getByRole('tab', { name: /Ближайшие 2 недели/ }).click()
+  await p.getByRole('button', { name: /Скаут/ }).click()
   await expect(p.locator('.acard')).toHaveCount(7)
   await expect(p.locator('.acard').first()).toContainText('%')
   await shot(p, 'E30-afisha')

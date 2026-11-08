@@ -27,12 +27,39 @@ func (a *App) rng() *rand.Rand { return rand.New(rand.NewSource(a.now().UnixNano
 
 // Suggest picks one idea for the coming week. exclude: ideas already offered in this chain («Другую»).
 func (a *App) Suggest(ctx context.Context, c Couple, mode domain.SuggestMode, exclude []int64) (Suggestion, error) {
+	return a.SuggestFrom(ctx, c, mode, exclude, "ours")
+}
+
+// SuggestFrom: from = ours (the bank), afisha (what the scout and channels found), all
+func (a *App) SuggestFrom(ctx context.Context, c Couple, mode domain.SuggestMode, exclude []int64, from string) (Suggestion, error) {
 	if !mode.Valid() || mode == domain.SuggestOff {
 		mode = domain.SuggestBest
 	}
-	ideas, err := a.S.Ideas(ctx, c.Space.ID, domain.IdeaActive)
+	all, err := a.S.Ideas(ctx, c.Space.ID, domain.IdeaActive, domain.IdeaDraft)
 	if err != nil {
 		return Suggestion{}, err
+	}
+	now := a.now()
+	var ideas []store.Idea
+	for _, i := range all {
+		if i.StartsAt != nil && i.StartsAt.Before(now) && (i.EndsAt == nil || i.EndsAt.Before(now)) {
+			continue
+		}
+		switch from {
+		case "afisha":
+			if !Afisha(i) {
+				continue
+			}
+		case "all":
+		default:
+			if i.Status != domain.IdeaActive {
+				continue
+			}
+		}
+		if i.Status == domain.IdeaDraft {
+			i.Status = domain.IdeaActive // a draft from the afisha can be picked like a bank idea
+		}
+		ideas = append(ideas, i)
 	}
 	ex := map[int64]bool{}
 	for _, id := range exclude {
