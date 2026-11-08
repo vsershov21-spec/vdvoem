@@ -133,7 +133,8 @@ type in struct {
 	Data  string `json:"data"`
 	Label string `json:"label"`
 	Photo bool   `json:"photo"`
-	Reply int64  `json:"reply"` // message id this message answers
+	Reply int64  `json:"reply"`   // message id this message answers
+	Fwd   string `json:"forward"` // forwarded from a channel with this title
 }
 
 func user(i in) map[string]any {
@@ -150,6 +151,9 @@ func (e *emu) say(w http.ResponseWriter, r *http.Request) {
 	msg := map[string]any{"message_id": time.Now().UnixNano() % 1e9, "from": user(i), "chat": map[string]any{"id": i.From, "type": "private"}, "date": time.Now().Unix(), "text": i.Text}
 	if i.Reply != 0 {
 		msg["reply_to_message"] = map[string]any{"message_id": i.Reply, "chat": map[string]any{"id": i.From, "type": "private"}}
+	}
+	if i.Fwd != "" {
+		msg["forward_origin"] = map[string]any{"type": "channel", "chat": map[string]any{"id": -100777, "type": "channel", "title": i.Fwd}, "message_id": 42, "date": time.Now().Unix()}
 	}
 	if i.Photo {
 		delete(msg, "text")

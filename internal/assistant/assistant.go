@@ -60,8 +60,9 @@ type Reply struct {
 }
 
 type Assistant struct {
-	App *app.App
-	AI  *ai.Client
+	App   *app.App
+	AI    *ai.Client
+	cache bankCache
 }
 
 var ErrLimit = errors.New("assistant_limit")

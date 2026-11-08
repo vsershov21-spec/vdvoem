@@ -285,7 +285,7 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 			ri := rulesIntent(tc.Q, now)
 			hRules.add(matches(ri, want, now), time.Since(t0), tc.Q, ri)
 			t0 = time.Now()
-			mi, err := modelIntent(ctx, c, tc.Q, now)
+			mi, err := modelIntent(ctx, c, tc.Q, now, recall(as.bank(ctx), tc.Q, 3))
 			el := time.Since(t0)
 			if err != nil {
 				mi = Intent{I: "error"}
@@ -303,7 +303,7 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 		ri := rulesIntent(tc.Q, now)
 		rules.add(matches(ri, want, now), time.Since(t0), tc.Q, ri)
 		t0 = time.Now()
-		mi, err := modelIntent(ctx, c, tc.Q, now)
+		mi, err := modelIntent(ctx, c, tc.Q, now, recall(as.bank(ctx), tc.Q, 3))
 		el := time.Since(t0)
 		if err != nil {
 			mi = Intent{I: "error"}

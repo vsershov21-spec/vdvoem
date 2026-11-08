@@ -3,12 +3,14 @@ import type { ChatMsg, Home, Reply } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, del, humanError } from '../lib/api'
 import { go } from '../lib/router'
-import { haptic } from '../lib/tg'
+import { haptic, openLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Cover, toast } from '../ui/kit'
 import { Particles } from '../ui/Particles'
 
-const SUGG = ['Куда сходить в субботу вечером?', 'Удиви нас', 'Что у нас запланировано?', 'Где мы были недавно?', 'Что-нибудь до 3000 ₽', 'Какие у нас дела?']
+const SUGG = ['Куда сходить в субботу вечером?', 'Хотим почилить', 'Удиви нас', 'Что нашёл скаут?', 'Что у нас запланировано?', 'Анонсы на пару месяцев', 'Что-нибудь до 3000 ₽']
+// after a search: refine it in one tap (the server keeps the rest of the request)
+const FOLLOW = ['А подешевле?', 'А в воскресенье?', 'А спокойнее?', 'А без театра?']
 
 export function Assistant({ home }: { home: Home | null }) {
   const { data, set } = useLoad<{ messages: ChatMsg[]; ai: boolean }>('/assistant')
@@ -62,6 +64,8 @@ export function Assistant({ home }: { home: Home | null }) {
         {busy && <div className="msg msg--ai typing" aria-label="Печатает"><i /><i /><i /></div>}
         <div ref={end} style={{ scrollMarginBottom: "calc(var(--dock-h) + var(--safe-b) + 90px)" }} /* stop above the composer and the tab bar */ />
       </div>
+      {msgs.length >= 2 && !busy && lastAi?.reply.intent?.i === 'find' && lastAi === msgs[msgs.length - 1] &&
+        <div className="sugg sugg--dock rise" data-testid="follow">{FOLLOW.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
       {msgs.length < 2 && !busy && <div className="sugg sugg--dock rise" style={{ ['--d' as any]: 2 }}>{SUGG.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
       <form className="composer" onSubmit={e => { e.preventDefault(); ask(text) }}>
         <input className="input" placeholder={home?.paired ? 'Спроси про ваши планы…' : 'Спроси что-нибудь…'} value={text} maxLength={600} onChange={e => setText(e.target.value)} />
@@ -74,7 +78,7 @@ export function Assistant({ home }: { home: Home | null }) {
 function AiMsg({ r, done, onPress }: { r: Reply; done: Record<string, string>; onPress: (id: string) => void }) {
   return (
     <div className="col" style={{ gap: 8 }}>
-      <div className="msg msg--ai">{r.text}</div>
+      <div className="msg msg--ai">{linkify(r.text)}</div>
       {!!r.cards?.length && (
         <div className="ai-cards">
           {r.cards.map((c, k) => (
@@ -102,4 +106,15 @@ function AiMsg({ r, done, onPress }: { r: Reply; done: Record<string, string>; o
       )}
     </div>
   )
+}
+
+// links in answers (tickets, «посмотреть самому») open inside Telegram
+function linkify(t: string) {
+  const parts = t.split(/(https?:\/\/[^\s)]+)/g)
+  return parts.map((p, k) => /^https?:\/\//.test(p)
+    ? <a key={k} href={p} onClick={e => { e.preventDefault(); openLink(p) }} className="msg__link">{linkLabel(p)}</a>
+    : p)
+}
+function linkLabel(u: string) {
+  try { const h = new URL(u).hostname.replace(/^www\./, ''); return /yandex\.ru\/search/.test(u) ? 'поиск в Яндексе' : h } catch { return u }
 }

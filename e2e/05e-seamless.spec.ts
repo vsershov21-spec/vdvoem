@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { people, pair, phone, open, shot, api, waitMsg, tab, BASE } from './lib'
+import { people, pair, phone, open, shot, api, waitMsg, tab, forward, BASE } from './lib'
 
 const day = (n: number, hm = '19:00') => { const d = new Date(Date.now() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}` }
 
@@ -28,6 +28,7 @@ test('E31 помощник v2: цена из данных, настроение,
   await expect(await ask('сколько стоит джазовый концерт?')).toContainText('₽')
   await expect(await ask('хотим почилить')).toContainText(/настроение/i)
   await expect(p.locator('.ai-card').last()).toBeVisible()
+  await expect(p.getByTestId('follow')).toBeVisible() // refine in one tap
   await shot(p, 'E31-chill')
   await expect(await ask('запиши нас на джазовый концерт')).toContainText('Позвал')
   await shot(p, 'E31-book')
@@ -48,4 +49,24 @@ test('E31 помощник v2: цена из данных, настроение,
     await p.goto('/app/idea/' + spa.id)
     await expect(p.getByTestId('fixed-when')).toHaveCount(0)
   }
+})
+
+test('E32 пост из канала: пересылаешь боту — событие с датой и ценой в «Афише»; выгрузка канала целиком', async () => {
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  await forward(v, 'Билеты дёшево', '🎭 «Вишнёвый сад» в Современнике — 15 декабря, 19:00. Билеты от 900 ₽, пишите в личку')
+  await waitMsg(v, /Читаю пост из «Билеты дёшево»/)
+  const m = await waitMsg(v, /в афишу/, 30000)
+  expect(m.text).toContain('Вишнёвый сад')
+  expect(m.text).toMatch(/1\s800/) // 900 a ticket → for two
+  const af = (await api(v, 'GET', '/afisha')).ideas
+  const sad = af.find((i: any) => /Вишн/.test(i.title))
+  expect(sad.why).toContain('Билеты дёшево')
+  expect(new Date(sad.starts_at * 1000).getUTCHours()).toBe(16) // 19:00 Moscow
+  // a whole channel export, from the server itself
+  const space = (await api(v, 'GET', '/me')).space.id
+  const posts = ['🔴ЧАЙКА\n🏛МХТ имени А.П. Чехова\n✅ 19 декабря 19.00\n🔥4500 вместо 5500', 'Всем привет, скоро новые спектакли', '🔴 МЕРА ЗА МЕРУ\n🗓 20 декабря 19.00\n🔥3200 (вместо 4800)']
+  const r = await (await fetch(BASE + '/agent/channel', { method: 'POST', body: JSON.stringify({ space, from: 'Билеты дёшево', posts }) })).json()
+  expect(r).toMatchObject({ added: 2, posts: 3 })
+  await waitMsg(n, /Из канала «Билеты дёшево»/)
 })

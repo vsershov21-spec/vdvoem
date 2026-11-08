@@ -53,7 +53,7 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	}
 	var hits, late []hit
 	for _, i := range ideas {
-		if i.Kind != domain.KindLeisure || (!q.WholeBank && i.Source != "scout") {
+		if i.Kind != domain.KindLeisure || (!q.WholeBank && !app.Afisha(i)) {
 			continue
 		}
 		hz := i.Horizon
@@ -61,7 +61,7 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 			hz = "week"
 		}
 		if q.Horizon == "week" || q.Horizon == "later" {
-			if i.Source == "scout" && hz != q.Horizon {
+			if app.Afisha(i) && hz != q.Horizon {
 				continue
 			}
 		}

@@ -147,6 +147,15 @@ func (b *Bot) message(ctx context.Context, m *tg.Message) {
 		b.Log.Error("couple", "err", err)
 		return
 	}
+	// a post forwarded from a channel (often a private one): read the events out of it
+	if fp, ok := forwarded(m); ok {
+		if err := b.App.Repost(ctx, c, chat, fp); err != nil {
+			b.say(ctx, chat, "Не получилось принять пост — попробуй ещё раз.", nil)
+			return
+		}
+		b.say(ctx, chat, "📨 Читаю пост из «"+html.EscapeString(fp.From)+"» — достану события, даты и цены и пришлю сюда.", nil)
+		return
+	}
 	if len(m.Photo) > 0 {
 		ok, _ := b.App.Photo(ctx, c, m.Photo[len(m.Photo)-1].FileID)
 		if ok {
@@ -201,11 +210,47 @@ func (b *Bot) message(ctx context.Context, m *tg.Message) {
 	}
 }
 
+// forwarded: a channel post with enough text to hold an event
+func forwarded(m *tg.Message) (app.ChannelPost, bool) {
+	var from *tg.Chat
+	if m.Forward != nil {
+		from = m.Forward.Chat
+		if from == nil {
+			from = m.Forward.SenderChat
+		}
+	}
+	if from == nil {
+		from = m.FwdChat
+	}
+	text, ents := m.Text, m.Entities
+	if text == "" {
+		text, ents = m.Caption, m.CapEnts
+	}
+	if from == nil || len([]rune(strings.TrimSpace(text))) < 25 {
+		return app.ChannelPost{}, false
+	}
+	p := app.ChannelPost{From: from.Title, Text: text}
+	if p.From == "" {
+		p.From = "канала"
+	}
+	if from.Username != "" && m.Forward != nil && m.Forward.MessageID != 0 {
+		p.Link = fmt.Sprintf("https://t.me/%s/%d", from.Username, m.Forward.MessageID)
+	}
+	for _, e := range ents {
+		if e.Type == "text_link" && strings.HasPrefix(e.URL, "http") && len(p.Links) < 20 {
+			p.Links = append(p.Links, e.URL)
+		}
+	}
+	return p, true
+}
+
 const helpText = `<b>Как это работает</b>
 1. Кидайте в бота ссылки и идеи — куда сходить или что сделать. Я разберу и сложу в общую копилку.
 2. Каждый отмечает: хочу, очень хочу или пропущу. Голос партнёра вы не видите, пока не отметите сами.
 3. Когда пора выбрать (/go или сам по расписанию), каждый отмечает удобное время. Я нахожу пересечение и предлагаю три варианта.
 4. Совпало — подтвердите оба, и я пришлю событие в календарь. Без двух «да» ничего не планируется.
+
+Пересылайте сюда посты из каналов с афишей (даже закрытых) — я достану события, даты и цены в «Афишу».
 
 /surprise — случайная идея из копилки. /ask — спросить помощника. Раз в неделю я сам предложу что-нибудь — режим меняется в настройках.`
 
