@@ -79,7 +79,7 @@ func main() {
 				log.Error("AI_URL and a model are required")
 				os.Exit(2)
 			}
-			assistant.Eval(context.Background(), c, os.Stdout)
+			assistant.EvalIntents(context.Background(), c, os.Stdout)
 		}
 		return
 	}
@@ -89,7 +89,7 @@ func main() {
 			var f *os.File
 			if f, err = os.Create(os.Args[2]); err == nil {
 				var n int
-				n, err = assistant.ExportTrain(context.Background(), &store.Store{DB: db}, f)
+				n, err = assistant.ExportIntents(context.Background(), &store.Store{DB: db}, f)
 				f.Close()
 				log.Info("training examples written", "n", n, "to", os.Args[2])
 			}
@@ -177,6 +177,22 @@ func main() {
 	}
 	if mode != "webhook" {
 		go b.Poll(ctx)
+	}
+
+	if aiClient.IsLocal() { // keep the local model loaded with the assistant's prompt cached: first answers stay fast
+		go func() {
+			helper.Warm(ctx)
+			t := time.NewTicker(4 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					helper.Warm(ctx)
+				}
+			}
+		}()
 	}
 
 	go func() {

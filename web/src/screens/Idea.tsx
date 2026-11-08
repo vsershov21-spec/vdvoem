@@ -4,7 +4,7 @@ import type { Idea, Person, Wish } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, patch, del, humanError } from '../lib/api'
 import { back } from '../lib/router'
-import { CATS, money, dur } from '../lib/format'
+import { CATS, money, dur, isFixed } from '../lib/format'
 import { openLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Sheet, Skel, SubHeader, WishPicker, toast, Segmented } from '../ui/kit'
@@ -25,6 +25,7 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
   }
   const archive = async () => { await del('/ideas/' + i.id); emit('ideas'); emit('home'); toast('Убрал в архив'); back('ideas') }
   const restore = async () => { const r = await patch<{ idea: Idea }>('/ideas/' + i.id, { status: 'active' }); set(r); emit('ideas'); toast('Вернул в копилку') }
+  const fixed = isFixed(i)
   const partner = i.partner_wish ? wishWord[i.partner_wish] : i.partner_marked ? 'отметил(а) — увидишь после своей отметки' : 'ещё не отметил(а)'
   return (
     <>
@@ -37,7 +38,8 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
         {i.address && <div className="trow"><Icon n="pin" s={20} /><span className="callout">{i.address}</span></div>}
         {!!i.price_min && <div className="trow"><Icon n="wallet" s={20} /><span className="callout">≈ {money(i.price_min)} на двоих</span></div>}
         {!!i.duration_min && <div className="trow"><Icon n="clock" s={20} /><span className="callout">{dur(i.duration_min)}</span></div>}
-        {i.ends_at && <div className="trow"><Icon n="cal" s={20} /><span className="callout">До {new Date(i.ends_at * 1000).toLocaleDateString('ru', { day: 'numeric', month: 'long' })}</span></div>}
+        {fixed && <div className="trow"><Icon n="clock" s={20} /><span className="callout" data-testid="fixed-when">{new Date(i.starts_at! * 1000).toLocaleString('ru', { weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</span></div>}
+        {i.ends_at && !fixed && <div className="trow"><Icon n="cal" s={20} /><span className="callout">До {new Date(i.ends_at * 1000).toLocaleDateString('ru', { day: 'numeric', month: 'long' })}</span></div>}
         {i.why && <p className="acard__why" style={{ margin: 0 }}>{i.why}</p>}
         {i.match && i.match.note && <p className="caption acard__note" style={{ margin: 0 }} data-testid="match">Совпадение {i.match.both}% · {i.match.note}</p>}
         {i.note && <p className="callout muted" style={{ margin: 0 }}>{i.note}</p>}
@@ -48,8 +50,9 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
         <div className="sec"><h2 className="headline">Твоя оценка</h2></div>
         <WishPicker value={i.my_wish} onChange={wish} />
         <p className="caption muted" style={{ margin: '10px 4px 0' }}>Партнёр {partner}.</p>
-        <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>Идём сюда — найти время</Btn></div>
+        <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>{fixed ? 'Идём! Позвать и в календарь' : 'Идём сюда — найти время'}</Btn></div>
       </>}
+      {i.status === 'draft' && i.kind === 'leisure' && fixed && <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>Идём! Позвать и в календарь</Btn></div>}
       <div style={{ marginTop: 10 }}>
         {i.status === 'active' ? <Btn kind="ghost" block icon="trash" onClick={archive}>Убрать в архив</Btn> : <Btn kind="soft" block onClick={restore}>Вернуть в копилку</Btn>}
       </div>

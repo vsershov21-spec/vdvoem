@@ -20,6 +20,7 @@ type Item struct {
 	Starts   *time.Time
 	Source   string
 	Address  string
+	Tags     []string // moods: chill, active, romantic… — the model learns which ones each person picks
 }
 
 // Example is one mark: Label 1 = wants, 0 = skips; Weight how sure (very = 2).
@@ -69,6 +70,9 @@ func Features(it Item, loc *time.Location) []string {
 	}
 	if it.Source != "" {
 		f = append(f, "src:"+it.Source)
+	}
+	for _, t := range it.Tags {
+		f = append(f, "tag:"+t)
 	}
 	seen := map[string]bool{}
 	for _, w := range strings.FieldsFunc(strings.ToLower(it.Title), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
@@ -174,6 +178,8 @@ var human = map[string]string{
 	"price:low": "недорого", "price:mid": "средний чек", "price:high": "дорогое", "price:free_or_unknown": "",
 	"dow:weekend": "по выходным", "dow:weekday": "по будням", "tod:morning": "утром", "tod:day": "днём", "tod:evening": "вечером",
 	"src:scout": "находки скаута",
+	"tag:chill": "спокойный отдых", "tag:active": "активное", "tag:romantic": "романтика", "tag:culture": "культура", "tag:fun": "весёлое",
+	"tag:food": "вкусная еда", "tag:outdoor": "на воздухе", "tag:home": "дома", "tag:free": "бесплатное", "tag:new": "новое", "tag:night": "ночное",
 }
 
 func Human(f string) string {

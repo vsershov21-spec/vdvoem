@@ -130,3 +130,57 @@ func (s *Store) Examples(ctx context.Context, onlyAccepted bool) ([]Example, err
 	}
 	return out, rows.Err()
 }
+
+// Question for the scout — answered at its next run.
+type Question struct {
+	ID, SpaceID, MemberID, IdeaID int64
+	Text, Answer                  string
+	CreatedAt                     time.Time
+}
+
+func (s *Store) AddQuestion(ctx context.Context, q Question, now time.Time) (int64, error) {
+	var idea any
+	if q.IdeaID != 0 {
+		idea = q.IdeaID
+	}
+	r, err := s.DB.ExecContext(ctx, `INSERT INTO scout_questions(space_id, member_id, idea_id, text, created_at) VALUES (?,?,?,?,?)`, q.SpaceID, q.MemberID, idea, q.Text, now.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return r.LastInsertId()
+}
+
+func (s *Store) OpenQuestions(ctx context.Context, spaceID int64) ([]Question, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, space_id, member_id, COALESCE(idea_id,0), text, created_at FROM scout_questions WHERE space_id=? AND answered_at IS NULL ORDER BY id LIMIT 20`, spaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Question{}
+	for rows.Next() {
+		var q Question
+		var c int64
+		if err := rows.Scan(&q.ID, &q.SpaceID, &q.MemberID, &q.IdeaID, &q.Text, &c); err != nil {
+			return nil, err
+		}
+		q.CreatedAt = time.Unix(c, 0)
+		out = append(out, q)
+	}
+	return out, rows.Err()
+}
+
+// AnswerQuestion stores the scout's answer once; returns the question (false if already answered or unknown).
+func (s *Store) AnswerQuestion(ctx context.Context, spaceID, id int64, answer string, now time.Time) (Question, bool, error) {
+	r, err := s.DB.ExecContext(ctx, `UPDATE scout_questions SET answer=?, answered_at=? WHERE id=? AND space_id=? AND answered_at IS NULL`, answer, now.Unix(), id, spaceID)
+	if err != nil {
+		return Question{}, false, err
+	}
+	if n, _ := r.RowsAffected(); n == 0 {
+		return Question{}, false, nil
+	}
+	var q Question
+	var c int64
+	err = s.DB.QueryRowContext(ctx, `SELECT id, space_id, member_id, COALESCE(idea_id,0), text, created_at FROM scout_questions WHERE id=?`, id).Scan(&q.ID, &q.SpaceID, &q.MemberID, &q.IdeaID, &q.Text, &c)
+	q.Answer, q.CreatedAt = answer, time.Unix(c, 0)
+	return q, err == nil, err
+}

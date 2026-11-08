@@ -13,7 +13,7 @@ import (
 // except what they mark together («повторим?» after a meeting counts for both).
 
 func itemOf(i store.Idea) taste.Item {
-	return taste.Item{Title: i.Title, Category: i.Category, PriceKop: i.PriceMin, Starts: i.StartsAt, Source: i.Source, Address: i.Address}
+	return taste.Item{Title: i.Title, Category: i.Category, PriceKop: i.PriceMin, Starts: i.StartsAt, Source: i.Source, Address: i.Address, Tags: TagsOf(i)}
 }
 
 func examplesFor(ideas []store.Idea, color string) []taste.Example {

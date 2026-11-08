@@ -28,6 +28,7 @@ type afishaQ struct {
 	Horizon   string   `json:"horizon"` // week | later | any
 	WholeBank bool     `json:"include_bank"`
 	Limit     int      `json:"limit"`
+	Moods     []string `json:"moods"`
 }
 
 func (r *run) afisha(ctx context.Context, q afishaQ) any {
@@ -50,7 +51,7 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		i store.Idea
 		m app.Match
 	}
-	var hits []hit
+	var hits, late []hit
 	for _, i := range ideas {
 		if i.Kind != domain.KindLeisure || (!q.WholeBank && i.Source != "scout") {
 			continue
@@ -83,9 +84,18 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		if !fitsDay(i, q, now, loc) {
 			continue
 		}
+		if len(q.Moods) > 0 && app.MoodFit(i, q.Moods) == 0 && len(hits) >= 0 {
+			// a mood was asked: ideas that don't fit it wait at the end (kept only if nothing fits)
+			late = append(late, hit{i, t.Of(i)})
+			continue
+		}
 		hits = append(hits, hit{i, t.Of(i)})
 	}
-	sort.SliceStable(hits, func(a, b int) bool { return hits[a].m.Both > hits[b].m.Both })
+	score := func(h hit) float64 { return h.m.Both + 0.35*app.MoodFit(h.i, q.Moods) }
+	sort.SliceStable(hits, func(a, b int) bool { return score(hits[a]) > score(hits[b]) })
+	if len(hits) == 0 && len(q.Moods) > 0 && len(late) > 0 && len(q.Moods) > 1 {
+		hits = late // two moods asked and nothing fits both: show the best of the rest
+	}
 	out := []map[string]any{}
 	for k, h := range hits {
 		if k == q.Limit {
@@ -106,7 +116,7 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		}
 		r.addCard(ideaCard(h.i, note))
 	}
-	res := map[string]any{"events": out, "found": len(hits)}
+	res := map[string]any{"events": out, "found": len(hits), "total": len(hits)}
 	if len(hits) == 0 {
 		res["note"] = "ничего не подошло под эти условия — можно ослабить фильтры или добавить цель скауту (add_goal)"
 	}
@@ -155,6 +165,7 @@ func fitsDay(i store.Idea, q afishaQ, now time.Time, loc *time.Location) bool {
 
 var (
 	priceRe = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум)\s*(\d[\d\s]{2,6})`)
+	kRe     = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум|за)\s*(\d{1,3}(?:[.,]\d)?)\s*(?:тыс|тысяч|к\b|k\b)`)
 	notRe   = regexp.MustCompile(`(?:без|кроме|не хочу|только не)\s+([а-яё]+)`)
 )
 
@@ -176,8 +187,13 @@ func afishaFromText(t string, now time.Time) afishaQ {
 		q.Part = "morning"
 	case has(t, "днём", "днем"):
 		q.Part = "day"
+	case has(t, "поужинат", "ужин"):
+		q.Part = "evening"
 	}
-	if m := priceRe.FindStringSubmatch(t); m != nil {
+	if m := kRe.FindStringSubmatch(t); m != nil {
+		n, _ := strconv.ParseFloat(strings.Replace(m[1], ",", ".", 1), 64)
+		q.MaxRub = int64(n * 1000)
+	} else if m := priceRe.FindStringSubmatch(t); m != nil {
 		q.MaxRub, _ = strconv.ParseInt(strings.ReplaceAll(m[1], " ", ""), 10, 64)
 	} else if has(t, "недорог", "дешев", "бюджетн") {
 		q.MaxRub = 2000
@@ -187,7 +203,7 @@ func afishaFromText(t string, now time.Time) afishaQ {
 		w := m[1]
 		matched := false
 		for k, c := range catWords {
-			if strings.HasPrefix(w, k) || strings.HasPrefix(k, stemQ(w)) {
+			if strings.HasPrefix(w, k) || strings.HasPrefix(k, stemQ(w)) || len([]rune(k)) >= 4 && strings.HasPrefix(w, string([]rune(k)[:4])) {
 				q.Exclude = append(q.Exclude, c)
 				q.NotWords = append(q.NotWords, k)
 				excluded[k] = true
@@ -208,7 +224,7 @@ func afishaFromText(t string, now time.Time) afishaQ {
 		}
 	}
 	switch {
-	case has(t, "анонс", "через месяц", "через пару месяц", "потом", "на будущ", "январ", "феврал", "март", "декабр"):
+	case has(t, "анонс", "через месяц", "через пару месяц", "месяца вперёд", "месяцы вперёд", "месяца вперед", "месяцы вперед", "потом", "на будущ", "январ", "феврал", "март", "апрел", "декабр", "весн", "летом", "на лето", "новый год", "новогодн"):
 		q.Horizon = "later"
 	case has(t, "на неделе", "эту неделю", "этой неделе", "выходн", "сегодня", "завтра"):
 		q.Horizon = "week"
@@ -225,17 +241,20 @@ func memoryFromText(text string) string {
 		return m[1]
 	}
 	t := strings.ToLower(text)
-	if has(t, "я не люблю", "я люблю", "мы не любим", "мне не нравится", "не предлагай", "у меня аллерг", "я не ем") {
+	if has(t, "я не люблю", "я люблю", "мы не любим", "мы любим", "мне не нравится", "мне нравится", "мне нравятся", "нам нравится", "нам нравятся",
+		"не предлагай", "у меня аллерг", "я не ем", "мы не едим", "я не пью", "обожаю", "обожаем", "терпеть не могу", "ненавижу", "не переношу", "я вегетариан", "я веган") &&
+		!strings.Contains(t, "?") {
 		return strings.TrimSpace(text)
 	}
 	return ""
 }
 
-var goalRe = regexp.MustCompile(`(?i)(?:следи|найди|ищи|дай знать|напиши|скажи)[^,.]*?(?:когда|если|за)?\s*(.+)|хотим\s+(?:сходить\s+)?(?:в|на)\s+(.+)`)
+var goalRe = regexp.MustCompile(`(?i)(?:следи|найди|поищи|ищи|дай знать|сообщи|напомни|напиши|скажи)[^,.]*?(?:когда|если|за)?\s*(.+)|хотим\s+(?:сходить\s+)?(?:в|на)\s+(.+)`)
 
 func goalFromText(text string) string {
 	t := strings.ToLower(text)
-	if !has(t, "следи", "дай знать", "хотим сходить", "хотим в", "хотим на", "когда приедет", "когда появ", "когда начнут") {
+	if !has(t, "следи", "дай знать", "сообщи когда", "сообщи, когда", "напомни когда", "хотим сходить на", "хотим сходить в ", "хотим в ", "хотим на ", "когда приедет", "когда появ", "когда начнут", "когда откро") &&
+		!(has(t, "найди", "поищи", "ищи") && has(t, "на весну", "на лето", "на осень", "на зиму", "весной", "летом", "через месяц", "через пару", "в январе", "в феврале", "в марте", "в апреле", "в мае", "в декабре", "на новый год")) {
 		return ""
 	}
 	if m := goalRe.FindStringSubmatch(text); m != nil {

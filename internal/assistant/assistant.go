@@ -54,6 +54,9 @@ type Reply struct {
 	Text    string   `json:"text"`
 	Cards   []Card   `json:"cards,omitempty"`
 	Actions []Button `json:"actions,omitempty"`
+	Intent  *Intent  `json:"intent,omitempty"` // how the request was understood — for follow-ups («а подешевле?»)
+	Src     string   `json:"src,omitempty"`    // rules | model | rules-fallback
+	Ms      int64    `json:"ms,omitempty"`
 }
 
 type Assistant struct {
@@ -81,19 +84,20 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	prev, _ := as.App.S.Chat(ctx, c.Me.ID, history)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "user", Reply{Text: text}, as.now())
 
+	start := time.Now()
 	run := &run{as: as, c: c}
-	var rep Reply
-	var err error
-	if as.AI.Enabled() {
-		rep, err = run.withModel(ctx, prev, text)
-		if err != nil {
-			as.App.Log.Warn("assistant model failed, rules fallback", "err", err)
+	in, src := as.Understand(ctx, text, lastIntent(prev, as.now()), as.now().In(c.Loc()))
+	rep := run.do(ctx, in, text)
+	rep.Intent, rep.Src, rep.Ms = &in, src, time.Since(start).Milliseconds()
+	if in.I != "chat" { // a labelled example for the model: accepted once a button from it is pressed
+		b, _ := json.Marshal(in)
+		if id, err := as.App.S.AddExample(ctx, c.Me.ID, text, "intent:"+string(b), rep.Text, as.now()); err == nil {
+			for _, aid := range run.pending {
+				_ = as.App.S.TagAction(ctx, aid, id)
+			}
 		}
 	}
-	if !as.AI.Enabled() || err != nil {
-		run.reset()
-		rep = run.withRules(ctx, text)
-	}
+	as.App.Log.Info("assistant", "intent", in.I, "src", src, "ms", rep.Ms)
 	rep.Cards, rep.Actions = run.cards, run.buttons
 	if rep.Text == "" {
 		rep.Text = "Готово."
@@ -104,6 +108,24 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 
 func (as *Assistant) hello(c app.Couple) Reply {
 	return Reply{Text: "Я помогаю планировать вам двоим. Спроси, например:\n• Куда сходить в субботу вечером до 4000 ₽?\n• Удиви нас\n• Что у нас запланировано?\n• Где мы были в последнее время?\n• Добавь: каток в Парке Горького"}
+}
+
+// the previous request's meaning, if the last answer is recent enough to be followed up
+func lastIntent(prev []store.ChatMsg, now time.Time) Intent {
+	for k := len(prev) - 1; k >= 0; k-- {
+		if prev[k].Role != "assistant" {
+			continue
+		}
+		if now.Sub(prev[k].CreatedAt) > 2*time.Hour {
+			return Intent{}
+		}
+		var r Reply
+		if json.Unmarshal(prev[k].Body, &r) == nil && r.Intent != nil {
+			return *r.Intent
+		}
+		return Intent{}
+	}
+	return Intent{}
 }
 
 // History for the chat screen.
@@ -850,6 +872,24 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			return rep, err
 		default:
 			rep.Text = "Отправил вам обоим: осталось отметить время."
+		}
+	case "book":
+		_, err := as.App.BookFixed(ctx, c, p.IdeaID)
+		if errors.Is(err, app.ErrNoTime) {
+			if _, err = as.App.GoWith(ctx, c, p.IdeaID); err == nil {
+				rep.Text = "У события нет точного времени — отправил вам обоим выбрать, когда."
+				break
+			}
+		}
+		switch {
+		case errors.Is(err, app.ErrNotPaired):
+			rep.Text = "Сначала пригласи партнёра."
+		case errors.Is(err, app.ErrRoundOpen):
+			rep.Text = "У вас уже идёт выбор — сначала завершите его."
+		case err != nil:
+			return rep, err
+		default:
+			rep.Text = "Позвал " + app.NameAcc(c.PartnerName()) + ". Как только подтвердит — событие придёт вам обоим в календарь."
 		}
 	case "round":
 		if _, err := as.App.Go(ctx, c); errors.Is(err, app.ErrNotPaired) {

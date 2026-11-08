@@ -197,3 +197,58 @@ func (a *App) nudge(ctx context.Context, sp store.Space) error {
 	}
 	return nil
 }
+
+var ErrNoTime = errors.New("no_fixed_time")
+
+// BookFixed: an event with its own date and time (a play, a concert) needs no time picking —
+// «Идём!» makes a meeting at that time; the one who booked has confirmed, the partner confirms
+// with one tap, then both get the calendar event. An event without a time goes the usual way.
+func (a *App) BookFixed(ctx context.Context, c Couple, ideaID int64) (domain.Round, error) {
+	if c.Partner == nil {
+		return domain.Round{}, ErrNotPaired
+	}
+	i, err := a.S.Idea(ctx, c.Space.ID, ideaID)
+	if err != nil {
+		return domain.Round{}, err
+	}
+	if i.StartsAt == nil || i.StartsAt.Before(a.now()) || (i.StartsAt.In(c.Loc()).Hour() == 0 && i.StartsAt.In(c.Loc()).Minute() == 0) ||
+		(i.EndsAt != nil && i.EndsAt.Sub(*i.StartsAt) > 30*time.Hour) { // an exhibition running for weeks: pick a day
+		return domain.Round{}, ErrNoTime
+	}
+	if r, err := a.S.OpenRound(ctx, c.Space.ID); err == nil {
+		return r, ErrRoundOpen
+	}
+	if i.Status == domain.IdeaDraft {
+		i.Status = domain.IdeaActive
+		_ = a.S.UpdateIdea(ctx, i, a.now())
+	}
+	nr := domain.NewRound(c.Space.ID, a.now(), c.Space.BudgetKop)
+	nr.Chosen = ideaID
+	r, err := a.S.CreateRound(ctx, nr, a.now())
+	if err != nil {
+		return r, err
+	}
+	ver := r.Version
+	r.State, r.StartsAt = domain.StateConfirm, *i.StartsAt
+	r.EndsAt = r.StartsAt.Add(time.Duration(durationOf(i)) * time.Minute)
+	if r.ExpiresAt.After(r.StartsAt) {
+		r.ExpiresAt = r.StartsAt
+	}
+	r.Version++
+	if c.Me.Color == "a" {
+		r.ConfirmA = true
+	} else {
+		r.ConfirmB = true
+	}
+	if err := a.save(ctx, r, ver); err != nil {
+		return r, err
+	}
+	_, rows := a.meetingRows(ctx, c, r)
+	kb := [][]tg.Button{tg.Row(tg.CB("Подтверждаю", fmt.Sprintf("c:%d", r.ID)), tg.CB("Не могу", fmt.Sprintf("x:%d", r.ID)))}
+	if i.URL != "" {
+		kb = append(kb, tg.Row(tg.Link("Билеты", i.URL), tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID)))))
+	}
+	a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s зовёт: <b>%s</b>\n\n%s\n\nПодтверди — и событие придёт вам обоим в календарь.", esc(c.Me.Name), esc(i.Title), rows), tg.Keyboard(kb...))
+	a.send(ctx, c.Me.ChatID, fmt.Sprintf("Позвал(а) %s на <b>%s</b>. Как только подтвердит — пришлю событие в календарь.", esc(NameAcc(c.Partner.Name)), esc(i.Title)), nil)
+	return r, nil
+}

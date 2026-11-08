@@ -32,6 +32,7 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /agent/picks", local(a.agentPicks))
 	mux.HandleFunc("POST /agent/prices", local(a.agentPrices))
 	mux.HandleFunc("POST /agent/goals/{id}/done", local(a.agentGoalDone))
+	mux.HandleFunc("POST /agent/answers", local(a.agentAnswers))
 }
 
 func (a *API) agentBriefs(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +42,7 @@ func (a *API) agentBriefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"briefs": b, "now": a.App.Now().Format("2006-01-02T15:04:05-07:00"),
-		"how": "POST /agent/picks {space, picks:[{title,url,image,address,category,starts,ends,price_rub,duration_min,why,score,horizon,on_sale,goal_id}]} — 15–20 per space, horizon week|later; POST /agent/prices {space, updates:[{idea_id,price_rub,ends,status}]}"})
+		"how": "POST /agent/picks {space, picks:[{title,url,image,address,category,starts,ends,price_rub,duration_min,why,score,horizon,on_sale,goal_id}]} — 15–20 per space, horizon week|later; POST /agent/prices {space, updates:[{idea_id,price_rub,ends,status}]}; POST /agent/answers {space, answers:[{id,text,price_rub,url}]} — for briefs[].questions"})
 }
 
 func readJSON(r *http.Request, v any) error {
@@ -80,6 +81,23 @@ func (a *API) agentPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"updated": n})
+}
+
+func (a *API) agentAnswers(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Space   int64             `json:"space"`
+		Answers []app.ScoutAnswer `json:"answers"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "bad json"})
+		return
+	}
+	n, err := a.App.ScoutAnswers(r.Context(), in.Space, in.Answers)
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"answered": n})
 }
 
 func (a *API) agentGoalDone(w http.ResponseWriter, r *http.Request) {
