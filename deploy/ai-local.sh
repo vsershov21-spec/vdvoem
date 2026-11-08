@@ -21,8 +21,27 @@ if [ "${1:-}" = off ]; then
 fi
 
 if ! command -v ollama >/dev/null; then
-  echo "Ставлю Ollama…"
-  curl -fsSL https://ollama.com/install.sh | sh
+  # the official install.sh and github.com/…/download links answer 404/504 from this server — take the release
+  # through the GitHub API (works) and set the service up ourselves
+  echo "Ставлю Ollama (≈1,5 ГБ, через API GitHub)…"
+  ID=$(curl -fsS -m 30 https://api.github.com/repos/ollama/ollama/releases/latest | python3 -c "import sys,json; print([a['id'] for a in json.load(sys.stdin)['assets'] if a['name']=='ollama-linux-amd64.tar.zst'][0])")
+  curl -fL --retry 3 -H 'Accept: application/octet-stream' -o /tmp/ollama.tar.zst "https://api.github.com/repos/ollama/ollama/releases/assets/$ID"
+  tar --zstd -xf /tmp/ollama.tar.zst -C /usr/local && rm -f /tmp/ollama.tar.zst
+  id ollama >/dev/null 2>&1 || useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama
+  cat > /etc/systemd/system/ollama.service <<'U'
+[Unit]
+Description=Ollama (local models for «Вдвоём»)
+After=network-online.target
+[Service]
+ExecStart=/usr/local/bin/ollama serve
+User=ollama
+Group=ollama
+Restart=always
+RestartSec=3
+Environment=HOME=/usr/share/ollama
+[Install]
+WantedBy=multi-user.target
+U
 fi
 mkdir -p /etc/systemd/system/ollama.service.d
 cat > /etc/systemd/system/ollama.service.d/vdvoem.conf <<'U'
