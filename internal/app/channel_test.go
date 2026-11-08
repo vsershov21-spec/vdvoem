@@ -80,3 +80,11 @@ func TestInfoFromText(t *testing.T) {
 		t.Fatalf("stars: %+v", star.Cast)
 	}
 }
+
+func TestPrettyTitle(t *testing.T) {
+	for in, want := range map[string]string{"ЛЮСЯ. ПРИЗНАНИЕ В ЛЮБВИ": "Люся. Признание в любви", "МХТ ИМЕНИ ЧЕХОВА": "МХТ имени Чехова", "Чайка": "Чайка", "ТЁЩА С СЮРПРИЗОМ!": "Тёща с сюрпризом!"} {
+		if got := prettyTitle(in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+}
