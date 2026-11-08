@@ -263,7 +263,7 @@ func modelIntent(ctx context.Context, c *ai.Client, text string, now time.Time, 
 	ctx, cancel := context.WithTimeout(ctx, LLMBudget)
 	defer cancel()
 	msgs := shotMsgs(now)
-	if Tuned(c.Model) { // trained on exactly this: the system prompt and the request
+	if Tuned(c.M()) { // trained on exactly this: the system prompt and the request
 		msgs = []ai.Message{{Role: "system", Content: intentSystem(now)}}
 		like = nil
 	}
@@ -361,7 +361,7 @@ func (as *Assistant) Warm(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	msgs := shotMsgs(as.now())
-	if Tuned(c.Model) {
+	if Tuned(c.M()) {
 		msgs = msgs[:1]
 	}
 	_, _ = c.Structured(ctx, "warm", append(msgs, ai.Message{Role: "user", Content: "привет"}), intentSchema, 8)

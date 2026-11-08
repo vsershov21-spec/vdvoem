@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"vdvoem/internal/ai"
@@ -61,34 +60,24 @@ type Reply struct {
 }
 
 type Assistant struct {
-	App    *app.App
-	AI     *ai.Client
-	cache  bankCache
-	intent atomic.Pointer[ai.Client] // a model fine-tuned for understanding requests (vdvoem-*), if installed
+	App   *app.App
+	AI    *ai.Client
+	cache bankCache
 }
 
 // Tuned: model names starting with «vdvoem-» were fine-tuned on the intent dataset: they get the short prompt
 // (no examples) — what they were trained on, and faster.
 func Tuned(model string) bool { return strings.HasPrefix(model, "vdvoem-") }
 
-// SetIntentModel switches the model that reads requests (empty — back to the general one).
+// SetIntentModel switches the model (for everything: one model stays loaded on a CPU server); "" — back.
 func (as *Assistant) SetIntentModel(model string) {
-	if model == "" || as.AI == nil {
-		as.intent.Store(nil)
-		return
+	if as.AI != nil {
+		as.AI.SetModel(model)
 	}
-	c := *as.AI
-	c.Model = model
-	as.intent.Store(&c)
 }
 
 // IntentModel: what reads requests now
-func (as *Assistant) IntentModel() *ai.Client {
-	if c := as.intent.Load(); c != nil {
-		return c
-	}
-	return as.AI
-}
+func (as *Assistant) IntentModel() *ai.Client { return as.AI }
 
 var ErrLimit = errors.New("assistant_limit")
 

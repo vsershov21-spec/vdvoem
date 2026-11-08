@@ -315,9 +315,7 @@ func (s *intentScore) line(name string, n int) string {
 // EvalIntents: the report for one model. Returns the pipeline's share of right answers.
 func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 	as := &Assistant{AI: c}
-	if Tuned(c.Model) {
-		as.SetIntentModel(c.Model)
-	}
+	defer c.Unload(context.WithoutCancel(ctx), c.M()) // leave the server's one model slot free
 	now := time.Now().In(time.FixedZone("MSK", 3*3600))
 	var rules, model, pipe intentScore
 	as.Warm(ctx)

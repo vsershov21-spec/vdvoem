@@ -63,7 +63,7 @@ func (a *API) agentModel(w http.ResponseWriter, r *http.Request) {
 	c := a.Helper.IntentModel()
 	m := ""
 	if c != nil {
-		m = c.Model
+		m = c.M()
 	}
 	writeJSON(w, 200, map[string]any{"intent_model": m, "tuned": assistant.Tuned(m)})
 }

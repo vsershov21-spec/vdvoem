@@ -29,11 +29,11 @@ func (c *Client) Structured(ctx context.Context, task string, msgs []Message, sc
 	var url string
 	if c.IsLocal() {
 		url = strings.TrimSuffix(strings.TrimSuffix(c.URL, "/"), "/v1") + "/api/chat"
-		body = map[string]any{"model": c.Model, "messages": msgs, "stream": false, "format": schema, "keep_alive": "60m",
+		body = map[string]any{"model": c.M(), "messages": msgs, "stream": false, "format": schema, "keep_alive": "60m",
 			"options": map[string]any{"temperature": 0, "num_predict": maxTokens, "num_ctx": 4096}}
 	} else {
 		url = strings.TrimRight(c.URL, "/") + "/chat/completions"
-		body = map[string]any{"model": c.Model, "messages": msgs, "temperature": 0, "max_tokens": maxTokens,
+		body = map[string]any{"model": c.M(), "messages": msgs, "temperature": 0, "max_tokens": maxTokens,
 			"response_format": map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "intent", "schema": schema}}}
 	}
 	b, _ := json.Marshal(body)
