@@ -560,7 +560,7 @@ func TestChannelPost(t *testing.T) {
 		t.Fatalf("ideas: %+v", all)
 	}
 	// the same post again: nothing new
-	_ = a.Repost(ctx, v, 1, app.ChannelPost{From: "Билеты дёшево", Text: post.Text + " "})
+	_ = a.Repost(ctx, v, 1, app.ChannelPost{From: "Билеты дёшево", Text: post.Text + "\nПишите в личку!"})
 	ck.t = ck.t.Add(time.Minute)
 	a.Tick(ctx)
 	if !strings.Contains(f.last(1), "уже есть") {
