@@ -20,8 +20,8 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
   return (
     <>
       <header className="hdr" style={{ height: 'auto', margin: '4px 0 14px' }}>
-        <div style={{ flex: 1 }}>
-          <h1 className="title">{hello}, {home.me.name} 👋</h1>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 className="title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} /* one line from the first frame, whatever the font: no jump when it loads */>{hello}, {home.me.name} 👋</h1>
           <p className="caption muted" style={{ margin: '2px 0 0' }}>{home.partner ? (partnerHere ? <span className="here">{home.partner.name} сейчас здесь</span> : `Планируем вдвоём с ${ncase(home.partner.name, 'ins')}`) : 'Пригласи партнёра — и начнём'}</p>
         </div>
         <button className="pairava" style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer' }} onClick={() => go('us')} aria-label="Мы">
