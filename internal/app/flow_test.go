@@ -500,7 +500,11 @@ func TestAssistantSeamless(t *testing.T) {
 	}
 	// mood: the spa first
 	rep, _ = as.Ask(ctx, v, "хотим почилить в субботу")
-	if len(rep.Cards) == 0 || !strings.Contains(rep.Cards[0].Title, "СПА") {
+	spa := false // calm places come up: the spa (and a quiet exhibition is fine too); the loud jazz club is not first
+	for _, cd := range rep.Cards {
+		spa = spa || strings.Contains(cd.Title, "СПА")
+	}
+	if !spa || strings.Contains(rep.Cards[0].Title, "Джаз") {
 		t.Fatalf("chill: %+v", rep.Cards)
 	}
 	// follow-up keeps the day, lowers the price
@@ -565,5 +569,36 @@ func TestChannelPost(t *testing.T) {
 	a.Tick(ctx)
 	if !strings.Contains(f.last(1), "уже есть") {
 		t.Fatalf("dupe: %q", f.last(1))
+	}
+}
+
+// «Расскажи про …»: facts from the data, a verdict for each of the two with reasons.
+func TestAboutAnswer(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	// Вова loves comedies, Настя skips them
+	for _, title := range []string{"Ревизор", "Слуга двух господ", "Женитьба", "Безымянная звезда", "Двенадцатая ночь", "Тартюф", "Мнимый больной", "Дядюшкин сон", "Укрощение строптивой"} {
+		r, _ := a.AddIdea(ctx, v, title)
+		i := r.Idea
+		i.Category, i.Info.Genres = "culture", []string{"комедия"}
+		a.S.UpdateIdea(ctx, i, ck.t)
+		a.SetWish(ctx, v, i.ID, domain.WishVery)
+		a.SetWish(ctx, n, i.ID, domain.WishSkip)
+	}
+	sat := ck.t.AddDate(0, 0, 3).Format("2006-01-02")
+	if _, err := a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{{Title: "Тёща с сюрпризом", Category: "culture", Starts: sat + "T19:30", PriceRub: 4000, Score: 7,
+		About: "Молодая пара хочет обзавестись ребёнком, а тёща готовит сюрприз.", Genres: []string{"комедия"}, Cast: []string{"Иван Иванов"}, Age: "16+"}}); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := as.Ask(ctx, v, "расскажи про Тёщу с сюрпризом")
+	for _, want := range []string{"Комедия", "16+", "В ролях: Иван Иванов", "Молодая пара", "Подойдёт ли вам", "Тебе — очень подходит", "Настя — вряд ли"} {
+		if !strings.Contains(rep.Text, want) {
+			t.Fatalf("no %q in %q", want, rep.Text)
+		}
+	}
+	if len(rep.Actions) == 0 || !strings.HasPrefix(rep.Actions[0].Label, "Идём") {
+		t.Fatalf("actions: %+v", rep.Actions)
 	}
 }

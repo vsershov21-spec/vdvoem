@@ -72,6 +72,8 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 		return r.price(ctx, in)
 	case "book":
 		return r.book(ctx, in)
+	case "about":
+		return r.about(ctx, in)
 	case "suggest":
 		return r.suggestText(ctx, in)
 	case "find":
@@ -375,4 +377,117 @@ func (r *run) book(ctx context.Context, in Intent) Reply {
 		return Reply{Text: "Не получилось записать — попробуй из карточки события."}
 	}
 	return Reply{Text: "Позвал " + app.NameAcc(r.c.PartnerName()) + " на «" + i.Title + "», " + domain.When(*i.StartsAt, r.c.Loc()) + ". Как только подтвердит — событие придёт вам обоим в календарь."}
+}
+
+// ---------- about: what it is and whether it suits us ----------
+
+func (r *run) about(ctx context.Context, in Intent) Reply {
+	i, ok := r.as.App.FindByName(ctx, r.c, in.Q)
+	if !ok {
+		_ = r.as.App.AskScout(ctx, r.c, "Расскажи про: "+in.Q, 0)
+		return Reply{Text: "Не нашёл «" + short(in.Q, 40) + "» в афише и копилке. Спросил скаута — расскажет в боте. Если есть ссылка или пост — пришли, разберу."}
+	}
+	ab := r.as.App.About(ctx, r.c, i)
+	loc := r.c.Loc()
+	var b strings.Builder
+	b.WriteString("«" + i.Title + "»")
+	var meta []string
+	if i.Address != "" {
+		meta = append(meta, i.Address)
+	}
+	if i.StartsAt != nil {
+		meta = append(meta, domain.When(*i.StartsAt, loc))
+	}
+	if i.PriceMin > 0 {
+		meta = append(meta, "≈ "+domain.Money(i.PriceMin)+" на двоих")
+	}
+	if len(meta) > 0 {
+		b.WriteString(" — " + strings.Join(meta, " · "))
+	}
+	b.WriteString(".")
+	if g := i.Info.Genres; len(g) > 0 || i.Info.Age != "" {
+		line := strings.Join(g, ", ")
+		if i.Info.Age != "" {
+			line = strings.TrimPrefix(line+" · "+i.Info.Age, " · ")
+		}
+		b.WriteString("\n" + upperFirst(line))
+	}
+	if len(i.Info.Cast) > 0 {
+		b.WriteString("\nВ ролях: " + strings.Join(i.Info.Cast, ", "))
+	}
+	if i.Info.About != "" {
+		b.WriteString("\n\n" + i.Info.About)
+	} else if i.Why != "" {
+		b.WriteString("\n" + i.Why)
+	}
+	if i.Info.Empty() {
+		_ = r.as.App.AskScout(ctx, r.c, "Расскажи про: "+i.Title+" (жанр, кто играет, о чём)", i.ID)
+		b.WriteString("\n\nПодробностей пока нет — спросил скаута, он дополнит карточку.")
+	}
+	// does it suit us
+	b.WriteString("\n\n" + r.suits(ab))
+	r.addCard(ideaCard(i, ""))
+	if fixedTime(i, loc, r.as.now()) {
+		r.propose(ctx, "book", map[string]any{"idea_id": i.ID}, "Идём: "+short(i.Title, 24))
+	} else {
+		r.propose(ctx, "plan", map[string]any{"idea_id": i.ID}, "Идём: "+short(i.Title, 24))
+	}
+	if me, _ := r.myWish(i); me == domain.WishNone {
+		r.propose(ctx, "wish", map[string]any{"idea_id": i.ID, "wish": "want"}, "Хочу")
+	}
+	return Reply{Text: b.String()}
+}
+
+func (r *run) suits(ab app.About) string {
+	level := func(x float64) string {
+		switch {
+		case x >= 0.75:
+			return "очень подходит"
+		case x >= 0.58:
+			return "скорее да"
+		case x <= 0.3:
+			return "вряд ли"
+		case x <= 0.42:
+			return "сомнительно"
+		}
+		return "нейтрально"
+	}
+	why := func(pros, cons []string) string {
+		var p []string
+		if len(pros) > 0 {
+			p = append(p, "нравится "+strings.Join(pros, ", "))
+		}
+		if len(cons) > 0 {
+			p = append(p, "не любит "+strings.Join(cons, ", "))
+		}
+		if len(p) == 0 {
+			return ""
+		}
+		return " (" + strings.Join(p, "; ") + ")"
+	}
+	person := func(name string, marks int, score float64, pros, cons []string) string {
+		if marks < 5 {
+			return name + " — пока мало отметок, чтобы судить"
+		}
+		return name + " — " + level(score) + why(pros, cons)
+	}
+	lines := []string{"Подойдёт ли вам: " + itoaPct(ab.Match.Both) + " вместе."}
+	lines = append(lines, "• "+person("Тебе", ab.MeMarks, ab.Match.Me, ab.MePros, ab.MeCons))
+	if r.c.Partner != nil {
+		lines = append(lines, "• "+person(r.c.Partner.Name, ab.PartnerMarks, ab.Match.Partner, ab.PaPros, ab.PaCons))
+	}
+	for _, s := range ab.Said {
+		lines = append(lines, "• помню: "+s)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func itoaPct(x float64) string { return fmt.Sprintf("%d%%", int(x*100+0.5)) }
+
+func upperFirst(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
+	}
+	return strings.ToUpper(string(r[0])) + string(r[1:])
 }

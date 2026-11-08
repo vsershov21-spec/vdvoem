@@ -58,6 +58,8 @@ func nameWords(s string) []string {
 		}
 		if len(r) > 5 {
 			w = string(r[:len(r)-2]) // «гамлета» → «гамле», «джазе» → «джаз»
+		} else if len(r) >= 4 {
+			w = string(r[:len(r)-1]) // «тёщу» / «тёща» → «тёщ»
 		}
 		out = append(out, w)
 	}

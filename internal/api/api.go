@@ -360,6 +360,7 @@ type ideaView struct {
 	CreatedAt     int64        `json:"created_at"`
 	Source        string       `json:"source,omitempty"`  // scout
 	Why           string       `json:"why,omitempty"`     // the scout's reason
+	Info          *store.Info  `json:"info,omitempty"`    // description, genres, cast, age
 	Horizon       string       `json:"horizon,omitempty"` // week | later
 	OnSale        *int64       `json:"on_sale,omitempty"`
 	Match         *matchView   `json:"match,omitempty"`
@@ -396,6 +397,10 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 		Assignee: i.Assignee, Status: string(i.Status), MyWish: string(me), PartnerMarked: p != domain.WishNone, Mine: i.AuthorID == c.Me.ID,
 		Parsed: i.Parsed, Meta: app.IdeaMeta(i), LikedBefore: i.AgainYes > 0, CreatedAt: i.CreatedAt.Unix(),
 		Generic: app.Generic(i), Source: i.Source, Why: i.Why, Horizon: i.Horizon, OnSale: unix(i.OnSale)}
+	if !i.Info.Empty() {
+		in := i.Info
+		v.Info = &in
+	}
 	q := i.Title
 	if i.Address != "" {
 		q = i.Address

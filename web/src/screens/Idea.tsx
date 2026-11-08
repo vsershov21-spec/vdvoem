@@ -40,6 +40,10 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
         {!!i.duration_min && <div className="trow"><Icon n="clock" s={20} /><span className="callout">{dur(i.duration_min)}</span></div>}
         {fixed && <div className="trow"><Icon n="clock" s={20} /><span className="callout" data-testid="fixed-when">{new Date(i.starts_at! * 1000).toLocaleString('ru', { weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</span></div>}
         {i.ends_at && !fixed && <div className="trow"><Icon n="cal" s={20} /><span className="callout">До {new Date(i.ends_at * 1000).toLocaleDateString('ru', { day: 'numeric', month: 'long' })}</span></div>}
+        {(!!i.info?.genres?.length || i.info?.age) && <div className="row" style={{ flexWrap: 'wrap', gap: 6 }} data-testid="genres">
+          {i.info?.genres?.map(g => <span key={g} className="pill">{g}</span>)}{i.info?.age && <span className="pill">{i.info.age}</span>}</div>}
+        {i.info?.about && <p className="callout" style={{ margin: 0 }} data-testid="about">{i.info.about}</p>}
+        {!!i.info?.cast?.length && <p className="caption muted" style={{ margin: 0 }}>В ролях: {i.info.cast.join(', ')}</p>}
         {i.why && <p className="acard__why" style={{ margin: 0 }}>{i.why}</p>}
         {i.match && i.match.note && <p className="caption acard__note" style={{ margin: 0 }} data-testid="match">Совпадение {i.match.both}% · {i.match.note}</p>}
         {i.note && <p className="callout muted" style={{ margin: 0 }}>{i.note}</p>}

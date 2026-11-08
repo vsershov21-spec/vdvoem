@@ -62,7 +62,7 @@ func (a *API) agentBriefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"briefs": b, "now": a.App.Now().Format("2006-01-02T15:04:05-07:00"),
-		"how": "POST /agent/picks {space, picks:[{title,url,image,address,category,starts,ends,price_rub,duration_min,why,score,horizon,on_sale,goal_id}]} — 15–20 per space, horizon week|later; POST /agent/prices {space, updates:[{idea_id,price_rub,ends,status}]}; POST /agent/answers {space, answers:[{id,text,price_rub,url}]} — for briefs[].questions"})
+		"how": "POST /agent/picks {space, picks:[{title,url,image,address,category,starts,ends,price_rub,duration_min,why,score,horizon,on_sale,goal_id,about,genres,cast,age}]} — 15–20 per space, horizon week|later; POST /agent/prices {space, updates:[{idea_id,price_rub,ends,status,about,genres,cast,age,url}]} — also for briefs[].enrich; POST /agent/answers {space, answers:[{id,text,price_rub,url}]} — for briefs[].questions"})
 }
 
 func readJSON(r *http.Request, v any) error {

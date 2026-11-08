@@ -41,6 +41,7 @@ type ScoutBrief struct {
 	Goals     []ScoutGoal      `json:"goals"`          // things to watch for, also months ahead
 	Watch     []map[string]any `json:"recheck"`        // links to re-check price/date/sold out
 	Questions []map[string]any `json:"questions"`      // asked in the app, waiting for the scout: answer via POST /agent/answers
+	Enrich    []map[string]any `json:"enrich"`         // events without a description/genres/cast: fill them via POST /agent/prices
 }
 
 type ScoutGoal struct {
@@ -136,6 +137,7 @@ func (a *App) scoutBrief(ctx context.Context, sp store.Space) ScoutBrief {
 		b.Goals = append(b.Goals, ScoutGoal{ID: g.ID, Text: g.Text})
 	}
 	b.Watch = a.PriceChecks(ctx, sp.ID)
+	b.Enrich = a.InfoChecks(ctx, sp.ID)
 	b.Questions = questionsOf(ctx, a.S, sp.ID)
 	return b
 }
@@ -328,6 +330,12 @@ type ScoutPrice struct {
 	PriceRub int64  `json:"price_rub"`
 	Ends     string `json:"ends"`
 	Status   string `json:"status"` // ok | sold_out | ended
+	// what it is (from the event's page or a review) — only what the source says
+	About  string   `json:"about"`
+	Genres []string `json:"genres"`
+	Cast   []string `json:"cast"`
+	Age    string   `json:"age"`
+	URL    string   `json:"url"` // the event's page, if the idea had none
 }
 
 func (a *App) ScoutPrices(ctx context.Context, spaceID int64, ups []ScoutPrice) (int, error) {
@@ -354,6 +362,28 @@ func (a *App) ScoutPrices(ctx context.Context, spaceID int64, ups []ScoutPrice) 
 			if e := parseWhen(u.Ends, sp.Loc()); e != nil {
 				i.EndsAt = e
 			}
+			if u.About != "" || len(u.Genres) > 0 || len(u.Cast) > 0 || u.Age != "" {
+				in := i.Info
+				if u.About != "" {
+					in.About = sentences(u.About, 400)
+				}
+				if len(u.Genres) > 0 {
+					in.Genres = limitStr(u.Genres, 5)
+				}
+				if len(u.Cast) > 0 {
+					in.Cast = limitStr(u.Cast, 8)
+				}
+				if u.Age != "" {
+					in.Age = clip(u.Age, 4)
+				}
+				if in.Src == "" {
+					in.Src = "web"
+				}
+				i.Info = in
+			}
+			if i.URL == "" && safeURL(u.URL) != "" {
+				i.URL = safeURL(u.URL)
+			}
 		}
 		if a.S.UpdateIdea(ctx, i, a.now()) == nil {
 			n++
@@ -375,6 +405,39 @@ func (a *App) PriceChecks(ctx context.Context, spaceID int64) []map[string]any {
 		out = append(out, map[string]any{"idea_id": i.ID, "title": i.Title, "url": i.URL, "price_rub": i.PriceMin / 100})
 		if len(out) == 20 {
 			break
+		}
+	}
+	return out
+}
+
+// InfoChecks: events in the afisha and the bank the assistant cannot tell about yet
+func (a *App) InfoChecks(ctx context.Context, spaceID int64) []map[string]any {
+	ideas, _ := a.S.Ideas(ctx, spaceID, domain.IdeaActive, domain.IdeaDraft)
+	out := []map[string]any{}
+	for _, i := range ideas {
+		if i.Kind != domain.KindLeisure || i.Info.About != "" && len(i.Info.Genres) > 0 {
+			continue
+		}
+		if i.StartsAt != nil && i.StartsAt.Before(a.now()) {
+			continue
+		}
+		m := map[string]any{"idea_id": i.ID, "title": i.Title, "venue": i.Address}
+		if i.URL != "" {
+			m["url"] = i.URL
+		}
+		out = append(out, m)
+		if len(out) == 25 {
+			break
+		}
+	}
+	return out
+}
+
+func limitStr(l []string, n int) []string {
+	var out []string
+	for _, x := range l {
+		if x = clip(x, 60); x != "" && len(out) < n {
+			out = append(out, x)
 		}
 	}
 	return out
