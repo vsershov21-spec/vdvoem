@@ -343,6 +343,7 @@ func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, n
 	if err != nil {
 		return rule, "rules-fallback"
 	}
+	m = reconcile(m, rule, text)
 	m = mergeFollowUp(prev, m, text)
 	return m, "model"
 }

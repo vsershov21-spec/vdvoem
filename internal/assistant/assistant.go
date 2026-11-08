@@ -812,14 +812,24 @@ func mustJSON(v any) json.RawMessage {
 var weekdays = map[string]time.Weekday{"понедельник": time.Monday, "вторник": time.Tuesday, "сред": time.Wednesday, "четверг": time.Thursday,
 	"пятниц": time.Friday, "суббот": time.Saturday, "воскресень": time.Sunday}
 
+var wordRes = map[string]*regexp.Regexp{} // filled at start, read-only after
+
+func init() {
+	for _, w := range []string{"послезавтра", "сегодня", "завтра"} {
+		wordRes[w] = regexp.MustCompile(`(?:^|[^а-яёa-z])` + w + `(?:$|[^а-яёa-z])`)
+	}
+}
+
+func wordRe(w string) *regexp.Regexp { return wordRes[w] }
+
 func dayFrom(t string, now time.Time) string {
 	d0 := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	switch {
-	case strings.Contains(t, "послезавтра"):
+	switch { // whole words: «позавтракать» is not «завтра»
+	case wordRe("послезавтра").MatchString(t):
 		return d0.AddDate(0, 0, 2).Format("2006-01-02")
-	case strings.Contains(t, "сегодня"):
+	case wordRe("сегодня").MatchString(t):
 		return d0.Format("2006-01-02")
-	case strings.Contains(t, "завтра"):
+	case wordRe("завтра").MatchString(t):
 		return d0.AddDate(0, 0, 1).Format("2006-01-02")
 	}
 	for w, wd := range weekdays {

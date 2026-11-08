@@ -171,7 +171,7 @@ var (
 
 var catWords = map[string]string{"поесть": "food", "ресторан": "food", "кафе": "food", "ужин": "food", "еда": "food", "бар": "food",
 	"театр": "culture", "спектак": "culture", "музей": "culture", "кино": "culture", "выставк": "culture", "концерт": "culture", "опер": "culture", "балет": "culture",
-	"гулять": "walk", "прогул": "walk", "парк": "walk", "спорт": "sport", "каток": "sport", "лыж": "sport", "стендап": "other", "квиз": "other"}
+	"гуля": "walk", "прогул": "walk", "парк": "walk", "спорт": "sport", "каток": "sport", "лыж": "sport", "стендап": "other", "квиз": "other"}
 
 func afishaFromText(t string, now time.Time) afishaQ {
 	var q afishaQ

@@ -2,6 +2,8 @@ package assistant
 
 import (
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,7 +58,7 @@ func TestFollowUp(t *testing.T) {
 func TestRulesHoldout(t *testing.T) {
 	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.FixedZone("MSK", 3*3600))
 	ok, sure, sureBad := 0, 0, 0
-	for _, tc := range intentHoldout {
+	for _, tc := range append(append([]intentCase{}, intentHoldout...), intentHoldout2...) {
 		var want Intent
 		_ = json.Unmarshal([]byte(tc.Want), &want)
 		got := rulesIntent(tc.Q, now)
@@ -75,5 +77,52 @@ func TestRulesHoldout(t *testing.T) {
 			t.Logf("%q → %s %.2f (want %s)", tc.Q, b, got.conf, tc.Want)
 		}
 	}
-	t.Logf("holdout: rules %d/%d, sure %d, sure-but-wrong %d", ok, len(intentHoldout), sure, sureBad)
+	t.Logf("holdout: rules %d/%d, sure %d, sure-but-wrong %d", ok, len(intentHoldout)+len(intentHoldout2), sure, sureBad)
+}
+
+// The model's real mistakes from the server eval (qwen2.5 3b and 1.5b): reconcile must fix most of them.
+func TestReconcileModelErrors(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	want := map[string]Intent{}
+	for _, c := range append(append([]intentCase{}, intentCases...), intentHoldout...) {
+		var w Intent
+		_ = json.Unmarshal([]byte(c.Want), &w)
+		want[c.Q] = w
+	}
+	b, err := os.ReadFile("testdata/model_errors.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed, total := 0, 0
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		q, js, ok := strings.Cut(line, " → ")
+		w, known := want[q]
+		if !ok || !known {
+			continue
+		}
+		var m Intent
+		_ = json.Unmarshal([]byte(js), &m)
+		total++
+		got := reconcile(sanitize(m), rulesIntent(q, now), q)
+		if matches(got, w, now) {
+			fixed++
+		} else {
+			g, _ := json.Marshal(got)
+			t.Logf("still wrong: %q → %s (want %s)", q, g, w.I)
+		}
+	}
+	t.Logf("reconcile fixed %d of %d model mistakes", fixed, total)
+	if fixed*10 < total*7 {
+		t.Errorf("only %d of %d fixed", fixed, total)
+	}
+}
+
+func TestDayWords(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.FixedZone("MSK", 3*3600)) // Sunday
+	if d := dayFrom("где позавтракать в субботу", now); d != "2026-11-14" {
+		t.Fatalf("«позавтракать» is not «завтра»: %s", d)
+	}
+	if d := dayFrom("а завтра?", now); d != "2026-11-09" {
+		t.Fatal(d)
+	}
 }
