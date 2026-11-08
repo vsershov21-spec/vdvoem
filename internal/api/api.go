@@ -779,7 +779,11 @@ func (a *API) roundWith(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	if r.URL.Query().Get("replace") == "1" {
 		rd, err = a.App.SwapIdea(r.Context(), c, id)
 	} else {
-		rd, err = a.App.GoWith(r.Context(), c, id)
+		// an event with its own date and time goes straight to «confirm» — no time picking — then to the calendar
+		rd, err = a.App.BookFixed(r.Context(), c, id)
+		if errors.Is(err, app.ErrNoTime) {
+			rd, err = a.App.GoWith(r.Context(), c, id)
+		}
 	}
 	if err != nil {
 		return nil, err

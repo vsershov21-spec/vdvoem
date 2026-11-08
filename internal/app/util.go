@@ -40,3 +40,22 @@ func NameIns(name string) string {
 	}
 	return string(r)
 }
+
+// NameAcc: «позвал Настю», «позвала Вову»; anything unusual stays as is.
+func NameAcc(name string) string {
+	r := []rune(strings.TrimSpace(name))
+	if len(r) < 2 || !unicode.Is(unicode.Cyrillic, r[0]) {
+		return string(r)
+	}
+	switch last := r[len(r)-1]; {
+	case last == 'я':
+		return string(r[:len(r)-1]) + "ю"
+	case last == 'а':
+		return string(r[:len(r)-1]) + "у"
+	case last == 'й' || last == 'ь':
+		return string(r[:len(r)-1]) + "я"
+	case strings.ContainsRune("бвгджзклмнпрстфхцчшщ", last):
+		return string(r) + "а"
+	}
+	return string(r)
+}

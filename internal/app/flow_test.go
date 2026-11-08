@@ -467,3 +467,69 @@ func TestScout(t *testing.T) {
 		t.Fatalf("profiles: %+v / %+v", pv, pn)
 	}
 }
+
+// The assistant v2: rules understand, the server answers from data — price, mood, booking into the calendar, follow-ups.
+func TestAssistantSeamless(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	sat := ck.t.AddDate(0, 0, 3).Format("2006-01-02")
+	_, err := a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{
+		{Title: "Джазовый концерт в Козловском клубе", Category: "culture", Starts: sat + "T19:00", PriceRub: 3000, Score: 9, URL: "https://afisha.example/jazz"},
+		{Title: "СПА-вечер в банях", Category: "other", Starts: sat, PriceRub: 7000, Score: 7, URL: "https://afisha.example/spa"},
+		{Title: "Выставка импрессионистов", Category: "culture", Starts: sat, PriceRub: 1200, Score: 6},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// price from the data, with a link
+	rep, _ := as.Ask(ctx, v, "сколько стоит джазовый концерт?")
+	if rep.Intent == nil || rep.Intent.I != "price" || !strings.Contains(rep.Text, "₽") || !strings.Contains(rep.Text, "afisha.example/jazz") {
+		t.Fatalf("price: %+v", rep)
+	}
+	// unknown thing: a search link and a question for the scout
+	rep, _ = as.Ask(ctx, v, "сколько стоят билеты на Лебединое озеро")
+	if !strings.Contains(rep.Text, "yandex.ru/search") {
+		t.Fatalf("unknown price: %q", rep.Text)
+	}
+	if q, _ := a.S.OpenQuestions(ctx, v.Space.ID); len(q) != 1 {
+		t.Fatalf("scout question: %+v", q)
+	}
+	// mood: the spa first
+	rep, _ = as.Ask(ctx, v, "хотим почилить в субботу")
+	if len(rep.Cards) == 0 || !strings.Contains(rep.Cards[0].Title, "СПА") {
+		t.Fatalf("chill: %+v", rep.Cards)
+	}
+	// follow-up keeps the day, lowers the price
+	rep, _ = as.Ask(ctx, v, "а подешевле?")
+	if rep.Intent == nil || rep.Intent.Date == "" || rep.Intent.Max == 0 {
+		t.Fatalf("follow-up: %+v", rep.Intent)
+	}
+	// book a fixed-time event: no time picking, the partner confirms, both get it in the calendar
+	rep, _ = as.Ask(ctx, v, "запиши нас на джазовый концерт")
+	if !strings.Contains(rep.Text, "Позвал") {
+		t.Fatalf("book: %q", rep.Text)
+	}
+	rd, err := a.S.OpenRound(ctx, v.Space.ID)
+	if err != nil || rd.State != domain.StateConfirm || !(rd.ConfirmA || rd.ConfirmB) || rd.StartsAt.In(v.Loc()).Hour() != 19 {
+		t.Fatalf("round: %+v %v", rd, err)
+	}
+	if !strings.Contains(f.last(2), "зовёт") {
+		t.Fatalf("partner: %q", f.last(2))
+	}
+	if _, err := a.Confirm(ctx, n, rd.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ = a.S.Round(ctx, v.Space.ID, rd.ID); rd.State != domain.StatePlanned {
+		t.Fatalf("after confirm: %s", rd.State)
+	}
+	// the scout answers a question → the person hears it in the bot
+	qs, _ := a.S.OpenQuestions(ctx, v.Space.ID)
+	if k, err := a.ScoutAnswers(ctx, v.Space.ID, []app.ScoutAnswer{{ID: qs[0].ID, Text: "От 2500 ₽ за билет", PriceRub: 5000, URL: "https://tickets.example/swan"}}); err != nil || k != 1 {
+		t.Fatalf("answers %d %v", k, err)
+	}
+	if !strings.Contains(f.last(1), "Скаут ответил") {
+		t.Fatalf("answer: %q", f.last(1))
+	}
+}

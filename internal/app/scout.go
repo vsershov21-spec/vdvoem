@@ -40,6 +40,7 @@ type ScoutBrief struct {
 	People    []TasteProfile   `json:"people"`         // each person separately: learned likes/dislikes + what they said
 	Goals     []ScoutGoal      `json:"goals"`          // things to watch for, also months ahead
 	Watch     []map[string]any `json:"recheck"`        // links to re-check price/date/sold out
+	Questions []map[string]any `json:"questions"`      // asked in the app, waiting for the scout: answer via POST /agent/answers
 }
 
 type ScoutGoal struct {
@@ -135,6 +136,7 @@ func (a *App) scoutBrief(ctx context.Context, sp store.Space) ScoutBrief {
 		b.Goals = append(b.Goals, ScoutGoal{ID: g.ID, Text: g.Text})
 	}
 	b.Watch = a.PriceChecks(ctx, sp.ID)
+	b.Questions = questionsOf(ctx, a.S, sp.ID)
 	return b
 }
 

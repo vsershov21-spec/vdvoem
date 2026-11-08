@@ -47,3 +47,12 @@ export function ncase(name: string, c: 'gen' | 'acc' | 'ins'): string {
   if (/[бвгджзклмнпрстфхцчшщ]/.test(last)) return n + (c === 'ins' ? (/[жшщчц]/.test(last) ? 'ем' : 'ом') : 'а')
   return n
 }
+
+// an event with its own date and time (a play, a concert): «Идём!» books it without picking time
+export function isFixed(i: { starts_at?: number; ends_at?: number }): boolean {
+  if (!i.starts_at || i.starts_at * 1000 < Date.now()) return false
+  if (i.ends_at && i.ends_at - i.starts_at > 30 * 3600) return false
+  const d = new Date(i.starts_at * 1000)
+  const msk = (d.getUTCHours() + 3) % 24
+  return !(msk === 0 && d.getUTCMinutes() === 0)
+}

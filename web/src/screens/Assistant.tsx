@@ -18,7 +18,7 @@ export function Assistant({ home }: { home: Home | null }) {
   const end = useRef<HTMLDivElement>(null)
   const msgs = data?.messages || []
   const lastAi = [...msgs].reverse().find(m => m.role === 'assistant')
-  const lastPlan = !!lastAi?.reply.actions?.some(a => a.kind === 'plan')
+  const lastPlan = !!lastAi?.reply.actions?.some(a => a.kind === 'plan' || a.kind === 'book')
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [msgs.length, busy])
 
   const ask = async (q: string) => {
@@ -95,7 +95,7 @@ function AiMsg({ r, done, onPress }: { r: Reply; done: Record<string, string>; o
         <div className="ai-acts">
           {r.actions.map(a => (
             <button key={a.id} className="ai-act" data-done={done[a.id] ? '' : undefined} onClick={() => onPress(a.id)}>
-              <Icon n={done[a.id] ? 'check' : a.kind === 'plan' ? 'cal' : a.kind === 'add_idea' ? 'plus' : 'spark'} s={16} w={2.4} />{done[a.id] ? 'Готово' : a.label}
+              <Icon n={done[a.id] ? 'check' : a.kind === 'plan' || a.kind === 'book' ? 'cal' : a.kind === 'add_idea' ? 'plus' : 'spark'} s={16} w={2.4} />{done[a.id] ? 'Готово' : a.label}
             </button>
           ))}
         </div>
