@@ -127,7 +127,7 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 }
 
 func (as *Assistant) hello(c app.Couple) Reply {
-	return Reply{Text: "Я помогаю планировать вам двоим. Спроси, например:\n• Куда сходить в субботу вечером до 4000 ₽?\n• Удиви нас\n• Что у нас запланировано?\n• Где мы были в последнее время?\n• Добавь: каток в Парке Горького"}
+	return Reply{Text: "Я помогаю вам двоим выбирать, куда сходить, и договариваться. Можно просто сказать, например:\n• Что интересного на неделе?\n• Хотим почилить в субботу вечером\n• Расскажи про Чайку — нам подойдёт?\n• Сколько стоит Щелкунчик?\n• Запиши нас на джаз в пятницу\n• Следи за билетами на Земфиру"}
 }
 
 // the previous request's meaning, if the last answer is recent enough to be followed up

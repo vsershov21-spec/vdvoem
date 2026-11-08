@@ -2,10 +2,13 @@ package assistant
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"vdvoem/internal/ai"
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/domain"
@@ -78,6 +81,11 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 		return r.suggestText(ctx, in)
 	case "find":
 		return r.find(ctx, in)
+	}
+	if !isGreeting(text) {
+		if t, ok := r.chatter(ctx, text); ok {
+			return Reply{Text: t}
+		}
 	}
 	h := r.as.hello(r.c)
 	if in.conf < 0.5 && in.I == "chat" && !isGreeting(text) {
@@ -210,22 +218,11 @@ func (r *run) find(ctx context.Context, in Intent) Reply {
 				r.propose(ctx, "plan", map[string]any{"idea_id": id}, "Идём: "+short(fmt.Sprint(events[0]["title"]), 26))
 			}
 		}
-		lead := "Вот что подходит"
-		if cond != "" {
-			lead += " (" + cond + ")"
-		}
-		lead += " — сверху то, что зайдёт вам обоим."
-		if len(in.Moods) > 0 {
-			lead = "Под настроение"
-			if cond != "" {
-				lead += " — " + cond
-			}
-			lead += ": сверху то, что вам обоим нравится больше."
-		}
 		if len(events) < 3 {
 			r.catalogButtons(ctx, in, 2)
 		}
-		return Reply{Text: lead + "\nМожно уточнить: «подешевле», «без театра», «а в воскресенье?»."}
+		found, _ := res["found"].(int)
+		return Reply{Text: r.talk(events, found, in, cond)}
 	}
 	// nothing in the data: ideas of the kind, as buttons to add — and a question to the scout
 	n := r.catalogButtons(ctx, in, 3)
@@ -490,4 +487,120 @@ func upperFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(string(r[0])) + string(r[1:])
+}
+
+// talk: an answer the way a good assistant says it — the best option for both first, with when, price and why,
+// then the rest in one line. Every fact comes from the found events; nothing is made up.
+func (r *run) talk(events []map[string]any, found int, in Intent, cond string) string {
+	pn := r.c.PartnerName()
+	var b strings.Builder
+	switch {
+	case len(in.Moods) > 0:
+		fmt.Fprintf(&b, "Под настроение%s нашёл %s.", condSuffix(cond), plural(found, "вариант", "варианта", "вариантов"))
+	case in.Scout:
+		fmt.Fprintf(&b, "Скаут нашёл%s %s.", condSuffix(cond), plural(found, "вариант", "варианта", "вариантов"))
+	case cond != "":
+		fmt.Fprintf(&b, "%s — %s.", upperFirst(cond), plural(found, "вариант", "варианта", "вариантов"))
+	default:
+		fmt.Fprintf(&b, "Нашёл %s.", plural(found, "вариант", "варианта", "вариантов"))
+	}
+	top := events[0]
+	b.WriteString(" Лучше всего вам двоим — «" + fmt.Sprint(top["title"]) + "»")
+	var meta []string
+	if w, ok := top["when"].(string); ok && w != "" {
+		meta = append(meta, w)
+	}
+	if p, ok := top["price_rub"].(int64); ok && p > 0 {
+		meta = append(meta, "≈ "+domain.Money(p*100)+" на двоих")
+	}
+	if len(meta) > 0 {
+		b.WriteString(": " + strings.Join(meta, ", "))
+	}
+	b.WriteString(".")
+	if w, ok := top["why"].(string); ok && w != "" {
+		b.WriteString(" " + upperFirst(strings.TrimSuffix(w, ".")) + ".")
+	}
+	switch top["partner_wish"] {
+	case "want", "very":
+		b.WriteString(" " + pn + " уже отметил(а) «хочу».")
+	case "skip":
+		b.WriteString(" Правда, " + pn + " это пропускал(а).")
+	}
+	if len(events) > 1 {
+		var more []string
+		for _, e := range events[1:] {
+			t := "«" + fmt.Sprint(e["title"]) + "»"
+			if w, ok := e["when"].(string); ok && w != "" {
+				t += " (" + w + ")"
+			}
+			more = append(more, t)
+		}
+		b.WriteString("\nЕщё: " + strings.Join(more, ", ") + ".")
+	}
+	b.WriteString("\nМожно уточнить: «подешевле», «а в воскресенье?», «без театра».")
+	return b.String()
+}
+
+func condSuffix(c string) string {
+	if c == "" {
+		return ""
+	}
+	return " (" + c + ")"
+}
+
+func plural(n int, one, few, many string) string {
+	m := n % 100
+	w := many
+	switch {
+	case m >= 11 && m <= 14:
+	case m%10 == 1:
+		w = one
+	case m%10 >= 2 && m%10 <= 4:
+		w = few
+	}
+	return fmt.Sprintf("%d %s", n, w)
+}
+
+var chatSchema = map[string]any{"type": "object", "properties": map[string]any{"reply": map[string]any{"type": "string"}}, "required": []string{"reply"}}
+
+// chatter: small talk in the model's own words — short, warm, and never a fact: places, prices and dates come only
+// from the app's data, so a reply that names one (digits, «…») is dropped for the plain help text.
+func (r *run) chatter(ctx context.Context, text string) (string, bool) {
+	c := r.as.AI
+	if !c.Enabled() {
+		return "", false
+	}
+	ctx, cancel := context.WithTimeout(ctx, LLMBudget)
+	defer cancel()
+	sys := "Ты — помощник пары в приложении «Вдвоём»: помогаешь выбрать, куда сходить вдвоём, и договориться о времени. " +
+		"Ответь по-русски одним-двумя короткими предложениями, тепло и по делу. Не называй мест, событий, цен и дат — их подбирает приложение. " +
+		"Если человеку нужна идея — подскажи, что можно написать, например «хотим почилить в субботу» или «что интересного на неделе»."
+	raw, err := c.Structured(ctx, "chat", []ai.Message{{Role: "system", Content: sys}, {Role: "user", Content: text}}, chatSchema, 70)
+	if err != nil {
+		return "", false
+	}
+	var out struct {
+		Reply string `json:"reply"`
+	}
+	if json.Unmarshal(raw, &out) != nil {
+		return "", false
+	}
+	t := strings.TrimSpace(out.Reply)
+	if len([]rune(t)) < 8 || len([]rune(t)) > 320 || strings.ContainsAny(t, "0123456789«»\"") || !cyrillic(t) {
+		return "", false
+	}
+	return t, true
+}
+
+func cyrillic(s string) bool {
+	n, cy := 0, 0
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			n++
+			if unicode.Is(unicode.Cyrillic, r) {
+				cy++
+			}
+		}
+	}
+	return n > 0 && cy*10 >= n*8
 }
