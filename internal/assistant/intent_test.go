@@ -176,3 +176,17 @@ func TestReconcileTuned(t *testing.T) {
 	}
 	t.Logf("tuned: %d right answers broken; %d of %d mistakes fixed", broken, fixed, total)
 }
+
+// «что есть на неделе» is a look at the afisha, not one pick from the bank; small talk is talk.
+func TestWeekAndTalk(t *testing.T) {
+	now := time.Date(2026, 11, 8, 21, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	for q, want := range map[string]string{"а что есть на неделе": "find", "что интересного на неделе?": "find", "куда сходить на этой неделе": "find",
+		"что нарыл агент": "find", "как дела?": "chat", "что посоветуешь": "suggest"} {
+		if got := rulesIntent(q, now); got.I != want {
+			t.Errorf("%q → %s, want %s", q, got.I, want)
+		}
+	}
+	if !rulesIntent("что нарыл агент", now).Scout {
+		t.Error("the agent's finds are the afisha")
+	}
+}

@@ -135,7 +135,7 @@ func rulesIntent(text string, now time.Time) Intent {
 	in := Intent{I: "find", Date: q.Date, Wknd: q.Weekend, Part: q.Part, Max: q.MaxRub, Cats: q.Include, Not: q.Exclude, NotW: q.NotWords,
 		Moods: moods, Q: q.Query, Hz: q.Horizon, Scout: !q.WholeBank}
 	signals := 0
-	for _, b := range []bool{q.Date != "", q.Weekend, q.Part != "", q.MaxRub > 0, len(q.Include) > 0, len(q.Exclude) > 0, len(moods) > 0, q.Horizon == "later", !q.WholeBank, q.Query != ""} {
+	for _, b := range []bool{q.Date != "", q.Weekend, q.Part != "", q.MaxRub > 0, len(q.Include) > 0, len(q.Exclude) > 0, len(moods) > 0, q.Horizon == "later" || q.Horizon == "week" && q.Date == "" && !q.Weekend, !q.WholeBank, q.Query != ""} {
 		if b {
 			signals++
 		}
@@ -149,8 +149,10 @@ func rulesIntent(text string, now time.Time) Intent {
 		in.conf = 0.7
 	case signals == 1:
 		in.conf = 0.6
-	case asks:
+	case asks && has(t, "куда", "посовет", "предлож", "подбер", "идею", "идея", "чем заняться", "что делать"):
 		in.I, in.Mode, in.conf = "suggest", "best", 0.5
+	case asks:
+		in.I, in.conf = "chat", 0.3 // «как дела?» — talk, not a pick
 	default:
 		in.I, in.conf = "chat", 0.2
 	}
