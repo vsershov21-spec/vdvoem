@@ -620,4 +620,3 @@ func (s *Store) LogScout(ctx context.Context, spaceID int64, picks, prices int, 
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO scout_runs(space_id, picks, prices, note, created_at) VALUES (?,?,?,?,?)`, spaceID, picks, prices, note, now.Unix())
 	return err
 }
-
