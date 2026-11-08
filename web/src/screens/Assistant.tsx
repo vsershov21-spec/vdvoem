@@ -60,7 +60,7 @@ export function Assistant({ home }: { home: Home | null }) {
           ? <div key={m.id} className="msg msg--me">{m.reply.text}</div>
           : <AiMsg key={m.id} r={m.reply} done={done} onPress={press} />)}
         {busy && <div className="msg msg--ai typing" aria-label="Печатает"><i /><i /><i /></div>}
-        <div ref={end} />
+        <div ref={end} style={{ scrollMarginBottom: "calc(var(--dock-h) + var(--safe-b) + 90px)" }} /* stop above the composer and the tab bar */ />
       </div>
       {msgs.length < 2 && !busy && <div className="sugg sugg--dock rise" style={{ ['--d' as any]: 2 }}>{SUGG.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
       <form className="composer" onSubmit={e => { e.preventDefault(); ask(text) }}>
