@@ -62,6 +62,10 @@ var tagWords = map[string][]string{
 	"kids":     {"детск", "для детей", "семейн"},
 }
 
+var genreMoods = map[string][]string{"комедия": {"fun"}, "стендап": {"fun"}, "шоу": {"fun"}, "мелодрама": {"romantic"}, "оперетта": {"romantic", "culture"},
+	"балет": {"romantic", "culture"}, "опера": {"culture"}, "джаз": {"romantic"}, "иммерсивный": {"new"}, "детям": {"kids"}, "гастро": {"food"},
+	"классическая музыка": {"chill", "culture"}, "выставка": {"chill", "culture"}, "лекция": {"culture"}}
+
 var catTags = map[string][]string{"food": {"food"}, "culture": {"culture"}, "walk": {"outdoor", "chill"}, "sport": {"active"}}
 
 // TagsOf: an idea's moods, from its category, words and the scout's reason.
@@ -84,6 +88,11 @@ func TagsOf(i store.Idea) []string {
 				add(m)
 				break
 			}
+		}
+	}
+	for _, g := range i.Info.Genres {
+		for _, t := range genreMoods[g] {
+			add(t)
 		}
 	}
 	if i.PriceMin == 0 && strings.Contains(text, "бесплат") {

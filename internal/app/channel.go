@@ -163,7 +163,8 @@ func eventPick(e postEvent, post ChannelPost) ScoutPick {
 // showPick: one show, its nearest date; the other dates and the discount go into «why»
 func showPick(sc scanned, post ChannelPost, loc *time.Location) ScoutPick {
 	d := sc.dates[0]
-	p := ScoutPick{Title: sc.Title, Address: sc.Venue, Category: sc.Category, URL: post.Link, Why: "из канала «" + clip(post.From, 40) + "»"}
+	p := ScoutPick{Title: sc.Title, Address: sc.Venue, Category: sc.Category, URL: post.Link, Why: "из канала «" + clip(post.From, 40) + "»",
+		About: sc.info.About, Genres: sc.info.Genres, Cast: sc.info.Cast, Age: sc.info.Age}
 	if len(post.Links) > 0 {
 		p.URL = post.Links[0]
 	}
@@ -400,6 +401,7 @@ type scanned struct {
 	postEvent
 	dates []time.Time // every date of the show, nearest first
 	orig  int64       // the usual price, when the post gives «вместо …»
+	info  store.Info
 }
 
 func digits(s string) int64 {
@@ -542,6 +544,7 @@ func scanPost(text string, now time.Time) (scanned, bool) {
 			}
 		}
 	}
+	out.info = InfoFromText(out.Title, text)
 	out.Category = "culture"
 	if regexp.MustCompile(`гастро|ужин|ресторан|дегустац`).MatchString(low) && !strings.Contains(low, "театр") {
 		out.Category = "food"
