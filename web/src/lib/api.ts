@@ -28,6 +28,14 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   return data as T
 }
 
+// a file upload (a voice recording) — multipart, same auth
+export async function upload<T = any>(path: string, form: FormData): Promise<T> {
+  const res = await fetch('/api' + path, { method: 'POST', headers: authHeaders(), body: form })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new ApiError(res.status, data.error || 'error')
+  return data as T
+}
+
 export const get = <T = any>(p: string) => api<T>('GET', p)
 export const post = <T = any>(p: string, b?: unknown) => api<T>('POST', p, b ?? {})
 export const patch = <T = any>(p: string, b: unknown) => api<T>('PATCH', p, b)
@@ -41,6 +49,8 @@ export const errText: Record<string, string> = {
   round_open: 'У вас уже идёт выбор — сначала завершите его.',
   no_ideas: 'В копилке нечего предложить.',
   limit: 'На сегодня вопросов достаточно — продолжим завтра.',
+  voice_failed: 'Не получилось разобрать голос — напиши текстом.',
+  audio_too_long: 'Слишком длинно — скажи покороче.',
   unauthorized: 'Открой приложение из Telegram.',
 }
 export const humanError = (e: unknown) => (e instanceof ApiError && errText[e.code]) || 'Не получилось. Попробуй ещё раз.'

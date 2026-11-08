@@ -99,13 +99,103 @@ func (s *Store) AddExample(ctx context.Context, memberID int64, input, calls, an
 }
 
 func (s *Store) AcceptExample(ctx context.Context, id int64) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE llm_examples SET accepted=1 WHERE id=?`, id)
+	_, err := s.DB.ExecContext(ctx, `UPDATE llm_examples SET accepted=1, outcome=CASE WHEN outcome='' THEN 'pressed' ELSE outcome END WHERE id=?`, id)
+	return err
+}
+
+// SetOutcome: how the request ended (clarified | rephrased | labeled …); a miss is never a training example.
+func (s *Store) SetOutcome(ctx context.Context, id int64, outcome, src string) error {
+	q := `UPDATE llm_examples SET outcome=?`
+	args := []any{outcome}
+	if src != "" {
+		q += `, src=?`
+		args = append(args, src)
+	}
+	if outcome == "clarified" || outcome == "rephrased" {
+		q += `, accepted=0`
+	}
+	_, err := s.DB.ExecContext(ctx, q+` WHERE id=?`, append(args, id)...)
+	return err
+}
+
+// LastExample: the member's previous understood request (to notice «asked again in other words»).
+func (s *Store) LastExample(ctx context.Context, memberID int64) (Example, error) {
+	var e Example
+	var a int
+	var at int64
+	err := s.DB.QueryRowContext(ctx, `SELECT id, input, calls, answer, accepted, outcome, src, created_at FROM llm_examples WHERE member_id=? ORDER BY id DESC LIMIT 1`, memberID).
+		Scan(&e.ID, &e.Input, &e.Calls, &e.Answer, &a, &e.Outcome, &e.Src, &at)
+	e.Accepted, e.At = a == 1, time.Unix(at, 0)
+	return e, err
+}
+
+// Misses: requests understood wrong (clarified, rephrased) — to be labeled and trained on.
+func (s *Store) Misses(ctx context.Context, since time.Time) ([]Example, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, input, calls, answer, accepted, outcome, src, created_at FROM llm_examples
+		WHERE outcome IN ('clarified','rephrased','clarified+labeled','rephrased+labeled') AND created_at>=? ORDER BY id`, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Example
+	for rows.Next() {
+		var e Example
+		var a int
+		var at int64
+		if err := rows.Scan(&e.ID, &e.Input, &e.Calls, &e.Answer, &a, &e.Outcome, &e.Src, &at); err != nil {
+			return nil, err
+		}
+		e.Accepted, e.At = a == 1, time.Unix(at, 0)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// Outcomes: counts per outcome since a moment — the live «understood» rate.
+func (s *Store) Outcomes(ctx context.Context, since time.Time) (map[string]int, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT outcome, src, COUNT(*) FROM llm_examples WHERE created_at>=? GROUP BY outcome, src`, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var o, src string
+		var n int
+		if err := rows.Scan(&o, &src, &n); err != nil {
+			return nil, err
+		}
+		if o == "" {
+			o = "none"
+		}
+		out[o] += n
+		if src != "" {
+			out["src:"+src] += n
+		}
+	}
+	return out, rows.Err()
+}
+
+// LabelExample: the right reading of a missed request (by a person or the labeling agent) — a training example
+func (s *Store) LabelExample(ctx context.Context, missID int64, calls string, now time.Time) error {
+	r, err := s.DB.ExecContext(ctx, `INSERT INTO llm_examples(member_id, input, calls, answer, accepted, outcome, src, created_at)
+		SELECT member_id, input, ?, '', 1, 'labeled', 'agent', ? FROM llm_examples WHERE id=?`, calls, now.Unix(), missID)
+	if err != nil {
+		return err
+	}
+	if n, _ := r.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	_, err = s.DB.ExecContext(ctx, `UPDATE llm_examples SET outcome=outcome||'+labeled' WHERE id=? AND outcome NOT LIKE '%+labeled'`, missID)
 	return err
 }
 
 type Example struct {
+	ID                   int64
 	Input, Calls, Answer string
 	Accepted             bool
+	Outcome, Src         string
+	At                   time.Time
 }
 
 func (s *Store) Examples(ctx context.Context, onlyAccepted bool) ([]Example, error) {

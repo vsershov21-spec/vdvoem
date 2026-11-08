@@ -11,6 +11,7 @@
 //	TG_API_BASE     https://api.telegram.org (emulator in tests)
 //	AI_URL, AI_KEY, AI_MODEL   OpenAI-compatible endpoint (a local Ollama works); empty = rules only
 //	AI_TIMEOUT      seconds for one model step (default 25, local 90)
+//	STT_URL         local whisper.cpp server for voice (deploy/stt.sh); empty = voice off
 //	TG_MODE         poll (default: the server fetches updates, no inbound connections) | webhook
 //	SETUP=1         register commands, menu button, description (and the webhook in webhook mode) at start
 //	DEV_TOKEN       e2e only: accept X-Dev-User when X-Dev-Token matches (never in production)
@@ -40,6 +41,7 @@ import (
 	"vdvoem/internal/live"
 	"vdvoem/internal/parse"
 	"vdvoem/internal/store"
+	"vdvoem/internal/stt"
 	"vdvoem/internal/tg"
 )
 
@@ -148,8 +150,12 @@ func main() {
 	if n := a.FixShoutingTitles(ctx); n > 0 {
 		log.Info("tidied shouting titles", "n", n)
 	}
-	b := &bot.Bot{App: a, Helper: helper, TG: client, Secret: secret, Log: log}
-	ap := &api.API{App: a, Helper: helper, BotToken: token, WebDir: env("WEB_DIR", "./web/dist"), Log: log}
+	voice := &stt.Client{URL: env("STT_URL", "")}
+	if voice.Enabled() {
+		log.Info("voice on", "stt", voice.URL)
+	}
+	b := &bot.Bot{App: a, Helper: helper, TG: client, STT: voice, Secret: secret, Log: log}
+	ap := &api.API{App: a, Helper: helper, STT: voice, BotToken: token, WebDir: env("WEB_DIR", "./web/dist"), Log: log}
 	if t := env("DEV_TOKEN", ""); t != "" {
 		if len(t) < 24 {
 			log.Error("DEV_TOKEN must be at least 24 characters")

@@ -1,0 +1,48 @@
+name: stt
+# Voice for the assistant: whisper.cpp's HTTP server and a static ffmpeg, built for the server's CPU class
+# (x86-64 with AVX2) and published as the release «stt». deploy/stt.sh installs it.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/stt.yml, deploy/stt.sh]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: whisper.cpp (latest release)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          set -e
+          TAG=$(gh api repos/ggml-org/whisper.cpp/releases/latest --jq .tag_name)
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          git clone -q --depth 1 --branch "$TAG" https://github.com/ggml-org/whisper.cpp
+          cmake -S whisper.cpp -B b -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF \
+            -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_OPENMP=OFF \
+            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+          cmake --build b -j4 --target whisper-server
+          mkdir -p stt && cp "$(find b -type f -name whisper-server | head -1)" stt/
+          ldd stt/whisper-server || true
+      - name: ffmpeg (static build)
+        run: |
+          set -e
+          curl -fsSL -o ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xJf ff.tar.xz && cp ffmpeg-*-static/ffmpeg stt/
+          ./stt/ffmpeg -version | head -1
+      - name: Smoke test
+        run: |
+          set -e
+          ./stt/whisper-server --help | head -3
+          echo "whisper.cpp $TAG, built ${GITHUB_SHA::7}" > stt/VERSION
+          tar -C stt -czf stt-linux-amd64.tar.gz .
+          sha256sum stt-linux-amd64.tar.gz > stt-linux-amd64.tar.gz.sha256
+      - name: Publish release «stt»
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release delete stt --yes --cleanup-tag -R "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh release create stt stt-linux-amd64.tar.gz stt-linux-amd64.tar.gz.sha256 -R "$GITHUB_REPOSITORY" \
+            --title "stt (whisper.cpp $TAG)" --notes "Voice for the assistant — install with deploy/stt.sh" --target "${GITHUB_SHA}" --prerelease

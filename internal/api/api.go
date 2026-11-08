@@ -22,12 +22,14 @@ import (
 	"vdvoem/internal/domain"
 	"vdvoem/internal/live"
 	"vdvoem/internal/store"
+	"vdvoem/internal/stt"
 	"vdvoem/internal/tgauth"
 )
 
 type API struct {
 	App      *app.App
 	Helper   *assistant.Assistant
+	STT      *stt.Client // voice in the composer; nil — off
 	BotToken string
 	WebDir   string
 	Log      *slog.Logger
@@ -83,6 +85,8 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("GET /api/assistant", a.chat)
 	h("POST /api/assistant", a.askAssistant)
 	h("POST /api/assistant/act", a.act)
+	h("GET /api/assistant/hints", a.hints)
+	h("POST /api/assistant/voice", a.voice)
 	h("DELETE /api/assistant", a.clearChat)
 	mux.HandleFunc("GET /app/", a.static)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/", http.StatusFound) })
@@ -1055,7 +1059,38 @@ func (a *API) invite(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 
 func (a *API) chat(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
 	h, err := a.Helper.History(r.Context(), c)
-	return map[string]any{"messages": h, "ai": a.Helper.AI.Enabled(), "limit": assistant.DailyLimit}, err
+	return map[string]any{"messages": h, "ai": a.Helper.AI.Enabled(), "limit": assistant.DailyLimit, "voice": a.STT.Enabled()}, err
+}
+
+func (a *API) hints(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.Helper.Hints(r.Context(), c)
+}
+
+// voice: a recording from the composer (multipart «audio») → heard text → the usual answer
+func (a *API) voice(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	if !a.STT.Enabled() {
+		return nil, httpErr{404, "voice_off"}
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, stt.MaxBytes+64<<10)
+	f, h, err := r.FormFile("audio")
+	if err != nil {
+		return nil, bad("bad_audio")
+	}
+	defer f.Close()
+	audio, err := io.ReadAll(io.LimitReader(f, stt.MaxBytes+1))
+	if err != nil || len(audio) > stt.MaxBytes {
+		return nil, bad("audio_too_long")
+	}
+	text, err := a.STT.Text(r.Context(), audio, h.Filename)
+	if errors.Is(err, stt.ErrEmpty) {
+		return map[string]any{"heard": ""}, nil
+	}
+	if err != nil {
+		a.Log.Warn("voice", "err", err)
+		return nil, httpErr{502, "voice_failed"}
+	}
+	rep, err := a.Helper.Ask(r.Context(), c, text)
+	return map[string]any{"heard": text, "reply": rep}, err
 }
 
 func (a *API) askAssistant(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
