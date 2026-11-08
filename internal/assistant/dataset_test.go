@@ -41,16 +41,21 @@ func TestDatasetLabels(t *testing.T) {
 			var e struct {
 				Messages []struct{ Role, Content string } `json:"messages"`
 			}
-			if err := json.Unmarshal([]byte(line), &e); err != nil || len(e.Messages) != 3 {
+			if err := json.Unmarshal([]byte(line), &e); err != nil || len(e.Messages)%2 != 1 || len(e.Messages) < 3 {
 				t.Fatalf("%s: bad line", split)
 			}
+			last := e.Messages[len(e.Messages)-1]
 			var in Intent
-			if err := json.Unmarshal([]byte(e.Messages[2].Content), &in); err != nil {
-				t.Fatalf("%s: bad label %s", split, e.Messages[2].Content)
+			if err := json.Unmarshal([]byte(last.Content), &in); err != nil || last.Role != "assistant" {
+				t.Fatalf("%s: bad label %s", split, last.Content)
 			}
 			s := sanitize(in)
 			if a, _ := json.Marshal(s); string(a) != string(mustJSON(in)) {
-				t.Fatalf("%s: label has values the app drops: %s → %s", split, e.Messages[2].Content, a)
+				t.Fatalf("%s: label has values the app drops: %s → %s", split, last.Content, a)
+			}
+			if len(e.Messages) > 3 {
+				n++
+				continue // a dialogue: the rules alone do not see the first turn
 			}
 			day := e.Messages[0].Content[strings.Index(e.Messages[0].Content, "Сегодня ")+len("Сегодня ") : strings.Index(e.Messages[0].Content, "Сегодня ")+len("Сегодня ")+10]
 			now, _ := time.ParseInLocation("2006-01-02", day, time.FixedZone("MSK", 3*3600))

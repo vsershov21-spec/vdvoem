@@ -190,3 +190,22 @@ func TestWeekAndTalk(t *testing.T) {
 		t.Error("the agent's finds are the afisha")
 	}
 }
+
+func TestRefersTo(t *testing.T) {
+	titles := []string{"Джаз в Козловском", "Чайка", "Каток в Парке Горького"}
+	for q, want := range map[string]string{"расскажи про второе": "about:Чайка", "сколько стоит первое?": "price:Джаз в Козловском",
+		"давай на последнее": "book:Каток в Парке Горького", "давай туда": "book:Джаз в Козловском", "а второе подороже?": "price:Чайка"} {
+		in, ok := refersTo(q, titles)
+		if !ok || in.I+":"+in.Q != want {
+			t.Errorf("%q → %v %s:%s, want %s", q, ok, in.I, in.Q, want)
+		}
+	}
+	for _, q := range []string{"что это за спектакль Чайка", "а что есть на неделе", "подешевле"} {
+		if _, ok := refersTo(q, titles); ok {
+			t.Errorf("%q is not a reference", q)
+		}
+	}
+	if _, ok := refersTo("расскажи про второе", nil); ok {
+		t.Error("nothing was shown")
+	}
+}

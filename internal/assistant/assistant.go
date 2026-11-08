@@ -106,7 +106,8 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 
 	start := time.Now()
 	run := &run{as: as, c: c}
-	in, src := as.Understand(ctx, text, lastIntent(prev, as.now()), as.now().In(c.Loc()))
+	pt := lastTurn(prev, as.now())
+	in, src := as.Understand(ctx, text, pt, as.now().In(c.Loc()))
 	rep := run.do(ctx, in, text)
 	rep.Intent, rep.Src, rep.Ms = &in, src, time.Since(start).Milliseconds()
 	if in.I != "chat" { // a labelled example for the model: accepted once a button from it is pressed
@@ -130,23 +131,44 @@ func (as *Assistant) hello(c app.Couple) Reply {
 	return Reply{Text: "Я помогаю вам двоим выбирать, куда сходить, и договариваться. Можно просто сказать, например:\n• Что интересного на неделе?\n• Хотим почилить в субботу вечером\n• Расскажи про Чайку — нам подойдёт?\n• Сколько стоит Щелкунчик?\n• Запиши нас на джаз в пятницу\n• Следи за билетами на Земфиру"}
 }
 
-// the previous request's meaning, if the last answer is recent enough to be followed up
-func lastIntent(prev []store.ChatMsg, now time.Time) Intent {
+// Turn: the previous exchange — what was asked, how it was understood, what was shown — for follow-ups
+// («а подешевле?») and references («расскажи про второе»).
+type Turn struct {
+	Text   string
+	In     Intent
+	Titles []string
+}
+
+func lastTurn(prev []store.ChatMsg, now time.Time) Turn {
 	for k := len(prev) - 1; k >= 0; k-- {
 		if prev[k].Role != "assistant" {
 			continue
 		}
 		if now.Sub(prev[k].CreatedAt) > 2*time.Hour {
-			return Intent{}
+			return Turn{}
 		}
 		var r Reply
-		if json.Unmarshal(prev[k].Body, &r) == nil && r.Intent != nil {
-			return *r.Intent
+		if json.Unmarshal(prev[k].Body, &r) != nil || r.Intent == nil {
+			return Turn{}
 		}
-		return Intent{}
+		t := Turn{In: *r.Intent}
+		for _, c := range r.Cards {
+			if c.Type == "idea" && c.Title != "" {
+				t.Titles = append(t.Titles, c.Title)
+			}
+		}
+		if k > 0 && prev[k-1].Role == "user" {
+			var u Reply
+			if json.Unmarshal(prev[k-1].Body, &u) == nil {
+				t.Text = u.Text
+			}
+		}
+		return t
 	}
-	return Intent{}
+	return Turn{}
 }
+
+func lastIntent(prev []store.ChatMsg, now time.Time) Intent { return lastTurn(prev, now).In }
 
 // History for the chat screen.
 func (as *Assistant) History(ctx context.Context, c app.Couple) ([]map[string]any, error) {
