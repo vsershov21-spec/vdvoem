@@ -32,7 +32,7 @@ func (c *Client) M() string {
 	if p := c.over.Load(); p != nil {
 		return *p
 	}
-	return c.M()
+	return c.Model
 }
 
 // SetModel switches every request to another model ("" — back to Model). One model for everything:
