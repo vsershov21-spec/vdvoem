@@ -440,6 +440,12 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		toast = "Голос принят"
 	case "rs":
 		_, err = b.App.Reshuffle(ctx, c, id(1))
+	case "ts": // «this time suits me»: ts:<round>:<yyyy-mm-dd>:<part>
+		_, err = b.App.AcceptSlot(ctx, c, id(1), arg(2)+":"+arg(3))
+		toast = "Подходит ✓"
+		if err == nil && q.Message != nil {
+			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>Ты выбрал(а) это время</i>", nil)
+		}
 	case "ex": // «А потом?»: the partner answers a proposed next stop
 		_, err = b.App.AnswerExtra(ctx, c, id(1), arg(2) == "y")
 		if errors.Is(err, app.ErrExtraOwn) {

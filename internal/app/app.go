@@ -666,11 +666,65 @@ func (a *App) SubmitSlots(ctx context.Context, c Couple, roundID int64, keys []s
 	}
 	if both {
 		a.announceVote(ctx, c, r)
-	} else if c.Partner != nil {
-		a.sendQuiet(ctx, c.Partner.ChatID, fmt.Sprintf("%s отметил(а) время. Твоя очередь.", esc(c.Me.Name)),
-			tg.Keyboard(tg.Row(tg.App("Отметить время", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
+	} else if c.Partner != nil { // the proposal in the open: the partner agrees in one tap or offers another time
+		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s предлагает время:\n%s\n\nПодходит — нажми. Нет — предложи своё.", esc(c.Me.Name), esc(slotList(slots, 6))),
+			a.slotButtons(r.ID, slots, "Другое время"))
 	}
 	return r, nil
+}
+
+// AcceptSlot: «this time suits me» — the partner's slot joins mine, which makes the overlap.
+func (a *App) AcceptSlot(ctx context.Context, c Couple, roundID int64, key string) (domain.Round, error) {
+	r, err := a.round(ctx, c, roundID)
+	if err != nil {
+		return r, err
+	}
+	mine := r.SlotsA
+	if c.Me.Color == "b" {
+		mine = r.SlotsB
+	}
+	keys := []string{key}
+	for _, s := range mine {
+		if s.Key() != key {
+			keys = append(keys, s.Key())
+		}
+	}
+	return a.SubmitSlots(ctx, c, roundID, keys)
+}
+
+var partNames = [3]string{"утро", "день", "вечер"}
+
+func slotLabel(s domain.Slot) string {
+	return strings.ToLower(ruWeekdayShort(s.Day)) + " " + s.Day.Format("02.01") + " · " + partNames[s.Part]
+}
+
+func ruWeekdayShort(t time.Time) string {
+	return [...]string{"вс", "пн", "вт", "ср", "чт", "пт", "сб"}[t.Weekday()]
+}
+
+func slotList(ss []domain.Slot, n int) string {
+	var l []string
+	for k, s := range ss {
+		if k == n {
+			l = append(l, fmt.Sprintf("и ещё %d", len(ss)-n))
+			break
+		}
+		l = append(l, "• "+slotLabel(s))
+	}
+	return strings.Join(l, "\n")
+}
+
+// slotButtons: up to four of the partner's slots as «✓ сб 15.11 · вечер», then «choose in the app»
+func (a *App) slotButtons(roundID int64, ss []domain.Slot, other string) *tg.Markup {
+	var rows [][]tg.Button
+	for k, s := range ss {
+		if k == 4 {
+			break
+		}
+		rows = append(rows, tg.Row(tg.CB("✓ "+slotLabel(s), fmt.Sprintf("ts:%d:%s", roundID, s.Key()))))
+	}
+	rows = append(rows, tg.Row(tg.App(other, a.appURL(fmt.Sprintf("round/%d", roundID)))))
+	return tg.Keyboard(rows...)
 }
 
 func (a *App) windows(c Couple, r domain.Round) []domain.Window {
@@ -754,10 +808,19 @@ func (a *App) fixTime(ctx context.Context, c Couple, r *domain.Round) {
 }
 
 func (a *App) announceVote(ctx context.Context, c Couple, r domain.Round) {
-	if r.State == domain.StateTime {
+	if r.State == domain.StateTime { // no overlap yet: not a dead end — each sees the other's time and picks one
 		for _, m := range a.both(c) {
-			a.send(ctx, m.ChatID, "Время не совпало ни в один слот. Попробуйте отметить ещё варианты — или выберите ближайший удобный вечер одного из вас.",
-				tg.Keyboard(tg.Row(tg.App("Изменить время", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
+			theirs, name := r.SlotsB, "партнёр"
+			if m.Color == "b" {
+				theirs = r.SlotsA
+			}
+			for _, x := range a.both(c) {
+				if x.ID != m.ID {
+					name = x.Name
+				}
+			}
+			a.send(ctx, m.ChatID, fmt.Sprintf("Пока не совпало. %s может:\n%s\n\nВыбери подходящее — и договорились. Или предложи другой день.", esc(name), esc(slotList(theirs, 6))),
+				a.slotButtons(r.ID, theirs, "Предложить другое"))
 		}
 		return
 	}
@@ -975,6 +1038,10 @@ func (a *App) Confirm(ctx context.Context, c Couple, roundID int64) (domain.Roun
 }
 
 func (a *App) ICS(ctx context.Context, c Couple, r domain.Round, seq int, cancelled bool) []byte {
+	return []byte(a.icsEvent(ctx, c, r, seq, cancelled).Render())
+}
+
+func (a *App) icsEvent(ctx context.Context, c Couple, r domain.Round, seq int, cancelled bool) domain.ICS {
 	i, _ := a.S.Idea(ctx, c.Space.ID, r.Chosen)
 	desc := "Запланировано во «Вдвоём»."
 	if i.Note != "" {
@@ -1001,7 +1068,7 @@ func (a *App) ICS(ctx context.Context, c Couple, r domain.Round, seq int, cancel
 		e.More = append(e.More, domain.ICS{UID: fmt.Sprintf("extra-%d@vdvoem", st.Extra.ID), Sequence: seq, Title: st.Idea.Title, Location: l,
 			URL: sp.Maps, Desc: "После «" + i.Title + "». Запланировано во «Вдвоём».", Start: st.Start, End: st.End})
 	}
-	return []byte(e.Render())
+	return e
 }
 
 func (a *App) planned(ctx context.Context, c Couple, r domain.Round, seq int) {
@@ -1010,7 +1077,10 @@ func (a *App) planned(ctx context.Context, c Couple, r domain.Round, seq int) {
 	for _, m := range a.both(c) {
 		a.send(ctx, m.ChatID, fmt.Sprintf("<b>Встреча запланирована.</b> %s\n\n%s", esc(i.Title), rows),
 			tg.Keyboard(tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID))), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID)), tg.CB("Отменить", fmt.Sprintf("xq:%d", r.ID)))))
-		if err := a.TG.SendDocument(ctx, m.ChatID, "vdvoem.ics", ics, "Добавь в свой календарь — напомню за 2 часа."); err != nil {
+		if a.Subscribed(ctx, m.ID) {
+			continue // the subscribed calendar picks it up by itself
+		}
+		if err := a.TG.SendDocument(ctx, m.ChatID, "vdvoem.ics", ics, "Добавь в свой календарь — напомню за 2 часа. А чтобы встречи попадали туда сами и переносились вместе с приложением — подключи календарь в разделе «Календарь»."); err != nil {
 			a.Log.Warn("ics send failed", "err", err)
 		}
 	}
@@ -1069,7 +1139,7 @@ func (a *App) Cancel(ctx context.Context, c Couple, roundID int64) (domain.Round
 			who = esc(c.Me.Name) + " отменил(а)"
 		}
 		a.send(ctx, m.ChatID, who+" выбор. Ничего страшного — идеи остаются в копилке.", nil)
-		if was == domain.StatePlanned {
+		if was == domain.StatePlanned && !a.Subscribed(ctx, m.ID) {
 			_ = a.TG.SendDocument(ctx, m.ChatID, "vdvoem-cancel.ics", a.ICS(ctx, c, r, 99, true), "Удалит встречу из календаря.")
 		}
 	}

@@ -83,6 +83,20 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
   const perWeek = useMemo(() => { const m: Record<string, number> = {}; Object.entries(perDay).forEach(([d, n]) => { const w = ymd(monday(parseDay(d))); m[w] = (m[w] || 0) + n }); return m }, [perDay])
   const nowH = new Date().getHours()
   const past = (d: string, p: number) => d < today || d > last || (d === today && nowH >= PART_END[p])
+  // time is agreed in the open: the partner's proposals are visible, one tap takes one of them
+  const theirs = useMemo(() => new Set(r.partner_slots || []), [r.partner_slots?.join()])
+  const accept = async (k: string) => { haptic.ok(); await act('slots', { slots: [...new Set([k, ...r.my_slots])] }); setEditing(false) }
+  const theirList = [...theirs].sort().filter(k => !past(k.slice(0, 10), +k.slice(11)))
+  const Proposals = ({ title }: { title: string }) => theirList.length ? (
+    <div className="frame rise" data-testid="partner-time"><div className="frame__in">
+      <p className="callout" style={{ margin: '0 0 10px' }}><b>{title}</b></p>
+      <div className="col" style={{ gap: 8 }}>
+        {theirList.slice(0, 6).map(k => { const L = dayLabel(k.slice(0, 10)); return (
+          <button key={k} className="proposal" onClick={() => accept(k)}>
+            <span>{L.long}, {L.num} {L.mon} · {PARTS[+k.slice(11)][1].toLowerCase()}</span><b>Подходит</b>
+          </button>) })}
+      </div>
+    </div></div>) : null
 
   if (!editing) {
     return (
@@ -91,15 +105,16 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         <div className="frame rise"><div className="frame__in" style={{ textAlign: 'center' }}>
           <div className="meet" style={{ margin: '8px auto 16px' }}><i /><i /></div>
           {noOverlap ? <>
-            <h2 className="title">Время не совпало</h2>
-            <p className="callout muted">Ни одного общего слота. Добавьте ещё варианты — можно на любой день, хоть через неделю.</p>
+            <h2 className="title">Пока не совпало</h2>
+            <p className="callout muted">Выбери время {ncase(partner, 'gen')} ниже — или предложи другой день. В календарь встреча попадёт только после «да» от вас обоих.</p>
           </> : <>
             <h2 className="title">Ждём {ncase(partner, 'acc')}</h2>
             {here && <p className="here" style={{ justifyContent: 'center', margin: '6px 0 0' }}>{partner} сейчас в приложении</p>}
             <p className="callout muted">Как только {partner} отметит время, я найду пересечение и пришлю варианты вам обоим.</p>
           </>}
-          <Btn kind="soft" sm icon="edit" onClick={() => setEditing(true)}>Изменить моё время</Btn>
+          <Btn kind="soft" sm icon="edit" onClick={() => setEditing(true)}>{noOverlap ? 'Предложить другое' : 'Изменить моё время'}</Btn>
         </div></div>
+        {noOverlap && <Proposals title={`${partner} может:`} />}
       </div>
     )
   }
@@ -113,7 +128,8 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
   return (
     <div className="col">
       {r.chosen && <ChosenStrip i={r.chosen} />}
-      <p className="callout muted rise" style={{ margin: 0 }}>Отметь всё, когда можешь — на любой день. {partner} не увидит твои отметки, только общее время.</p>
+      {r.partner_sent && <Proposals title={`${partner} предлагает — подходит?`} />}
+      <p className="callout muted rise" style={{ margin: 0 }}>{r.partner_sent ? <>Или отметь своё — <span className="their-dot" /> это время {ncase(partner, 'gen')}. Совпадёт хоть одно — договорились, потом оба подтвердите.</> : <>Предложи, когда можешь — на любой день. {partner} увидит и выберет подходящее.</>}</p>
       <div className="wknav rise" style={{ ['--d' as any]: 1 }}>
         <button className="wknav__arrow" aria-label="Предыдущая неделя" disabled={+week <= +t0} onClick={() => goWeek(addDays(week, -7))}><Icon n="back" s={16} w={2.4} /></button>
         <button className="wknav__mid" onClick={() => setPicker(true)} aria-label="Выбрать неделю в календаре"><Icon n="cal" s={17} />{weekTitle(week)}{perWeek[ymd(week)] ? <small>· {perWeek[ymd(week)]}</small> : null}</button>
@@ -130,7 +146,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         {days.map(d => { const L = dayLabel(d); const off = d < today || d > last; return [
           <div key={d} className={'slots__day' + (sug.has(d) ? ' is-sug' : '') + (off ? ' is-off' : '') + (d === focus ? ' is-focus' : '')}><b>{L.wd}</b><span>{L.num} {L.mon}</span></div>,
           ...PARTS.map(([p]) => { const k = `${d}:${p}`; const dis = past(d, p); return (
-            <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}`} style={{ ['--c' as any]: 'var(--person-a)' }}
+            <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} data-their={theirs.has(k) || undefined} data-common={(theirs.has(k) && sel.has(k)) || undefined} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}`} style={{ ['--c' as any]: 'var(--person-a)' }}
               onPointerDown={e => { if (dis) return; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); paint.current = !sel.has(k); toggle(k, paint.current) }}
               onPointerEnter={() => { if (paint.current !== null && !dis) toggle(k, paint.current) }}>
               <Icon n="check" s={20} w={2.6} />

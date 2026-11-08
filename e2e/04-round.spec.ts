@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { people, press, waitMsg, pair, open, phone, shot, api, addIdeas, chat, lastId, planMeeting } from './lib'
+import { people, press, waitMsg, pair, open, phone, shot, api, addIdeas, chat, lastId, planMeeting, BASE } from './lib'
 
 const cell = (p: Page, k: string) => p.locator(`.cell[data-k="${k}"]`)
 // open the week that holds the day (the grid shows a week at a time)
@@ -91,20 +91,35 @@ test('E11 голоса разошлись: компромисс, другая т
   await expect(np.getByText('Совпало!')).toBeVisible()
 })
 
-test('E12 время не совпало: подсказка и повторная отметка', async ({ browser }) => {
+test('E12 время — открытое обсуждение: видно время партнёра, не совпало — выбираешь его в одно касание', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   await addIdeas(v, ['Ужин в ресторане', 'Кино'])
   const { round } = await api(v, 'POST', '/rounds')
   await api(v, 'POST', `/rounds/${round.id}/slots`, { slots: [round.days[1] + ':0'] })
+  await waitMsg(n, /Вова предлагает время/) // the proposal reaches the partner with one-tap answers
   const np = await open(await phone(browser), n, 'round/' + round.id)
+  await expect(np.getByTestId('partner-time')).toBeVisible() // she sees his time before marking hers
   await mark(np, [round.days[2] + ':2'])
-  await expect(np.getByText('Время не совпало')).toBeVisible()
-  await waitMsg(v, /Время не совпало/)
+  await expect(np.getByText('Пока не совпало')).toBeVisible()
+  await waitMsg(v, /Пока не совпало/)
   await shot(np, 'E12-no-overlap')
-  await np.getByRole('button', { name: 'Изменить моё время' }).click()
-  await mark(np, [round.days[1] + ':0'])
+  await np.getByTestId('partner-time').getByRole('button', { name: /Подходит/ }).first().click()
   await expect(np.getByText('Выбираем')).toBeVisible()
+})
+
+test('E12b календарь на телефоне: личная ссылка-подписка, встреча там, отмена её снимает', async () => {
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const f = await api(v, 'GET', '/calendar/feed')
+  expect(f.webcal).toMatch(/^webcal:\/\/.+\/cal\/[0-9a-f]{36}\.ics$/)
+  const ics = await (await fetch(BASE + '/cal/' + f.url.split('/cal/')[1])).text()
+  expect(ics).toContain('BEGIN:VCALENDAR')
+  expect(ics).toContain('X-WR-CALNAME')
+  expect((await fetch(BASE + '/cal/' + '0'.repeat(36) + '.ics')).status).toBe(404)
+  const r2 = await api(v, 'POST', '/calendar/feed/reset', {})
+  expect(r2.url).not.toBe(f.url)
+  expect((await fetch(BASE + '/cal/' + f.url.split('/cal/')[1])).status).toBe(404) // the old link is dead
 })
 
 test('E13 другое время сохраняет идею, отмена присылает cancel-.ics', async ({ browser }) => {

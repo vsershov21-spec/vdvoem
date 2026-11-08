@@ -602,3 +602,46 @@ func TestAboutAnswer(t *testing.T) {
 		t.Fatalf("actions: %+v", rep.Actions)
 	}
 }
+
+// Time is agreed in the open: the partner gets the proposal with one-tap answers; no overlap is not a dead end.
+func TestTimeTalk(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	for _, x := range []string{"Ужин в ресторане", "Кино"} {
+		a.AddIdea(ctx, v, x)
+	}
+	rd, err := a.Go(ctx, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	days := app.SlotDays(ck.t, v.Loc())
+	k1 := days[1].Format("2006-01-02") + ":2"
+	if _, err := a.SubmitSlots(ctx, v, rd.ID, []string{k1}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.last(2); !strings.Contains(got, "предлагает время") {
+		t.Fatalf("proposal: %q", got)
+	}
+	if _, err := a.SubmitSlots(ctx, n, rd.ID, []string{days[2].Format("2006-01-02") + ":0"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.last(2); !strings.Contains(got, "Пока не совпало") {
+		t.Fatalf("no overlap: %q", got)
+	}
+	r2, err := a.AcceptSlot(ctx, n, rd.ID, k1)
+	if err != nil || r2.State == domain.StateTime {
+		t.Fatalf("accept: %s %v", r2.State, err)
+	}
+	// the feed: personal, the meeting in it once planned
+	tok, _ := a.FeedToken(ctx, v, false)
+	if b, err := a.Feed(ctx, tok); err != nil || !strings.Contains(string(b), "BEGIN:VCALENDAR") {
+		t.Fatalf("feed: %v", err)
+	}
+	if a.Subscribed(ctx, n.Me.ID) || !a.Subscribed(ctx, v.Me.ID) {
+		t.Fatal("subscribed is per person and set by reading the feed")
+	}
+	if _, err := a.Feed(ctx, strings.Repeat("0", 36)); err != app.ErrNoFeed {
+		t.Fatal("unknown token must not open a feed")
+	}
+}

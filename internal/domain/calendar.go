@@ -91,6 +91,25 @@ func (e ICS) Render() string {
 	return strings.Join(lines, "\r\n") + "\r\n"
 }
 
+// Feed: a whole calendar for subscription (webcal). The phone re-reads it every few minutes, so a meeting
+// moved or cancelled in the app moves or disappears there too: same UID, higher SEQUENCE, STATUS:CANCELLED.
+func Feed(name string, events []ICS) string {
+	lines := []string{"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Vdvoem//RU", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+		"X-WR-CALNAME:" + icsEscape(name), "X-WR-TIMEZONE:Europe/Moscow", "REFRESH-INTERVAL;VALUE=DURATION:PT15M", "X-PUBLISHED-TTL:PT15M"}
+	for _, e := range events {
+		lines = append(lines, e.vevent(!e.Cancelled)...)
+		for _, m := range e.More {
+			m.Cancelled, m.Stamp = e.Cancelled, e.Stamp
+			lines = append(lines, m.vevent(false)...)
+		}
+	}
+	lines = append(lines, "END:VCALENDAR")
+	for i, l := range lines {
+		lines[i] = fold(l)
+	}
+	return strings.Join(lines, "\r\n") + "\r\n"
+}
+
 func (e ICS) vevent(alarm bool) []string {
 	ts := func(t time.Time) string { return t.UTC().Format("20060102T150405Z") }
 	lines := []string{"BEGIN:VEVENT",

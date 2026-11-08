@@ -5,7 +5,8 @@ import { post, humanError } from '../lib/api'
 import { go } from '../lib/router'
 import { money, plural } from '../lib/format'
 import { MonthGrid, type DayMark } from '../ui/Charts'
-import { Btn, Cover, Empty, Skel, toast } from '../ui/kit'
+import { Btn, Cover, Empty, Skel, Sheet, toast } from '../ui/kit'
+import { openLink, haptic } from '../lib/tg'
 
 const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 const KIND: Record<string, string> = { planned: 'Встреча', done: 'Были', deadline: 'Дедлайн', ends: 'Заканчивается', open: 'Ждёт подтверждения' }
@@ -40,6 +41,7 @@ export function CalendarScreen({ home }: { home: Home | null }) {
   return (
     <>
       <header className="hdr"><h1 className="display">Календарь</h1></header>
+      <PhoneCalendar />
       <div className="monthstats rise">
         <div><b>{mm}</b><span>{plural(mm, 'встреча', 'встречи', 'встреч')} в месяце</span></div>
         <div><b>{hh}</b><span>{plural(hh, 'час', 'часа', 'часов')} вместе</span></div>
@@ -65,4 +67,33 @@ export function CalendarScreen({ home }: { home: Home | null }) {
       )}
     </>
   )
+}
+
+// A permanent link to the phone's calendar: meetings appear, move and disappear there by themselves.
+function PhoneCalendar() {
+  const feed = useLoad<{ url: string; webcal: string; subscribed: boolean }>('/calendar/feed')
+  const [open, setOpen] = useState(false)
+  const f = feed.data
+  const ios = /iPhone|iPad|Mac/.test(navigator.userAgent)
+  const copy = async (t: string) => { try { await navigator.clipboard.writeText(t); haptic.ok(); toast('Ссылка скопирована') } catch { toast(t) } }
+  return (<>
+    <button className="calsub rise" onClick={() => setOpen(true)} data-testid="calsub">
+      <span className="calsub__ic">📅</span>
+      <span className="calsub__t"><b>{f?.subscribed ? 'Календарь на телефоне подключён' : 'Подключить календарь телефона'}</b>
+        <span>{f?.subscribed ? 'Встречи появляются и переносятся сами' : 'Один раз — и встречи будут там всегда'}</span></span>
+      <span className="calsub__go">›</span>
+    </button>
+    <Sheet open={open} onClose={() => setOpen(false)}>
+      <h2 className="title" style={{ margin: '0 0 6px' }}>Календарь на телефоне</h2>
+      <p className="callout muted" style={{ margin: '0 0 14px' }}>Подписка на ваши встречи: когда вы договоритесь, встреча появится в календаре, перенесёте или отмените в приложении — изменится и там (обновляется каждые 15 минут). Ссылка личная.</p>
+      {!f ? <Skel h={48} /> : <div className="col" style={{ gap: 10 }}>
+        {ios ? <Btn kind="accent" block icon="cal" onClick={() => openLink(f.webcal)}>Добавить в Календарь iPhone</Btn>
+          : <Btn kind="accent" block icon="cal" onClick={() => openLink('https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(f.webcal))}>Добавить в Google Календарь</Btn>}
+        <Btn kind="soft" block onClick={() => openLink(ios ? 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(f.webcal) : f.webcal)}>{ios ? 'Google Календарь' : 'Другой календарь (webcal)'}</Btn>
+        <Btn kind="surface" block icon="link" onClick={() => copy(f.url)}>Скопировать ссылку</Btn>
+        <p className="caption muted" style={{ margin: '4px 0 0' }}>iPhone без кнопки: Настройки → Календарь → Учётные записи → Новая → Другое → Подписной календарь → вставить ссылку. Google: «Другие календари» → «Добавить по URL».</p>
+        <button className="link" onClick={async () => { await post('/calendar/feed/reset', {}); await feed.refresh(); toast('Старая ссылка больше не работает') }}>Сменить ссылку</button>
+      </div>}
+    </Sheet>
+  </>)
 }
