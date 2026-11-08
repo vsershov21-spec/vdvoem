@@ -54,3 +54,29 @@ func TestTopicAndGoal(t *testing.T) {
 		t.Error("gender")
 	}
 }
+
+func TestPeriod(t *testing.T) {
+	now := time.Date(2026, 11, 8, 23, 0, 0, 0, time.UTC)
+	for q, want := range map[string]string{
+		"какие есть мероприятия в конце наебря":   "2026-11-20..2026-11-30",
+		"что-нибудь в начале декабря":             "2026-12-01..2026-12-10",
+		"куда сходить на следующей неделе":        "2026-11-09..2026-11-15",
+		"что есть в январе":                       "2027-01-01..2027-01-31",
+		"до конца месяца":                         "2026-11-08..2026-11-30",
+		"хотим в театр":                           "..",
+	} {
+		f, to := periodFrom(q, now)
+		if got := f + ".." + to; got != want {
+			t.Errorf("%q → %s, want %s", q, got, want)
+		}
+	}
+	in := withPeriod(Intent{I: "suggest"}, "Подскажи, какие есть еще мероприятия в конце наебря, куда мы можем сходить вдвоем", now)
+	if in.I != "find" || in.From != "2026-11-20" {
+		t.Errorf("model's «suggest» with a period: %+v", in)
+	}
+	r := mergeFollowUp(Intent{I: "find", Wknd: true, Max: 3000}, rulesIntent("Покажи все 155", now), "Покажи все 155")
+	w := widen(r, "Покажи все 155")
+	if !w.All || !w.Wknd || w.Max != 3000 {
+		t.Errorf("«покажи все» keeps the conditions: %+v", w)
+	}
+}

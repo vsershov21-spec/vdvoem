@@ -132,6 +132,12 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	as.App.Log.Info("assistant", "intent", in.I, "src", src, "alt", alt.I, "ms", rep.Ms)
 	rep.Cards, rep.Actions = run.cards, run.buttons
 	rep.Next = nextFor(in, rep.Cards)
+	if in.I == "find" && !in.All && run.found > len(rep.Cards) {
+		rep.Next = append([]string{fmt.Sprintf("Покажи все %d", run.found)}, rep.Next...)
+		if len(rep.Next) > 4 {
+			rep.Next = rep.Next[:4]
+		}
+	}
 	if rep.Text == "" {
 		rep.Text = "Готово."
 	}
@@ -279,6 +285,7 @@ type run struct {
 	exampleID int64
 	pending   []string // action ids proposed in this run (tagged with the example once it is saved)
 	from      string   // where a pick comes from: "" — the bank, afisha — the scout and channels, all
+	found     int      // how many fit a search (more than shown → «Покажи все»)
 }
 
 func (r *run) reset() { r.cards, r.buttons, r.seen = nil, nil, nil }
