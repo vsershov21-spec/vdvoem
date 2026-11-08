@@ -166,6 +166,11 @@ type ScoutPick struct {
 	Horizon  string `json:"horizon"` // week (default) | later — an announcement 1–3 months ahead
 	OnSale   string `json:"on_sale"` // when tickets go on sale, if not yet
 	GoalID   int64  `json:"goal_id"` // it answers one of the couple's goals
+	// what it is — only what the source says
+	About  string   `json:"about"`  // 1–3 sentences
+	Genres []string `json:"genres"` // комедия, драма, мюзикл, концерт…
+	Cast   []string `json:"cast"`   // who plays / performs
+	Age    string   `json:"age"`    // 12+
 }
 
 type ScoutResult struct {
@@ -502,6 +507,16 @@ func (a *App) pickIdea(ctx context.Context, p ScoutPick, spaceID, authorID int64
 	i.Horizon = "week"
 	if p.Horizon == "later" || i.StartsAt != nil && i.StartsAt.Sub(now) > 21*24*time.Hour {
 		i.Horizon = "later"
+	}
+	i.Info = store.Info{About: sentences(p.About, 400), Genres: p.Genres, Cast: p.Cast, Age: clip(p.Age, 4)}
+	if len(i.Info.Cast) > 8 {
+		i.Info.Cast = i.Info.Cast[:8]
+	}
+	if len(i.Info.Genres) == 0 {
+		i.Info.Genres = GenresOf(p.Title + "\n" + p.About + "\n" + p.Address)
+	}
+	if !i.Info.Empty() {
+		i.Info.Src = map[string]string{"scout": "web", "channel": "post"}[source]
 	}
 	return i, true
 }

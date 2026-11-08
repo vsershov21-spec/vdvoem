@@ -228,7 +228,7 @@ func (s *Store) UseInvite(ctx context.Context, code string, now time.Time) (int6
 // ---------- ideas ----------
 
 const ideaCols = `id, space_id, author_id, title, kind, category, url, address, image_url, note, price_min, price_max, duration_min,
-starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, again_yes, again_no, ever_shown, last_met_at, parsed, created_at, source, why, horizon, on_sale`
+starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, again_yes, again_no, ever_shown, last_met_at, parsed, created_at, source, why, horizon, on_sale, info`
 
 type Idea struct {
 	domain.Idea
@@ -238,6 +238,28 @@ type Idea struct {
 	Why     string     // the scout's reason, in a sentence
 	Horizon string     // scout: week | later (announcements 1–3 months ahead)
 	OnSale  *time.Time // scout: when tickets go on sale
+	Info    Info       // what it is: description, genres, cast, age
+}
+
+// Info: facts about an event, each from a source (a post, the event's page) — never made up.
+type Info struct {
+	About  string   `json:"about,omitempty"`  // 1–3 sentences
+	Genres []string `json:"genres,omitempty"` // комедия, драма, мюзикл…
+	Cast   []string `json:"cast,omitempty"`   // who plays / performs
+	Age    string   `json:"age,omitempty"`    // 12+
+	Src    string   `json:"src,omitempty"`    // where it came from: post | web | page
+}
+
+func (i Info) Empty() bool {
+	return i.About == "" && len(i.Genres) == 0 && len(i.Cast) == 0 && i.Age == ""
+}
+
+func infoJSON(i Info) string {
+	if i.Empty() {
+		return ""
+	}
+	b, _ := json.Marshal(i)
+	return string(b)
 }
 
 func tp(v sql.NullInt64) *time.Time {
@@ -261,9 +283,10 @@ func scanIdea(sc interface{ Scan(...any) error }) (Idea, error) {
 	var kind, status, wa, wb string
 	var ever, parsed int
 	var created int64
+	var info string
 	err := sc.Scan(&i.ID, &i.SpaceID, &i.AuthorID, &i.Title, &kind, &i.Category, &i.URL, &i.Address, &i.ImageURL, &i.Note,
 		&i.PriceMin, &i.PriceMax, &i.DurationMin, &st, &en, &dl, &i.Assignee, &status, &i.Fingerprint, &wa, &wb,
-		&i.AgainYes, &i.AgainNo, &ever, &lm, &parsed, &created, &i.Source, &i.Why, &i.Horizon, &os)
+		&i.AgainYes, &i.AgainNo, &ever, &lm, &parsed, &created, &i.Source, &i.Why, &i.Horizon, &os, &info)
 	if errors.Is(err, sql.ErrNoRows) {
 		return i, ErrNotFound
 	}
@@ -271,6 +294,9 @@ func scanIdea(sc interface{ Scan(...any) error }) (Idea, error) {
 	i.StartsAt, i.EndsAt, i.Deadline, i.LastMetAt = tp(st), tp(en), tp(dl), tp(lm)
 	i.EverShown, i.Parsed = ever == 1, parsed == 1
 	i.OnSale = tp(os)
+	if info != "" {
+		_ = json.Unmarshal([]byte(info), &i.Info)
+	}
 	i.CreatedAt = time.Unix(created, 0)
 	return i, err
 }
@@ -287,11 +313,11 @@ func (s *Store) CreateIdea(ctx context.Context, i Idea, now time.Time) (Idea, er
 	}
 	i.Fingerprint = domain.Fingerprint(i.URL, i.Title)
 	r, err := s.DB.ExecContext(ctx, `INSERT INTO ideas(space_id, author_id, title, kind, category, url, address, image_url, note, price_min, price_max,
-duration_min, starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, created_at, updated_at, source, why, parsed, horizon, on_sale)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+duration_min, starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, created_at, updated_at, source, why, parsed, horizon, on_sale, info)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		i.SpaceID, i.AuthorID, i.Title, string(i.Kind), i.Category, i.URL, i.Address, i.ImageURL, i.Note, i.PriceMin, i.PriceMax,
 		i.DurationMin, nt(i.StartsAt), nt(i.EndsAt), nt(i.Deadline), i.Assignee, string(i.Status), i.Fingerprint, string(i.WishA), string(i.WishB),
-		now.Unix(), now.Unix(), i.Source, i.Why, b2i(i.Parsed), i.Horizon, nt(i.OnSale))
+		now.Unix(), now.Unix(), i.Source, i.Why, b2i(i.Parsed), i.Horizon, nt(i.OnSale), infoJSON(i.Info))
 	if err != nil {
 		return i, err
 	}
@@ -306,9 +332,9 @@ func (s *Store) UpdateIdea(ctx context.Context, i Idea, now time.Time) error {
 		i.Fingerprint = domain.Fingerprint(i.URL, i.Title)
 	}
 	_, err := s.DB.ExecContext(ctx, `UPDATE ideas SET title=?, kind=?, category=?, url=?, address=?, image_url=?, note=?, price_min=?, price_max=?,
-duration_min=?, starts_at=?, ends_at=?, deadline=?, assignee=?, status=?, fingerprint=?, parsed=?, updated_at=? WHERE id=? AND space_id=?`,
+duration_min=?, starts_at=?, ends_at=?, deadline=?, assignee=?, status=?, fingerprint=?, parsed=?, info=?, updated_at=? WHERE id=? AND space_id=?`,
 		i.Title, string(i.Kind), i.Category, i.URL, i.Address, i.ImageURL, i.Note, i.PriceMin, i.PriceMax, i.DurationMin,
-		nt(i.StartsAt), nt(i.EndsAt), nt(i.Deadline), i.Assignee, string(i.Status), i.Fingerprint, b2i(i.Parsed), now.Unix(), i.ID, i.SpaceID)
+		nt(i.StartsAt), nt(i.EndsAt), nt(i.Deadline), i.Assignee, string(i.Status), i.Fingerprint, b2i(i.Parsed), infoJSON(i.Info), now.Unix(), i.ID, i.SpaceID)
 	return err
 }
 

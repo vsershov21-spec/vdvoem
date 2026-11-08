@@ -21,6 +21,8 @@ type Item struct {
 	Source   string
 	Address  string
 	Tags     []string // moods: chill, active, romantic… — the model learns which ones each person picks
+	Genres   []string // комедия, драма, мюзикл… — and which genres
+	Venue    string   // a theatre / a place: people have favourites
 }
 
 // Example is one mark: Label 1 = wants, 0 = skips; Weight how sure (very = 2).
@@ -73,6 +75,12 @@ func Features(it Item, loc *time.Location) []string {
 	}
 	for _, t := range it.Tags {
 		f = append(f, "tag:"+t)
+	}
+	for _, g := range it.Genres {
+		f = append(f, "g:"+g)
+	}
+	if v := venueKey(it.Venue); v != "" {
+		f = append(f, "v:"+v)
 	}
 	seen := map[string]bool{}
 	for _, w := range strings.FieldsFunc(strings.ToLower(it.Title), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
@@ -146,6 +154,33 @@ func (m Model) Score(it Item, loc *time.Location) float64 {
 	return 0.5 + (sigmoid(z)-0.5)*conf
 }
 
+// Reasons: what in this item pulls the person's score up and down (strongest first).
+func (m Model) Reasons(it Item, loc *time.Location, n int) (pros, cons []string) {
+	type kv struct {
+		k string
+		v float64
+	}
+	var all []kv
+	for _, f := range Features(it, loc) {
+		if v := m.W[f]; math.Abs(v) > 0.12 {
+			all = append(all, kv{f, v})
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return math.Abs(all[i].v) > math.Abs(all[j].v) })
+	for _, x := range all {
+		h := Human(x.k)
+		if h == "" {
+			continue
+		}
+		if x.v > 0 && len(pros) < n {
+			pros = append(pros, h)
+		} else if x.v < 0 && len(cons) < n {
+			cons = append(cons, h)
+		}
+	}
+	return
+}
+
 // Explain: the strongest likes and dislikes, readable («театр», «недорого», «по выходным»).
 func (m Model) Explain(n int) (likes, dislikes []string) {
 	type kv struct {
@@ -182,9 +217,27 @@ var human = map[string]string{
 	"tag:food": "вкусная еда", "tag:outdoor": "на воздухе", "tag:home": "дома", "tag:free": "бесплатное", "tag:new": "новое", "tag:night": "ночное",
 }
 
+// venueKey: «МХТ имени А.П. Чехова», «МХТ им. Чехова» → «мхт»; «Театр Вахтангова» → «вахтангов»
+func venueKey(v string) string {
+	ws := strings.FieldsFunc(strings.ToLower(v), func(r rune) bool { return !unicode.IsLetter(r) })
+	skip := map[string]bool{"театр": true, "театра": true, "имени": true, "им": true, "основная": true, "сцена": true, "малый": true, "большой": true, "зал": true, "п": true, "р": true}
+	for _, w := range ws {
+		if len([]rune(w)) >= 3 && !skip[w] {
+			return stem(w)
+		}
+	}
+	return ""
+}
+
 func Human(f string) string {
 	if h, ok := human[f]; ok {
 		return h
+	}
+	if strings.HasPrefix(f, "g:") {
+		return f[2:]
+	}
+	if strings.HasPrefix(f, "v:") {
+		return "площадка «" + f[2:] + "…»"
 	}
 	if strings.HasPrefix(f, "w:") {
 		return "«" + f[2:] + "…»"
