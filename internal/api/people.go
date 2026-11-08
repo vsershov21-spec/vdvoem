@@ -7,6 +7,7 @@ import (
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/domain"
+	"vdvoem/internal/store"
 )
 
 // Personal: what the assistant remembers about *me*, my learned taste; the couple's scout goals; the afisha.
@@ -90,45 +91,132 @@ func (a *API) delGoal(w http.ResponseWriter, r *http.Request, c app.Couple) (any
 }
 
 // afisha: what the scout found, ranked by how much both of you would like it.
+// afisha: everything there is to go to, from every source — the scout's finds, posts from channels, the
+// couple's own ideas — filtered and sorted: by how much you both would like it (each person's learned taste),
+// by date or by price. ?horizon=week|later|all &source=all|scout|channel|ours &sort=match|date|price
+// &cat=culture &genre=комедия &fresh=1 (only what neither of you has marked)
 func (a *API) afisha(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
-	hz := r.URL.Query().Get("horizon")
+	q := r.URL.Query()
+	hz, src, srt, cat, genre := q.Get("horizon"), q.Get("source"), q.Get("sort"), q.Get("cat"), q.Get("genre")
+	fresh := q.Get("fresh") == "1"
+	if hz == "" {
+		hz = "all"
+	}
+	if src == "" {
+		src = "all"
+	}
 	ideas, err := a.App.S.Ideas(r.Context(), c.Space.ID, domain.IdeaDraft, domain.IdeaActive)
 	if err != nil {
 		return nil, err
 	}
+	now := a.App.Now()
 	t := a.App.Tastes(r.Context(), c)
+	going := a.goingIdeas(r.Context(), c)
+	sourceOf := func(i store.Idea) string {
+		switch i.Source {
+		case "scout", "channel":
+			return i.Source
+		}
+		return "ours"
+	}
 	type row struct {
 		v ideaView
-		s int
+		i store.Idea
 	}
 	var rows []row
-	counts := map[string]int{"week": 0, "later": 0}
+	counts := map[string]int{"week": 0, "later": 0, "all": 0, "scout": 0, "channel": 0, "ours": 0, "fresh": 0}
+	genres := map[string]int{}
+	cats := map[string]int{}
 	for _, i := range ideas {
-		if !app.Afisha(i) {
+		if i.Kind != domain.KindLeisure || going[i.ID] {
 			continue
+		}
+		if i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
+			continue // over
 		}
 		h := i.Horizon
 		if h == "" {
 			h = "week"
 		}
-		counts[h]++
-		if hz != "" && h != hz {
+		if i.StartsAt != nil && i.StartsAt.Sub(now) > 14*24*time.Hour {
+			h = "later"
+		}
+		so := sourceOf(i)
+		isFresh := i.WishA == domain.WishNone && i.WishB == domain.WishNone && so != "ours"
+		// counts follow the other filters, so each chip says what it would show
+		if (src == "all" || src == so) && (!fresh || isFresh) {
+			counts[h]++
+			counts["all"]++
+		}
+		if hz == "all" || h == hz {
+			counts[so]++
+			if isFresh {
+				counts["fresh"]++
+			}
+		}
+		if hz != "all" && h != hz || src != "all" && so != src || fresh && !isFresh {
 			continue
 		}
-		v := withMatch(viewIdea(c, i), t, i, c.PartnerName())
-		rows = append(rows, row{v, v.Match.Both})
+		for _, g := range i.Info.Genres {
+			genres[g]++
+		}
+		cats[i.Category]++
+		if cat != "" && i.Category != cat || genre != "" && !containsStr(i.Info.Genres, genre) {
+			continue
+		}
+		rows = append(rows, row{withMatch(viewIdea(c, i), t, i, c.PartnerName()), i})
+	}
+	at := func(x row) int64 {
+		if x.i.StartsAt != nil {
+			return x.i.StartsAt.Unix()
+		}
+		return 1 << 62
 	}
 	sort.SliceStable(rows, func(x, y int) bool {
-		if hz == "later" && rows[x].v.StartsAt != nil && rows[y].v.StartsAt != nil {
-			return *rows[x].v.StartsAt < *rows[y].v.StartsAt
+		switch srt {
+		case "date":
+			return at(rows[x]) < at(rows[y])
+		case "price":
+			px, py := rows[x].i.PriceMin, rows[y].i.PriceMin
+			if px == 0 {
+				px = 1 << 50
+			}
+			if py == 0 {
+				py = 1 << 50
+			}
+			return px < py
 		}
-		return rows[x].s > rows[y].s
+		return rows[x].v.Match.Both > rows[y].v.Match.Both
 	})
 	out := []ideaView{}
 	for _, x := range rows {
 		out = append(out, x.v)
 	}
-	return map[string]any{"ideas": out, "counts": counts}, nil
+	type kv struct {
+		K string `json:"k"`
+		N int    `json:"n"`
+	}
+	top := func(m map[string]int, n int) []kv {
+		l := []kv{}
+		for k, v := range m {
+			l = append(l, kv{k, v})
+		}
+		sort.Slice(l, func(x, y int) bool { return l[x].N > l[y].N || l[x].N == l[y].N && l[x].K < l[y].K })
+		if len(l) > n {
+			l = l[:n]
+		}
+		return l
+	}
+	return map[string]any{"ideas": out, "counts": counts, "genres": top(genres, 14), "cats": top(cats, 6)}, nil
+}
+
+func containsStr(l []string, v string) bool {
+	for _, x := range l {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // triage: everything I have not marked yet — the bank and the afisha — soonest first (a date about to pass
@@ -140,6 +228,7 @@ func (a *API) triage(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 	}
 	now := a.App.Now()
 	t := a.App.Tastes(r.Context(), c)
+	going := a.goingIdeas(r.Context(), c)
 	type row struct {
 		v    ideaView
 		soon int64
@@ -150,7 +239,7 @@ func (a *API) triage(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 			continue
 		}
 		v := withMatch(viewIdea(c, i), t, i, c.PartnerName())
-		if v.MyWish != "" {
+		if v.MyWish != "" || going[i.ID] {
 			continue
 		}
 		soon := int64(1 << 62)

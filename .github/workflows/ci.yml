@@ -23,6 +23,12 @@ jobs:
         with: { node-version: 20 }
       - name: Go vet & tests
         run: go vet ./... && go test ./...
+      - name: Twenty couples (report)
+        if: always()
+        run: PERSONAS_OUT=$PWD/personas.md go test ./internal/app -run TestPersonas -count=1 >/dev/null || true; cat personas.md || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: personas, path: personas.md, if-no-files-found: ignore }
       - name: Web build
         working-directory: web
         run: npm ci --no-audit --no-fund && npm run build

@@ -30,6 +30,8 @@ type afishaQ struct {
 	Limit     int               `json:"limit"`
 	Moods     []string          `json:"moods"`
 	Sem       map[int64]float64 `json:"-"` // similarity by meaning to the request (nil — off)
+	All       bool              `json:"-"` // the whole list (cards: the first few)
+	Whose     string            `json:"-"` // ours | new | ""
 }
 
 func (r *run) afisha(ctx context.Context, q afishaQ) any {
@@ -39,6 +41,9 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	now := r.as.now().In(loc)
 	if q.Limit <= 0 || q.Limit > 6 {
 		q.Limit = 4
+	}
+	if q.All {
+		q.Limit = listMax
 	}
 	in := func(list []string, v string) bool {
 		for _, x := range list {
@@ -55,6 +60,9 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	var hits, late []hit
 	for _, i := range ideas {
 		if i.Kind != domain.KindLeisure || (!q.WholeBank && !app.Afisha(i)) {
+			continue
+		}
+		if q.Whose == "ours" && !Ours(i) || q.Whose == "new" && Ours(i) {
 			continue
 		}
 		hz := i.Horizon
@@ -260,6 +268,14 @@ var goalRe = regexp.MustCompile(`(?i)(?:следи|найди|поищи|ищи|
 
 func goalFromText(text string) string {
 	t := strings.ToLower(text)
+	// «хотим на Земфиру» is a goal (a name), «хотим на природу» is a wish for now — a search
+	if has(t, "хотим в ", "хотим на ", "хотим сходить на", "хотим сходить в ") && !has(t, "следи", "дай знать", "сообщи", "напомни", "когда") {
+		k := strings.Index(t, "хотим")
+		later := has(t, "январ", "феврал", "март", "апрел", "в мае", "июн", "июл", "август", "сентябр", "октябр", "декабр", "весн", "летом", "на лето", "осен", "зим", "через ", "новый год")
+		if rest := text[k:]; !later && !regexp.MustCompile(`\s[«"A-ZА-ЯЁ]`).MatchString(rest) {
+			return ""
+		}
+	}
 	if !has(t, "следи", "дай знать", "сообщи когда", "сообщи, когда", "напомни когда", "хотим сходить на", "хотим сходить в ", "хотим в ", "хотим на ", "когда приедет", "когда появ", "когда начнут", "когда откро") &&
 		!(has(t, "найди", "поищи", "ищи") && has(t, "на весну", "на лето", "на осень", "на зиму", "весной", "летом", "через месяц", "через пару", "в январе", "в феврале", "в марте", "в апреле", "в мае", "в декабре", "на новый год")) {
 		return ""

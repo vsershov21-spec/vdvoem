@@ -253,13 +253,9 @@ func (a *App) RemoveExtra(ctx context.Context, c Couple, extraID int64) (domain.
 }
 
 func (a *App) resendICS(ctx context.Context, c Couple, r domain.Round) {
-	ics := a.ICS(ctx, c, r, r.Version+1, false)
 	for _, m := range a.both(c) {
-		if a.Subscribed(ctx, m.ID) {
-			continue
-		}
-		if err := a.TG.SendDocument(ctx, m.ChatID, "vdvoem.ics", ics, "Маршрут обновился — открой, чтобы обновить событие в календаре."); err != nil {
-			a.Log.Warn("ics send failed", "err", err)
+		if cal := a.calKeys(ctx, c, m, r); len(cal) > 0 {
+			a.sendQuiet(ctx, m.ChatID, "Маршрут обновился — обнови событие в календаре:", tg.Keyboard(cal))
 		}
 	}
 }

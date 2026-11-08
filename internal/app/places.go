@@ -236,12 +236,10 @@ func (a *App) ChooseOption(ctx context.Context, c Couple, ideaID, optID int64) e
 			tg.Keyboard(tg.Row(tg.Link("На карте", p.Maps), tg.App("Открыть", a.appURL(fmt.Sprintf("idea/%d", i.ID))))))
 	}
 	if r, err := a.S.NextPlanned(ctx, c.Space.ID); err == nil && r.Chosen == i.ID && r.StartsAt.After(a.now()) {
-		ics := a.ICS(ctx, c, r, r.Version+1, false)
 		for _, m := range a.both(c) {
-			if a.Subscribed(ctx, m.ID) {
-				continue
+			if cal := a.calKeys(ctx, c, m, r); len(cal) > 0 {
+				a.sendQuiet(ctx, m.ChatID, "Место обновлено — обнови событие в календаре:", tg.Keyboard(cal))
 			}
-			_ = a.TG.SendDocument(ctx, m.ChatID, "vdvoem.ics", ics, "Место обновлено — событие в календаре тоже.")
 		}
 	}
 	return nil

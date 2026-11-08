@@ -6,10 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"vdvoem/internal/domain"
+	"vdvoem/internal/store"
+	"vdvoem/internal/tg"
 )
 
 // A permanent calendar for each person: one subscription link (webcal://…/cal/<token>.ics). Every planned
@@ -85,4 +89,82 @@ func (a *App) Feed(ctx context.Context, token string) ([]byte, error) {
 		name = "Вдвоём · " + c.Me.Name + " и " + c.Partner.Name
 	}
 	return []byte(domain.Feed(name, evs)), nil
+}
+
+// One meeting as a link that opens the phone's calendar with the event filled in — an .ics served over https
+// (iPhone: Safari shows «Добавить в календарь»; a file sent in Telegram only offers «поделиться»), and Google's
+// own «новое событие» form. The person's feed token is the key, so the link works without logging in.
+
+// tokenFor: a member's feed token (created on first use)
+func (a *App) tokenFor(ctx context.Context, memberID int64) string {
+	m, err := a.S.MemberByID(ctx, memberID)
+	if err != nil {
+		return ""
+	}
+	c, err := a.coupleOf(ctx, m)
+	if err != nil {
+		return ""
+	}
+	t, _ := a.FeedToken(ctx, c, false)
+	return t
+}
+
+// EventLinks: «добавить в календарь» for one person: the .ics link and the Google Calendar form
+func (a *App) EventLinks(ctx context.Context, c Couple, memberID int64, r domain.Round) (ics, google string) {
+	if r.StartsAt.IsZero() {
+		return "", ""
+	}
+	if t := a.tokenFor(ctx, memberID); t != "" {
+		ics = fmt.Sprintf("%s/cal/%s/%d.ics", strings.TrimRight(a.PublicURL, "/"), t, r.ID)
+	}
+	e := a.icsEvent(ctx, c, r, r.Version, false)
+	q := url.Values{}
+	q.Set("action", "TEMPLATE")
+	q.Set("text", e.Title)
+	q.Set("dates", e.Start.UTC().Format("20060102T150405Z")+"/"+e.End.UTC().Format("20060102T150405Z"))
+	q.Set("details", e.Desc)
+	if e.Location != "" {
+		q.Set("location", e.Location)
+	}
+	return ics, "https://calendar.google.com/calendar/render?" + q.Encode()
+}
+
+// EventICS: one meeting of the token's owner, for the «добавить в календарь» link
+func (a *App) EventICS(ctx context.Context, token string, roundID int64) ([]byte, error) {
+	if len(token) != 36 {
+		return nil, ErrNoFeed
+	}
+	id, _ := strconv.ParseInt(a.S.Setting(ctx, "caltoken:"+token), 10, 64)
+	if id == 0 {
+		return nil, ErrNoFeed
+	}
+	m, err := a.S.MemberByID(ctx, id)
+	if err != nil {
+		return nil, ErrNoFeed
+	}
+	c, err := a.coupleOf(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	r, err := a.S.Round(ctx, c.Space.ID, roundID)
+	if err != nil || r.StartsAt.IsZero() {
+		return nil, ErrNoFeed
+	}
+	return a.ICS(ctx, c, r, r.Version, r.State == domain.StateCancelled), nil
+}
+
+// calKeys: the two «в календарь» buttons for a member (nothing when their calendar is subscribed)
+func (a *App) calKeys(ctx context.Context, c Couple, m store.Member, r domain.Round) []tg.Button {
+	if a.Subscribed(ctx, m.ID) {
+		return nil
+	}
+	ics, g := a.EventLinks(ctx, c, m.ID, r)
+	var row []tg.Button
+	if ics != "" {
+		row = append(row, tg.Link("📅 В календарь iPhone", ics))
+	}
+	if g != "" {
+		row = append(row, tg.Link("Google Календарь", g))
+	}
+	return row
 }

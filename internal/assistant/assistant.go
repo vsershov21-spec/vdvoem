@@ -201,6 +201,8 @@ func nextFor(in Intent, cards []Card) []string {
 		out = append(out, "Что интересного на неделе?", "Удиви нас")
 	case "chat":
 		out = append(out, "Что интересного на неделе?", "Куда сходить в субботу вечером?", "Удиви нас")
+	default: // remember, goal, budget… — done; what next
+		out = append(out, "Что интересного на неделе?", "Что нашёл скаут?", "Удиви нас")
 	}
 	if len(out) > 4 {
 		out = out[:4]
@@ -276,6 +278,7 @@ type run struct {
 	seen      map[string]bool
 	exampleID int64
 	pending   []string // action ids proposed in this run (tagged with the example once it is saved)
+	from      string   // where a pick comes from: "" — the bank, afisha — the scout and channels, all
 }
 
 func (r *run) reset() { r.cards, r.buttons, r.seen = nil, nil, nil }
@@ -592,6 +595,12 @@ func (r *run) myWish(i store.Idea) (me, partner domain.Wish) {
 	return i.WishA, i.WishB
 }
 
+// Ours: an idea of the couple — one of them added it or marked it; otherwise it is news from the scout or a
+// channel that neither has seen yet. The assistant keeps the two apart.
+func Ours(i store.Idea) bool {
+	return !app.Afisha(i) || i.WishA != domain.WishNone || i.WishB != domain.WishNone || i.Status == domain.IdeaActive && i.Source == ""
+}
+
 func (r *run) brief(i store.Idea) map[string]any {
 	me, p := r.myWish(i)
 	m := map[string]any{"id": i.ID, "title": i.Title, "category": i.Category, "my_wish": string(me), "partner_wish": string(p)}
@@ -607,6 +616,10 @@ func (r *run) brief(i store.Idea) map[string]any {
 	if i.EndsAt != nil {
 		m["ends"] = i.EndsAt.In(r.c.Loc()).Format("2006-01-02")
 	}
+	if i.StartsAt != nil {
+		m["starts_at"] = i.StartsAt.Unix()
+	}
+	m["ours"] = Ours(i)
 	if i.Kind == domain.KindChore {
 		m["kind"] = "chore"
 	}
@@ -710,7 +723,7 @@ var partHours = map[string][2]int{"morning": {9, 13}, "day": {13, 18}, "evening"
 func (r *run) suggest(ctx context.Context, mode, date, part string, budgetRub int64, cat string, count int) any {
 	s := r.as.App.S
 	loc := r.c.Loc()
-	ideas, _ := s.Ideas(ctx, r.c.Space.ID, domain.IdeaActive)
+	ideas, _ := s.Ideas(ctx, r.c.Space.ID, domain.IdeaActive, domain.IdeaDraft)
 	in := domain.PickInput{BudgetKop: r.c.Space.BudgetKop, Now: r.as.now()}
 	if budgetRub > 0 {
 		in.BudgetKop = budgetRub * 100
@@ -719,6 +732,13 @@ func (r *run) suggest(ctx context.Context, mode, date, part string, budgetRub in
 		if cat != "" && i.Category != cat {
 			continue
 		}
+		switch {
+		case r.from == "afisha" && !app.Afisha(i), r.from == "" && i.Status != domain.IdeaActive:
+			continue
+		case i.StartsAt != nil && i.StartsAt.Before(r.as.now()) && (i.EndsAt == nil || i.EndsAt.Before(r.as.now())):
+			continue
+		}
+		i.Status = domain.IdeaActive
 		in.Ideas = append(in.Ideas, i.Idea)
 	}
 	if date != "" {

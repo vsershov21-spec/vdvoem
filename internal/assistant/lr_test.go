@@ -35,3 +35,22 @@ func TestPhrasesUnderstood(t *testing.T) {
 		}
 	}
 }
+
+func TestTopicAndGoal(t *testing.T) {
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	if in := rulesIntent("что-нибудь про технологии", now); in.I != "find" || in.Q == "" {
+		t.Errorf("topic: %+v", in)
+	}
+	if in := rulesIntent("хотим на природу", now); in.I == "goal" {
+		t.Errorf("«на природу» is a search now, not a goal")
+	}
+	if in := rulesIntent("хотим на Земфиру", now); in.I != "goal" {
+		t.Errorf("a name is a goal: %+v", in)
+	}
+	if q := bookQ("Щелкунчика — подойдёт нам?"); q != "Щелкунчика" {
+		t.Errorf("about q %q", q)
+	}
+	if past("Настя", "отметил") != "отметила" || past("Вова", "отметил") != "отметил" {
+		t.Error("gender")
+	}
+}

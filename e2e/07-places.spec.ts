@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { people, say, press, reply, waitMsg, pair, open, phone, shot, api, chat, lastId, planMeeting, EMU } from './lib'
+import { people, say, press, reply, waitMsg, pair, open, phone, shot, api, chat, lastId, planMeeting, EMU, BASE } from './lib'
 
 test('E23 «Где именно»: общая идея → ссылка ответом на карточку → подбор помощника → варианты обоих → «Берём» → место в календаре', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
@@ -39,8 +39,10 @@ test('E23 «Где именно»: общая идея → ссылка отве
   await expect(vp.locator('.ticket').getByText('Каток в Парке Горького')).toBeVisible()
   await shot(vp, 'E23-ticket-place')
   await waitMsg(n, /Вова выбрал\(а\) место для «Каток»: <b>Каток в Парке Горького/, 10000, before)
-  const ics = (await chat(n)).filter(m => m.message_id > before && m.method === 'sendDocument').pop()
-  expect((ics?.file || '').replace(/\r\n /g, '')).toMatch(/LOCATION:Каток в Парке Горького\\, ул\. Крымский Вал\\, 9/)
+  const upd = await waitMsg(n, /Место обновлено/, 10000, before)
+  const link = JSON.stringify(upd.reply_markup).match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
+  const ics = await (await fetch(link)).text()
+  expect(ics.replace(/\r\n /g, '')).toMatch(/LOCATION:Каток в Парке Горького\\, ул\. Крымский Вал\\, 9/)
   const fresh = (await api(v, 'GET', `/rounds/${planned.id}`)).round
   expect(fresh.chosen.place.chosen).toBe(true)
 })

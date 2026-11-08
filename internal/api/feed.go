@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"vdvoem/internal/app"
@@ -22,6 +23,23 @@ func (a *API) feedRoutes(mux *http.ServeMux, h func(string, handler)) {
 		}
 		w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(b)
+	})
+	// one meeting: opened in Safari it shows «Добавить в календарь» with everything filled in
+	mux.HandleFunc("GET /cal/{token}/{file}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(strings.TrimSuffix(r.PathValue("file"), ".ics"), 10, 64)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		b, err := a.App.EventICS(r.Context(), r.PathValue("token"), id)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+		w.Header().Set("Content-Disposition", `inline; filename="vdvoem.ics"`)
+		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write(b)
 	})
 	h("GET /api/calendar/feed", a.feedLink(false))

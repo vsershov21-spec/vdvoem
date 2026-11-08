@@ -286,7 +286,18 @@ button,a,[role=tab]{touch-action:manipulation}
 
 /* ---------- assistant chat ---------- */
 .chat{display:flex;flex-direction:column;gap:12px;padding-bottom:96px}
-.msg{max-width:86%;padding:11px 14px;border-radius:20px;font:500 15.5px/21px var(--font-sans);white-space:pre-wrap;animation:rise .35s var(--ease-out) both}
+.msg{max-width:86%;padding:11px 14px;border-radius:20px;font:500 15.5px/21px var(--font-sans);white-space:pre-wrap;animation:rise .35s var(--ease-out) both;
+  -webkit-user-select:text;user-select:text;overflow-wrap:anywhere}
+.msg__time{float:right;margin:6px 0 -4px 10px;font:500 11px/14px var(--font-sans);opacity:.55;-webkit-user-select:none;user-select:none}
+.msg--me[data-failed]{background:color-mix(in srgb,var(--danger,#e5484d) 80%,var(--solid))}
+.msg__retry{align-self:flex-end;display:inline-flex;align-items:center;gap:6px;appearance:none;border:0;background:none;color:var(--danger,#e5484d);font:600 13px/1 var(--font-sans);cursor:pointer;padding:4px 2px}
+.chat__day{align-self:center;margin:6px 0 2px;padding:4px 10px;border-radius:var(--radius-pill);background:var(--surface-sunken);font:600 12px/16px var(--font-sans);color:var(--ink-muted)}
+.chat__down{position:fixed;right:16px;bottom:calc(var(--dock-h) + var(--safe-b) + 132px + var(--kb,0px));z-index:36;width:40px;height:40px;border-radius:50%;border:0;
+  background:var(--surface);box-shadow:var(--shadow-pop);color:var(--ink);display:grid;place-items:center;cursor:pointer;transform:rotate(90deg)}
+.composer__field{resize:none;min-height:44px;max-height:125px;line-height:21px;font:500 16px/21px var(--font-sans)}
+body.kb-open .dock{display:none}
+body.kb-open .composer{bottom:calc(var(--kb,0px) + 8px)}
+body.kb-open .sugg--dock{bottom:calc(var(--kb,0px) + 74px)}
 .msg--me{align-self:flex-end;background:var(--solid);color:var(--on-solid);border-bottom-right-radius:6px}
 .msg--ai{align-self:flex-start;background:var(--surface);border-bottom-left-radius:6px;box-shadow:var(--shadow-card)}
 .ai-cards{display:flex;gap:10px;overflow-x:auto;margin:0 -16px;padding:2px 16px 4px;scrollbar-width:none}
@@ -625,3 +636,6 @@ button,a,[role=tab]{touch-action:manipulation}
 .progress{height:4px;border-radius:2px;background:var(--surface-sunken);margin:0 0 12px;overflow:hidden}
 .progress i{display:block;height:100%;width:var(--p);background:var(--accent);transition:width .35s var(--ease-out)}
 .slots__day,.slots__h{cursor:pointer}
+
+.afisha__sort{margin:2px 0 10px}
+.acard__src{position:absolute;left:10px;bottom:10px;padding:3px 8px;border-radius:var(--radius-pill);background:rgba(0,0,0,.55);color:#fff;font:600 11.5px/16px var(--font-sans);backdrop-filter:blur(8px)}

@@ -32,6 +32,8 @@ type Intent struct {
 	Mode    string   `json:"mode,omitempty"`  // suggest: best | random; suggest_mode: best | random | mix | off
 	Rub     int64    `json:"rub,omitempty"`   // budget
 	Scout   bool     `json:"scout,omitempty"` // only what the scout found
+	All     bool     `json:"all,omitempty"`   // «вообще всё, что есть»: the whole list, not the best few
+	Whose   string   `json:"whose,omitempty"` // ours — only the couple's own ideas; new — only what they have not seen
 	conf    float64  // rules' confidence
 	refined bool     // a follow-up («а подешевле?») merged into the previous request
 }
@@ -152,6 +154,9 @@ func rulesIntent(text string, now time.Time) Intent {
 		in.conf = 0.6
 	case asks && has(t, "куда", "посовет", "предлож", "подбер", "идею", "идея", "чем заняться", "что делать"):
 		in.I, in.Mode, in.conf = "suggest", "best", 0.5
+	case asks && aboutTopicRe.MatchString(t): // «что-нибудь про технологии», «есть что-то с котиками?»
+		in.Q = stemQ(strings.TrimSpace(aboutTopicRe.FindStringSubmatch(t)[1]))
+		in.conf = 0.6
 	case asks:
 		in.I, in.conf = "chat", 0.3 // «как дела?» — talk, not a pick
 	default:
@@ -160,9 +165,11 @@ func rulesIntent(text string, now time.Time) Intent {
 	return in
 }
 
+var aboutTopicRe = regexp.MustCompile(`(?:что-нибудь|что-то|что|чего-нибудь|есть|сходить)\s+(?:интересное\s+)?(?:про|о|об|по|связанное с|с|со)\s+([а-яёa-z][а-яёa-z -]{2,30}?)[?.!]*$`)
+
 // bookQ: «Гамлета, поставь в календарь» → «Гамлета»
 func bookQ(s string) string {
-	for _, sep := range []string{",", " и ", " в пятниц", " в суббот", " в воскрес", " сегодня", " завтра", " позови", " поставь"} {
+	for _, sep := range []string{" — ", " - ", "?", " подойд", " нам ", " понрав", ",", " и ", " в пятниц", " в суббот", " в воскрес", " сегодня", " завтра", " позови", " поставь"} {
 		if k := strings.Index(strings.ToLower(s), sep); k > 0 {
 			s = s[:k]
 		}
@@ -353,6 +360,66 @@ func (as *Assistant) Understand(ctx context.Context, text string, pt Turn, now t
 // understand also returns the other plausible reading (alt.I == "" — none): when the model and fairly sure rules
 // disagree, the answer follows one and offers the other as a button, so a wrong guess costs one tap, not a retype.
 func (as *Assistant) understand(ctx context.Context, text string, pt Turn, now time.Time) (Intent, string, Intent) {
+	in, src, alt := as.understand1(ctx, text, pt, now)
+	return widen(in, text), src, alt
+}
+
+var (
+	allRe    = regexp.MustCompile(`вообще вс|вс[её] что (есть|нашл|нарыл|наш[её]л)|вс[её] подряд|полн(ый|ую|ая) (список|подборк|афиш)|подборк|всю афишу|все события|все находки|всё,? что есть|покажи вс[её]|список всего|что вообще (есть|идёт|идет)`)
+	scoutRe  = regexp.MustCompile(`скаут|агент|нарыл|нашёл|нашел|находк|в афише|афиш`)
+	newRe    = regexp.MustCompile(`не видели|не знаем|не слышали|только нов|новые находки|новенькое|свежее|чего нет в копилке|чего у нас нет`)
+	oursRe   = regexp.MustCompile(`только наш|наши идеи|наше|из копилки|в копилке|в нашем банке|в банке|что мы (сами )?добавл|мы хотели`)
+	randomRe = regexp.MustCompile(`удиви|рандом|случайн|наугад|наобум`)
+	weekRe   = regexp.MustCompile(`недел|выходн|сегодня|завтра|суббот|воскрес|пятниц|ближайш`)
+)
+
+// widen: «что нарыл агент» means everything the scout and the channels found, not only the next days;
+// «подборку всего» means the whole list. Words decide this, whatever read the request.
+func widen(in Intent, text string) Intent {
+	t := strings.ToLower(text)
+	all, scout := allRe.MatchString(t), scoutRe.MatchString(t)
+	whose := ""
+	switch {
+	case newRe.MatchString(t):
+		whose = "new"
+	case oursRe.MatchString(t):
+		whose = "ours"
+	}
+	if whose != "" && (in.I == "find" || in.I == "suggest" || in.I == "chat") {
+		if in.I != "find" {
+			in = Intent{I: "find", Date: in.Date, Wknd: in.Wknd, Part: in.Part, Max: in.Max, Cats: in.Cats, Not: in.Not, NotW: in.NotW, Moods: in.Moods}
+		}
+		in.Whose = whose
+		if whose == "new" {
+			in.Moods = remove(in.Moods, "new") // «новое для нас» is about the source, not a new experience
+		}
+		if in.Hz == "week" && !weekRe.MatchString(t) {
+			in.Hz = ""
+		}
+	}
+	if !all && !scout || in.I != "find" && in.I != "suggest" && in.I != "chat" {
+		return in
+	}
+	if in.I == "suggest" && in.Mode == "random" || randomRe.MatchString(t) { // «удиви из того, что нарыл агент»
+		return Intent{I: "suggest", Mode: "random", Scout: scout && !all, All: all, Date: in.Date, Part: in.Part, Max: in.Max, Cats: in.Cats}
+	}
+	if in.I != "find" {
+		in = Intent{I: "find", Date: in.Date, Wknd: in.Wknd, Part: in.Part, Max: in.Max, Cats: in.Cats, Not: in.Not, NotW: in.NotW, Moods: in.Moods}
+	}
+	in.Scout = in.Scout || scout && !all && in.Whose != "ours"
+	in.All = in.All || all
+	if all { // «подборку всего» starts afresh: only the conditions said now stay
+		fresh := rulesIntent(text, time.Now())
+		in.Date, in.Wknd, in.Part, in.Moods, in.Cats, in.Max = fresh.Date, fresh.Wknd, fresh.Part, fresh.Moods, fresh.Cats, fresh.Max
+		in.Q, in.Not, in.NotW = "", nil, nil
+	}
+	if in.Hz == "week" && !weekRe.MatchString(t) { // no time named: announcements months ahead count too
+		in.Hz = ""
+	}
+	return in
+}
+
+func (as *Assistant) understand1(ctx context.Context, text string, pt Turn, now time.Time) (Intent, string, Intent) {
 	prev := pt.In
 	if in, ok := refersTo(text, pt.Titles); ok { // «расскажи про второе», «сколько стоит первое», «давай туда»
 		return in, "rules", Intent{}
@@ -584,3 +651,13 @@ func LooksLikeRequest(text string, now time.Time) bool {
 }
 
 var wantRe = regexp.MustCompile(`(?:^|\s)(?:хоч|хотим|хотели|давай|пойд|сход|сгоня|можно|подбер|найд|найти|ищ|есть\s+ли|что-нибудь|что-то|чего-нибудь|куда|почил|отдохн|развле|погуля|скучно|чем\s+заня)`)
+
+func remove(l []string, v string) []string {
+	var out []string
+	for _, x := range l {
+		if x != v {
+			out = append(out, x)
+		}
+	}
+	return out
+}
