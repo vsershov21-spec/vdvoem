@@ -42,20 +42,24 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
 }
 
 function Dashboard({ s, home }: { s: Stats | null; home: HomeT }) {
-  if (!s) return <div className="metrics" style={{ marginTop: 16 }}>{[0, 1, 2, 3].map(k => <Skel key={k} h={104} mb={0} />)}</div>
-  const months = s.months.map(m => m.done + m.planned)
+  // the same frame while the numbers load: heading, four tiles of the final height, the chart card — nothing below jumps
+  const months = s ? s.months.map(m => m.done + m.planned) : []
   return (<>
     <div className="sec"><h2 className="title"><span className="orange-ind" />Наша статистика</h2></div>
     <div className="metrics">
-      <Metric label="Встречи" icon="cal" tone="orange" value={<CountUp to={s.meetings} />} unit={`${s.this_month} в этом мес.`} graph={<Bars values={months} tone="orange" />} onClick={() => go('calendar')} />
-      <Metric label="Совпадение" icon="heart" tone="pink" value={<><CountUp to={s.match} />%</>} unit={`${s.both_want} хотите оба`} graph={<Gauge value={s.match} tone="pink" />} onClick={() => go('ideas/both')} />
-      <Metric label="Идеи" icon="folder" tone="green" value={<CountUp to={s.ideas} />} unit={s.unmarked ? `${s.unmarked} без отметки` : 'все отмечены'} graph={s.week.some(Boolean) ? <Bars values={s.week} tone="green" /> : <Pulse tone="green" />} onClick={() => go('ideas')} />
-      <Metric label="Вместе" icon="clock" tone="blue" value={<CountUp to={Math.round(s.hours)} />} unit={s.spent ? `ч · ${money(s.spent)}` : 'часов'} graph={<Bars values={s.months.map(m => m.done)} tone="blue" />} onClick={() => go('us')} />
+      {!s ? [0, 1, 2, 3].map(k => <Skel key={k} h={116} mb={0} />) : <>
+        <Metric label="Встречи" icon="cal" tone="orange" value={<CountUp to={s.meetings} />} unit={`${s.this_month} в этом мес.`} graph={<Bars values={months} tone="orange" />} onClick={() => go('calendar')} />
+        <Metric label="Совпадение" icon="heart" tone="pink" value={<><CountUp to={s.match} />%</>} unit={`${s.both_want} хотите оба`} graph={<Gauge value={s.match} tone="pink" />} onClick={() => go('ideas/both')} />
+        <Metric label="Идеи" icon="folder" tone="green" value={<CountUp to={s.ideas} />} unit={s.unmarked ? `${s.unmarked} без отметки` : 'все отмечены'} graph={s.week.some(Boolean) ? <Bars values={s.week} tone="green" /> : <Pulse tone="green" />} onClick={() => go('ideas')} />
+        <Metric label="Вместе" icon="clock" tone="blue" value={<CountUp to={Math.round(s.hours)} />} unit={s.spent ? `ч · ${money(s.spent)}` : 'часов'} graph={<Bars values={s.months.map(m => m.done)} tone="blue" />} onClick={() => go('us')} />
+      </>}
     </div>
     <div className="chartcard rise" style={{ ['--d' as any]: 3, marginTop: 10 }}>
       <div className="chartcard__head"><h3>Наши встречи</h3><span className="chip-filter">6 месяцев</span></div>
-      {months.some(Boolean) ? <AreaChart labels={s.months.map(m => m.label)} values={months} peakLabel={v => `${v} ${plural(v, 'встреча', 'встречи', 'встреч')}`} />
-        : <Empty title="Пока без встреч" text={home.paired ? 'Первая встреча появится на графике, как только вы её запланируете.' : 'Пригласи партнёра, чтобы начать.'} />}
+      <div className="chartcard__body">
+        {!s ? <Skel h={150} mb={0} /> : months.some(Boolean) ? <AreaChart labels={s.months.map(m => m.label)} values={months} peakLabel={v => `${v} ${plural(v, 'встреча', 'встречи', 'встреч')}`} />
+          : <Empty title="Пока без встреч" text={home.paired ? 'Первая встреча появится на графике, как только вы её запланируете.' : 'Пригласи партнёра, чтобы начать.'} />}
+      </div>
     </div>
   </>)
 }
