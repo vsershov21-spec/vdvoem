@@ -7,8 +7,14 @@ DIR=/opt/vdvoem
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 cd "$TMP"
-curl -fsSL --retry 3 -o rel.tgz "$BASE/vdvoem-linux-amd64.tar.gz"
-curl -fsSL --retry 3 -o rel.sha "$BASE/vdvoem-linux-amd64.tar.gz.sha256"
+# assets through the API first (the github.com/…/download redirect sometimes answers 504 from here), then the plain URL
+get() { # name → file
+  id=$(curl -fsS --retry 2 -m 20 "https://api.github.com/repos/$REPO/releases/tags/latest" | python3 -c "import sys,json; print([a['id'] for a in json.load(sys.stdin)['assets'] if a['name']=='$1'][0])" 2>/dev/null || true)
+  if [ -n "$id" ] && curl -fsSL --retry 3 -m 300 -H 'Accept: application/octet-stream' -o "$2" "https://api.github.com/repos/$REPO/releases/assets/$id"; then return 0; fi
+  curl -fsSL --retry 3 -m 300 -o "$2" "$BASE/$1"
+}
+get vdvoem-linux-amd64.tar.gz rel.tgz
+get vdvoem-linux-amd64.tar.gz.sha256 rel.sha
 [ "$(sha256sum rel.tgz | cut -d' ' -f1)" = "$(cut -d' ' -f1 rel.sha)" ] || { echo "checksum mismatch"; exit 1; }
 mkdir x && tar -C x -xzf rel.tgz
 NEW=$(cut -c1-12 x/VERSION)
