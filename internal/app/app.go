@@ -328,11 +328,43 @@ type parsePayload struct {
 	Similar int64  `json:"similar"`
 }
 
+// mergeParsed applies parsed values only to fields nobody touched since parsing started.
+func mergeParsed(orig, parsed store.Idea, st *store.Store, ctx context.Context) store.Idea {
+	cur, err := st.IdeaAny(ctx, orig.ID)
+	if err != nil {
+		return parsed
+	}
+	out := cur
+	pick := func(changed bool, apply func()) {
+		if !changed {
+			apply()
+		}
+	}
+	pick(cur.Title != orig.Title, func() { out.Title = parsed.Title; out.Fingerprint = parsed.Fingerprint })
+	pick(cur.Address != orig.Address, func() { out.Address = parsed.Address })
+	pick(cur.ImageURL != orig.ImageURL, func() { out.ImageURL = parsed.ImageURL })
+	pick(cur.Category != orig.Category || cur.Kind != orig.Kind, func() { out.Category, out.Kind = parsed.Category, parsed.Kind })
+	pick(cur.PriceMin != orig.PriceMin || cur.PriceMax != orig.PriceMax, func() { out.PriceMin, out.PriceMax = parsed.PriceMin, parsed.PriceMax })
+	pick(cur.DurationMin != orig.DurationMin, func() { out.DurationMin = parsed.DurationMin })
+	pick(cur.Note != orig.Note, func() { out.Note = parsed.Note })
+	pick(!timeEq(cur.EndsAt, orig.EndsAt), func() { out.EndsAt = parsed.EndsAt })
+	pick(!timeEq(cur.StartsAt, orig.StartsAt), func() { out.StartsAt = parsed.StartsAt })
+	return out
+}
+
+func timeEq(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
+}
+
 func (a *App) runParse(ctx context.Context, p parsePayload) error {
 	i, err := a.S.IdeaAny(ctx, p.Idea)
 	if err != nil {
 		return nil // deleted meanwhile
 	}
+	orig := i
 	if i.URL != "" && a.Fetch != nil {
 		r, err := parse.Fetch(ctx, a.Fetch, i.URL)
 		if err != nil {
@@ -383,6 +415,8 @@ func (a *App) runParse(ctx context.Context, p parsePayload) error {
 	if i.DurationMin == 0 {
 		i.DurationMin = defaultDuration(i.Category)
 	}
+	// parsing takes seconds: whatever a person edited meanwhile wins over the parser
+	i = mergeParsed(orig, i, a.S, ctx)
 	i.Parsed = true
 	if err := a.S.UpdateIdea(ctx, i, a.now()); err != nil {
 		return err
