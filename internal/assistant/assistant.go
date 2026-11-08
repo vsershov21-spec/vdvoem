@@ -201,6 +201,8 @@ func nextFor(in Intent, cards []Card) []string {
 		out = append(out, "Что интересного на неделе?", "Удиви нас")
 	case "chat":
 		out = append(out, "Что интересного на неделе?", "Куда сходить в субботу вечером?", "Удиви нас")
+	default: // remember, goal, budget… — done; what next
+		out = append(out, "Что интересного на неделе?", "Что нашёл скаут?", "Удиви нас")
 	}
 	if len(out) > 4 {
 		out = out[:4]

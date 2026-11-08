@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { people, pair, phone, open, shot, api, addIdeas, waitMsg, press, chat } from './lib'
+import { people, pair, phone, open, shot, api, addIdeas, waitMsg, press, chat, BASE } from './lib'
 
 test('E29 «А потом?»: музей → ужин, предлагает один, подтверждает другой, в календаре два события', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
@@ -38,8 +38,9 @@ test('E29 «А потом?»: музей → ужин, предлагает од
   // both confirm → the calendar has both stops
   await api(v, 'POST', `/rounds/${round.id}/confirm`)
   await api(n, 'POST', `/rounds/${round.id}/confirm`)
-  await waitMsg(v, /Мы идём[\s\S]*Потом:.*Ужин/)
-  const ics = (await chat(v)).filter(x => x.file_name === 'vdvoem.ics').pop()!.file!
+  const m = await waitMsg(v, /Мы идём[\s\S]*Потом:.*Ужин/)
+  const link = JSON.stringify(m.reply_markup).match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
+  const ics = await (await fetch(link)).text()
   expect(ics.match(/BEGIN:VEVENT/g)!.length).toBe(2)
   expect(ics).toContain('SUMMARY:Ужин в грузинском ресторане')
   await vp.reload()

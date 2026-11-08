@@ -329,7 +329,7 @@ func (r *run) suggestText(ctx context.Context, in Intent) Reply {
 	}
 	res := r.suggest(ctx, in.Mode, in.Date, in.Part, in.Max, cat, 3)
 	if in.Mode == "random" {
-		return Reply{Text: textFor(res, "🎲 Вот что выпало из вашей копилки.")}
+		return Reply{Text: textFor(res, "🎲 Вот что выпало "+map[string]string{"": "из вашей копилки", "afisha": "из того, что нашли скаут и каналы", "all": "из всего, что есть"}[r.from]+".")}
 	}
 	return Reply{Text: textFor(res, "Подобрал по вашим оценкам — первый вариант мой фаворит.")}
 }
@@ -538,9 +538,9 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 	}
 	switch top["partner_wish"] {
 	case "want", "very":
-		b.WriteString(" " + pn + " уже отметил(а) «хочу».")
+		b.WriteString(" " + pn + " уже " + past(pn, "отметил") + " «хочу».")
 	case "skip":
-		b.WriteString(" Правда, " + pn + " это пропускал(а).")
+		b.WriteString(" Правда, " + pn + " это " + past(pn, "пропускал") + ".")
 	}
 	if len(events) > 1 {
 		var more []string
@@ -632,6 +632,24 @@ const listMax = 40
 
 func ruMonth(t time.Time) string {
 	return [...]string{"", "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"}[t.Month()] + " " + strconv.Itoa(t.Year())
+}
+
+// past: «отметила» for Настя, «отметил» for Вова; unclear names keep «(а)»
+func past(name, verb string) string {
+	r := []rune(strings.TrimSpace(name))
+	if len(r) < 2 {
+		return verb + "(а)"
+	}
+	switch strings.ToLower(string(r)) {
+	case "саша", "женя", "валя", "сеня", "шура", "паша", "слава":
+		return verb + "(а)"
+	case "никита", "илья", "кузьма", "фома", "лука", "миша", "гоша", "дима", "вова", "коля", "толя", "петя", "ваня", "серёжа", "сережа", "лёша", "леша", "гриша", "костя", "юра", "боря", "витя", "федя", "стёпа", "степа", "вася", "тёма", "тема", "лёва", "лева":
+		return verb
+	}
+	if l := r[len(r)-1]; l == 'а' || l == 'я' {
+		return verb + "а"
+	}
+	return verb
 }
 
 func condSuffix(c string) string {

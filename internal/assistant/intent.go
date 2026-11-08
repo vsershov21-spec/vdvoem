@@ -154,6 +154,9 @@ func rulesIntent(text string, now time.Time) Intent {
 		in.conf = 0.6
 	case asks && has(t, "куда", "посовет", "предлож", "подбер", "идею", "идея", "чем заняться", "что делать"):
 		in.I, in.Mode, in.conf = "suggest", "best", 0.5
+	case asks && aboutTopicRe.MatchString(t): // «что-нибудь про технологии», «есть что-то с котиками?»
+		in.Q = stemQ(strings.TrimSpace(aboutTopicRe.FindStringSubmatch(t)[1]))
+		in.conf = 0.6
 	case asks:
 		in.I, in.conf = "chat", 0.3 // «как дела?» — talk, not a pick
 	default:
@@ -162,9 +165,11 @@ func rulesIntent(text string, now time.Time) Intent {
 	return in
 }
 
+var aboutTopicRe = regexp.MustCompile(`(?:что-нибудь|что-то|что|чего-нибудь|есть|сходить)\s+(?:интересное\s+)?(?:про|о|об|по|связанное с|с|со)\s+([а-яёa-z][а-яёa-z -]{2,30}?)[?.!]*$`)
+
 // bookQ: «Гамлета, поставь в календарь» → «Гамлета»
 func bookQ(s string) string {
-	for _, sep := range []string{",", " и ", " в пятниц", " в суббот", " в воскрес", " сегодня", " завтра", " позови", " поставь"} {
+	for _, sep := range []string{" — ", " - ", "?", " подойд", " нам ", " понрав", ",", " и ", " в пятниц", " в суббот", " в воскрес", " сегодня", " завтра", " позови", " поставь"} {
 		if k := strings.Index(strings.ToLower(s), sep); k > 0 {
 			s = s[:k]
 		}
@@ -403,6 +408,11 @@ func widen(in Intent, text string) Intent {
 	}
 	in.Scout = in.Scout || scout && !all && in.Whose != "ours"
 	in.All = in.All || all
+	if all { // «подборку всего» starts afresh: only the conditions said now stay
+		fresh := rulesIntent(text, time.Now())
+		in.Date, in.Wknd, in.Part, in.Moods, in.Cats, in.Max = fresh.Date, fresh.Wknd, fresh.Part, fresh.Moods, fresh.Cats, fresh.Max
+		in.Q, in.Not, in.NotW = "", nil, nil
+	}
 	if in.Hz == "week" && !weekRe.MatchString(t) { // no time named: announcements months ahead count too
 		in.Hz = ""
 	}

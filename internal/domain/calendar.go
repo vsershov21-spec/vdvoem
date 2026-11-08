@@ -159,5 +159,8 @@ var ruMon = [...]string{"янв", "фев", "мар", "апр", "мая", "ию�
 // When formats «Сб, 15 ноя · 19:30».
 func When(t time.Time, loc *time.Location) string {
 	l := t.In(loc)
+	if l.Hour() == 0 && l.Minute() == 0 { // a day without a time («весь день», a show whose time is not known yet)
+		return fmt.Sprintf("%s, %d %s", ruWeek[l.Weekday()], l.Day(), ruMon[l.Month()-1])
+	}
 	return fmt.Sprintf("%s, %d %s · %02d:%02d", ruWeek[l.Weekday()], l.Day(), ruMon[l.Month()-1], l.Hour(), l.Minute())
 }
