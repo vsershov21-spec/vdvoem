@@ -90,6 +90,8 @@ test('E33 чат: подсказки при печати, следующий ш�
   await p.getByTestId('type-hints').getByRole('button').first().click()
   await expect(p.locator('.msg--ai').last()).toContainText('₽', { timeout: 10000 })
   // the answer brings its own next steps, and each is understood at once
+  if (!(await p.getByTestId('follow').count())) console.log('E33 debug', await p.evaluate(() => JSON.stringify({ docks: [...document.querySelectorAll('.sugg')].map(e => e.outerHTML.slice(0, 200)), field: (document.querySelector('.composer textarea') as HTMLTextAreaElement)?.value, cls: document.body.className, last: document.querySelector('.chat')?.lastElementChild?.previousElementSibling?.outerHTML.slice(0, 400) })),
+    JSON.stringify((await api(v, 'GET', '/assistant')).messages.slice(-1)[0]?.reply).slice(0, 600))
   await expect(p.getByTestId('follow')).toBeVisible()
   await p.getByTestId('follow').getByRole('button', { name: 'Расскажи про это' }).click()
   await expect(p.locator('.msg--ai').last()).toContainText('Щелкунчик', { timeout: 10000 })

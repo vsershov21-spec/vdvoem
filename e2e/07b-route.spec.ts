@@ -38,7 +38,7 @@ test('E29 «А потом?»: музей → ужин, предлагает од
   // both confirm → the calendar has both stops
   await api(v, 'POST', `/rounds/${round.id}/confirm`)
   await api(n, 'POST', `/rounds/${round.id}/confirm`)
-  await waitMsg(v, /Встреча запланирована[\s\S]*Потом:.*Ужин/)
+  await waitMsg(v, /Мы идём[\s\S]*Потом:.*Ужин/)
   const ics = (await chat(v)).filter(x => x.file_name === 'vdvoem.ics').pop()!.file!
   expect(ics.match(/BEGIN:VEVENT/g)!.length).toBe(2)
   expect(ics).toContain('SUMMARY:Ужин в грузинском ресторане')
