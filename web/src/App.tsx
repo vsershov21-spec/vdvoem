@@ -16,12 +16,14 @@ import { AddSheet } from './screens/AddSheet'
 const load = {
   idea: () => import('./screens/Idea'), round: () => import('./screens/Round'), assistant: () => import('./screens/Assistant'),
   calendar: () => import('./screens/Calendar'), us: () => import('./screens/Us'), surprise: () => import('./screens/Surprise'),
+  triage: () => import('./screens/Triage'),
 }
 const IdeaScreen = lazy(() => load.idea().then(m => ({ default: m.IdeaScreen })))
 const RoundScreen = lazy(() => load.round().then(m => ({ default: m.RoundScreen })))
 const Assistant = lazy(() => load.assistant().then(m => ({ default: m.Assistant })))
 const CalendarScreen = lazy(() => load.calendar().then(m => ({ default: m.CalendarScreen })))
 const Us = lazy(() => load.us().then(m => ({ default: m.Us })))
+const Triage = lazy(() => load.triage().then(m => ({ default: m.Triage })))
 const SurpriseSheet = lazy(() => load.surprise().then(m => ({ default: m.SurpriseSheet })))
 
 let themePref = ''
@@ -92,6 +94,7 @@ function Main() {
   let screen
   switch (top) {
     case 'ideas': screen = <Ideas home={home.data} folder={route[1]} />; break
+    case 'triage': screen = <Triage partner={home.data?.partner} />; break
     case 'idea': screen = <IdeaScreen id={Number(route[1])} me={home.data?.me} partner={home.data?.partner} />; break
     case 'round': screen = <RoundScreen id={Number(route[1])} home={home.data} />; break
     case 'calendar': screen = <CalendarScreen home={home.data} />; break

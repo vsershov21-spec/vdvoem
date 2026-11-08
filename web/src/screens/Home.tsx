@@ -9,6 +9,7 @@ import { shareLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, CountUp, Empty, Skel, WishPicker, toast } from '../ui/kit'
 import { AreaChart, Bars, Gauge, Metric, Pulse } from '../ui/Charts'
+import { UrgentList } from '../ui/Urgent'
 
 export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null; onAdd: () => void; onSurprise: (m: 'random' | 'best') => void; onStart: () => void }) {
   const stats = useLoad<Stats>('/stats', 60000)
@@ -28,6 +29,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
           <Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} online={partnerHere} />
         </button>
       </header>
+      {!!home.urgent?.length && <div style={{ marginBottom: 12 }}><UrgentList items={home.urgent} partner={home.partner?.name || 'Партнёр'} /></div>}
       {!home.paired ? <Invite /> : home.round ? <RoundCard r={home.round} home={home} /> : home.next ? <NextCard r={home.next} /> : <Hero home={home} onStart={onStart} />}
       {home.paired && (
         <div className="row rise" style={{ ['--d' as any]: 1, marginTop: 12, gap: 8 }}>
@@ -36,7 +38,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
         </div>
       )}
       <Dashboard s={stats.data} home={home} />
-      <ToMark ideas={home.to_mark || []} onAdd={onAdd} />
+      <ToMark ideas={home.to_mark || []} total={home.counts.unmarked} onAdd={onAdd} />
     </>
   )
 }
@@ -154,7 +156,7 @@ function Invite() {
   )
 }
 
-function ToMark({ ideas, onAdd }: { ideas: Idea[]; onAdd: () => void }) {
+function ToMark({ ideas, total, onAdd }: { ideas: Idea[]; total: number; onAdd: () => void }) {
   const [gone, setGone] = useState<Record<number, boolean>>({})
   const mark = async (i: Idea, w: Wish) => {
     if (!w) return
@@ -163,6 +165,8 @@ function ToMark({ ideas, onAdd }: { ideas: Idea[]; onAdd: () => void }) {
   }
   return (<>
     <div className="sec"><h2 className="title"><span className="orange-ind" />Отметь, чего хочется</h2>{ideas.length > 0 && <button className="link" onClick={() => go('ideas/unmarked')}>Все</button>}</div>
+    {total > 3 && <button className="triage-cta rise" data-testid="triage-open" onClick={() => go('triage')}>
+      <Icon n="folder" s={20} /><span><b>Разобрать всё · {total}</b><small>По одной карточке, сначала то, что скоро. Минут на пять.</small></span><Icon n="chev" s={16} w={2.4} /></button>}
     {ideas.length === 0 ? (
       <div className="card"><Empty title="Всё отмечено" text="Кидай в бота ссылки на места и события — или добавь идею здесь."><Btn kind="primary" sm icon="plus" onClick={onAdd}>Добавить идею</Btn></Empty></div>
     ) : (

@@ -611,3 +611,17 @@ button,a,[role=tab]{touch-action:manipulation}
 .calsub__t b{font:600 15px/1.2 var(--font-sans)}
 .calsub__t span{font:400 13px/1.25 var(--font-sans);color:var(--ink-muted)}
 .calsub__go{font-size:22px;color:var(--ink-muted)}
+
+/* «важно» */
+.urgent{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-card);border:1.5px solid color-mix(in srgb,#ff701e 45%,transparent);color:#ff701e}
+.urgent--ask{flex-direction:column;align-items:stretch;background:color-mix(in srgb,#ff701e 9%,var(--surface))}
+.urgent__main{flex:1;min-width:0;color:var(--ink)}
+.urgent__main b{display:block;font:650 15px/20px var(--font-sans)}
+.urgent__main span{display:block;font:500 13px/18px var(--font-sans);color:var(--ink-muted)}
+/* разбор */
+.triage-cta{display:flex;align-items:center;gap:12px;width:100%;appearance:none;border:0;cursor:pointer;text-align:left;margin:0 0 12px;padding:14px 16px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-card);color:var(--ink);font:inherit}
+.triage-cta span{flex:1;min-width:0}.triage-cta b{display:block;font:650 15.5px/20px var(--font-sans)}.triage-cta small{display:block;font:500 13px/18px var(--font-sans);color:var(--ink-muted)}
+.triage__acts{display:grid;gap:8px;margin-top:12px;padding-bottom:calc(var(--dock-h) + var(--safe-b) + 12px)}
+.progress{height:4px;border-radius:2px;background:var(--surface-sunken);margin:0 0 12px;overflow:hidden}
+.progress i{display:block;height:100%;width:var(--p);background:var(--accent);transition:width .35s var(--ease-out)}
+.slots__day,.slots__h{cursor:pointer}

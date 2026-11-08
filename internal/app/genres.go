@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"unicode"
 
+	"vdvoem/internal/domain"
 	"vdvoem/internal/store"
 )
 
@@ -162,4 +164,34 @@ func sentences(p string, n int) string {
 		return cut[:k+1]
 	}
 	return strings.TrimSpace(cut) + "…"
+}
+
+// FillGenres: ideas already in the bank get genres from what they say (title, note, the scout's «why», the
+// description) — so taste, search and «подойдёт ли нам» work on the old ones too. Never overwrites.
+func (a *App) FillGenres(ctx context.Context) int {
+	spaces, err := a.S.Spaces(ctx)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, sp := range spaces {
+		ideas, _ := a.S.Ideas(ctx, sp.ID, domain.IdeaActive, domain.IdeaDraft)
+		for _, i := range ideas {
+			if i.Kind != domain.KindLeisure || len(i.Info.Genres) > 0 {
+				continue
+			}
+			g := GenresOf(strings.Join([]string{i.Title, i.Note, i.Why, i.Info.About}, " "))
+			if len(g) == 0 {
+				continue
+			}
+			i.Info.Genres = g
+			if i.Info.Src == "" {
+				i.Info.Src = "text"
+			}
+			if a.S.UpdateIdea(ctx, i, a.now()) == nil {
+				n++
+			}
+		}
+	}
+	return n
 }

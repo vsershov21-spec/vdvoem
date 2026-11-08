@@ -61,6 +61,9 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("DELETE /api/ideas/{id}", a.deleteIdea)
 	h("POST /api/ideas/{id}/wish", a.wish)
 	h("POST /api/ideas/{id}/merge", a.merge)
+	h("POST /api/ideas/{id}/urgent", a.markUrgent)
+	h("DELETE /api/ideas/{id}/urgent", a.cancelUrgent)
+	h("POST /api/ideas/{id}/urgent/{answer}", a.answerUrgent)
 	h("GET /api/ideas/{id}/options", a.options)
 	h("POST /api/ideas/{id}/options", a.addOption)
 	h("POST /api/ideas/{id}/options/suggest", a.suggestOptions)
@@ -301,6 +304,10 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 409, map[string]string{"error": "round_open"})
 	case errors.Is(err, app.ErrNoIdeas):
 		writeJSON(w, 404, map[string]string{"error": "no_ideas"})
+	case errors.Is(err, app.ErrNotPending):
+		writeJSON(w, 409, map[string]string{"error": "not_pending"})
+	case errors.Is(err, app.ErrNotYours):
+		writeJSON(w, 409, map[string]string{"error": "not_yours"})
 	case errors.Is(err, assistant.ErrLimit):
 		writeJSON(w, 429, map[string]string{"error": "limit"})
 	default:
@@ -442,7 +449,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 		out["partner"] = person(*c.Partner)
 	}
 	unmarked := []ideaView{}
-	leisure, chores, both := 0, 0, 0
+	leisure, chores, both, nUnmarked := 0, 0, 0, 0
 	for _, i := range ideas {
 		v := viewIdea(c, i)
 		if i.Kind == domain.KindChore {
@@ -450,15 +457,19 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 			continue
 		}
 		leisure++
-		if v.MyWish == "" && len(unmarked) < 10 {
-			unmarked = append(unmarked, v)
+		if v.MyWish == "" {
+			nUnmarked++
+			if len(unmarked) < 10 {
+				unmarked = append(unmarked, v)
+			}
 		}
 		if (i.WishA == domain.WishWant || i.WishA == domain.WishVery) && (i.WishB == domain.WishWant || i.WishB == domain.WishVery) {
 			both++
 		}
 	}
-	out["counts"] = map[string]int{"ideas": leisure, "chores": chores, "both_want": both, "unmarked": len(unmarked)}
+	out["counts"] = map[string]int{"ideas": leisure, "chores": chores, "both_want": both, "unmarked": nUnmarked}
 	out["to_mark"] = unmarked
+	out["urgent"] = a.App.UrgentForMe(ctx, c)
 	if rd, err := a.App.S.OpenRound(ctx, c.Space.ID); err == nil {
 		out["round"] = a.viewRound(ctx, c, rd)
 	}
@@ -525,7 +536,7 @@ func (a *API) idea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	if i.Kind == domain.KindLeisure {
 		v = withMatch(v, a.App.Tastes(r.Context(), c), i, c.PartnerName())
 	}
-	return map[string]any{"idea": v}, nil
+	return map[string]any{"idea": v, "urgent": a.App.UrgentView(r.Context(), c, i.ID)}, nil
 }
 
 func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -617,6 +628,45 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	}
 	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
 	return map[string]any{"idea": viewIdea(c, i)}, err
+}
+
+func (a *API) markUrgent(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Note string `json:"note"`
+	}
+	_ = body(r, &in)
+	if _, err := a.App.MarkUrgent(r.Context(), c, id, in.Note); err != nil {
+		return nil, err
+	}
+	return map[string]any{"urgent": a.App.UrgentView(r.Context(), c, id)}, nil
+}
+
+func (a *API) cancelUrgent(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]bool{"ok": true}, a.App.CancelUrgent(r.Context(), c, id)
+}
+
+func (a *API) answerUrgent(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	msg, err := a.App.AnswerUrgent(r.Context(), c, id, r.PathValue("answer"))
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{"text": msg}
+	if rd, err := a.App.S.OpenRound(r.Context(), c.Space.ID); err == nil {
+		out["round_id"] = rd.ID
+	}
+	return out, nil
 }
 
 func (a *API) deleteIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {

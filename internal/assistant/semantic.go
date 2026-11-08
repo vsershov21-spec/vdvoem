@@ -17,7 +17,7 @@ import (
 // prices and the person's exclusions are still checked by the code. Off without EMBED_MODEL.
 
 // semMin: below this a «match by meaning» is noise (bge-m3 on short Russian texts)
-const semMin = 0.52
+const semMin = 0.60
 
 type semIndex struct {
 	mu       sync.Mutex

@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"sort"
+	"time"
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/domain"
@@ -20,6 +21,7 @@ func (a *API) peopleRoutes(h func(string, handler)) {
 	h("POST /api/goals", a.addGoal)
 	h("DELETE /api/goals/{id}", a.delGoal)
 	h("GET /api/afisha", a.afisha)
+	h("GET /api/triage", a.triage)
 }
 
 func (a *API) profile(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -127,4 +129,45 @@ func (a *API) afisha(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 		out = append(out, x.v)
 	}
 	return map[string]any{"ideas": out, "counts": counts}, nil
+}
+
+// triage: everything I have not marked yet — the bank and the afisha — soonest first (a date about to pass
+// matters most), then what suits us both best. «Разобрать всё» goes through it card by card.
+func (a *API) triage(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	ideas, err := a.App.S.Ideas(r.Context(), c.Space.ID, domain.IdeaDraft, domain.IdeaActive)
+	if err != nil {
+		return nil, err
+	}
+	now := a.App.Now()
+	t := a.App.Tastes(r.Context(), c)
+	type row struct {
+		v    ideaView
+		soon int64
+	}
+	var rows []row
+	for _, i := range ideas {
+		if i.Kind != domain.KindLeisure || i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
+			continue
+		}
+		v := withMatch(viewIdea(c, i), t, i, c.PartnerName())
+		if v.MyWish != "" {
+			continue
+		}
+		soon := int64(1 << 62)
+		if i.StartsAt != nil && i.StartsAt.Sub(now) < 21*24*time.Hour {
+			soon = i.StartsAt.Unix()
+		}
+		rows = append(rows, row{v, soon})
+	}
+	sort.SliceStable(rows, func(x, y int) bool {
+		if rows[x].soon != rows[y].soon {
+			return rows[x].soon < rows[y].soon
+		}
+		return rows[x].v.Match != nil && rows[y].v.Match != nil && rows[x].v.Match.Both > rows[y].v.Match.Both
+	})
+	out := make([]ideaView, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, x.v)
+	}
+	return map[string]any{"ideas": out, "total": len(out)}, nil
 }

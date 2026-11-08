@@ -77,6 +77,11 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
   const paint = useRef<null | boolean>(null)
   const toggle = (k: string, on?: boolean) => setSel(s => { const n = new Set(s); const v = on ?? !n.has(k); if (v === n.has(k)) return s; v ? n.add(k) : n.delete(k); haptic.select(); return n })
   const send = async () => { await act('slots', { slots: [...sel] }); setEditing(false) }
+  // «любое возможное»: a whole day, one part of the day all week, or everything in the next two weeks
+  const setMany = (ks: string[]) => { const free = ks.filter(k => !past(k.slice(0, 10), +k.slice(11))); if (!free.length) return
+    const on = !free.every(k => sel.has(k)); haptic.select(); setSel(s => { const n = new Set(s); free.forEach(k => on ? n.add(k) : n.delete(k)); return n }) }
+  const anyTime = () => { const ks: string[] = []; for (let d = 0; d < 14; d++) { const day = ymd(addDays(t0, d)); if (day > last) break; PARTS.forEach(([p]) => ks.push(`${day}:${p}`)) }
+    const free = ks.filter(k => !past(k.slice(0, 10), +k.slice(11))); setSel(s => new Set([...s, ...free])); haptic.ok(); toast(`Отметил всё свободное на две недели — ${free.length} ${slotWord(free.length)}. Лишнее можно снять`) }
   const noOverlap = r.sent && r.partner_sent
   const goWeek = (m: Date) => { const t = clamp(m); if (+t === +week) return; haptic.select(); setDir(t > week ? 1 : -1); setWeek(t) }
   const perDay = useMemo(() => { const m: Record<string, number> = {}; sel.forEach(k => { const d = k.slice(0, 10); m[d] = (m[d] || 0) + 1 }); return m }, [sel])
@@ -139,12 +144,14 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         {quick.map(([l, d]) => <button key={l} className="wkchip" data-on={+clamp(d) === +week || undefined} onClick={() => goWeek(d)}>{l}</button>)}
         {otherWeeks.map(([w, n]) => <button key={w} className="wkchip" onClick={() => goWeek(parseDay(w))}>{weekTitle(parseDay(w))}<b>{n}</b></button>)}
         <button className="wkchip" onClick={() => setPicker(true)}><Icon n="cal" s={14} />Другая дата</button>
+        <button className="wkchip" data-testid="any-time" onClick={anyTime}>Мне подходит любое</button>
+        {sel.size > 0 && <button className="wkchip" onClick={() => { haptic.select(); setSel(new Set()) }}>Сбросить</button>}
       </div>
       <motion.div key={ymd(week)} className="slots slots--week" initial={dir ? { opacity: 0, x: dir * 28 } : false} animate={{ opacity: 1, x: 0 }} transition={{ type: 'spring', stiffness: 420, damping: 36 }}
         onPointerUp={() => { paint.current = null }} onPointerLeave={() => { paint.current = null }}>
-        <span />{PARTS.map(([, l, ic]) => <span key={l} className="slots__h row" style={{ justifyContent: 'center', gap: 4 }}><Icon n={ic} s={14} w={2} />{l}</span>)}
+        <span />{PARTS.map(([p, l, ic]) => <span key={l} role="button" aria-label={`${l} всю неделю`} className="slots__h row" style={{ justifyContent: 'center', gap: 4 }} onClick={() => setMany(days.map(d => `${d}:${p}`))}><Icon n={ic} s={14} w={2} />{l}</span>)}
         {days.map(d => { const L = dayLabel(d); const off = d < today || d > last; return [
-          <div key={d} className={'slots__day' + (sug.has(d) ? ' is-sug' : '') + (off ? ' is-off' : '') + (d === focus ? ' is-focus' : '')}><b>{L.wd}</b><span>{L.num} {L.mon}</span></div>,
+          <div key={d} role="button" aria-label={`${L.long} целиком`} onClick={() => setMany(PARTS.map(([p]) => `${d}:${p}`))} className={'slots__day' + (sug.has(d) ? ' is-sug' : '') + (off ? ' is-off' : '') + (d === focus ? ' is-focus' : '')}><b>{L.wd}</b><span>{L.num} {L.mon}</span></div>,
           ...PARTS.map(([p]) => { const k = `${d}:${p}`; const dis = past(d, p); return (
             <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} data-their={theirs.has(k) || undefined} data-common={(theirs.has(k) && sel.has(k)) || undefined} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}`} style={{ ['--c' as any]: 'var(--person-a)' }}
               onPointerDown={e => { if (dis) return; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); paint.current = !sel.has(k); toggle(k, paint.current) }}
@@ -153,7 +160,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
             </button>) }),
         ] })}
       </motion.div>
-      <p className="caption muted" style={{ margin: 0 }}>Утро 9–13 · день 13–18 · вечер 18–23. Можно вести пальцем. <span style={{ color: '#ff701e' }}>●</span> — предлагаю эти дни.</p>
+      <p className="caption muted" style={{ margin: 0 }}>Утро 9–13 · день 13–18 · вечер 18–23. Можно вести пальцем; нажми на день — отметится целиком, на «Вечер» — все вечера недели. <span style={{ color: '#ff701e' }}>●</span> — предлагаю эти дни.</p>
       <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Отметь хотя бы одно' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
       <Sheet open={picker} onClose={() => setPicker(false)}>
         <WeekPicker today={today} last={last} perDay={perDay} week={week} onPick={d => { goWeek(monday(parseDay(d))); setFocus(d); setPicker(false); toast('Теперь отметь, когда удобно в этот день') }} />

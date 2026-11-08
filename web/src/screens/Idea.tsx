@@ -9,22 +9,23 @@ import { openLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Sheet, Skel, SubHeader, WishPicker, toast, Segmented } from '../ui/kit'
 import { Places } from '../ui/Places'
+import { AskUrgent, UrgentBanner, type UrgentInfo } from '../ui/Urgent'
 
 const wishWord: Record<string, string> = { want: 'хочет', very: 'очень хочет', skip: 'пропустит' }
 
 export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; partner?: Person }) {
-  const { data, set } = useLoad<{ idea: Idea }>('/ideas/' + id, 30000)
+  const { data, set, refresh: reload } = useLoad<{ idea: Idea; urgent?: UrgentInfo }>('/ideas/' + id, 30000)
   const [edit, setEdit] = useState(false)
   if (!data || !me) return <><SubHeader /><Skel h={280} r={26} /><Skel h={60} /><Skel h={120} /></>
   const i = data.idea
   const wish = async (w: Wish) => {
-    try { const r = await post<{ idea: Idea }>(`/ideas/${i.id}/wish`, { wish: w || 'skip' }); set(r); emit('home') } catch (e) { toast(humanError(e)) }
+    try { const r = await post<{ idea: Idea }>(`/ideas/${i.id}/wish`, { wish: w || 'skip' }); set(d => ({ ...d, ...r })); emit('home') } catch (e) { toast(humanError(e)) }
   }
   const goWith = async () => {
     await startWith(i.id, i.title)
   }
   const archive = async () => { await del('/ideas/' + i.id); emit('ideas'); emit('home'); toast('Убрал в архив'); back('ideas') }
-  const restore = async () => { const r = await patch<{ idea: Idea }>('/ideas/' + i.id, { status: 'active' }); set(r); emit('ideas'); toast('Вернул в копилку') }
+  const restore = async () => { const r = await patch<{ idea: Idea }>('/ideas/' + i.id, { status: 'active' }); set(d => ({ ...d, ...r })); emit('ideas'); toast('Вернул в копилку') }
   const fixed = isFixed(i)
   const partner = i.partner_wish ? wishWord[i.partner_wish] : i.partner_marked ? 'отметил(а) — увидишь после своей отметки' : 'ещё не отметил(а)'
   return (
@@ -49,18 +50,21 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
         {i.note && <p className="callout muted" style={{ margin: 0 }}>{i.note}</p>}
         {i.url && <Btn kind="soft" sm icon="link" onClick={() => openLink(i.url!)}>Открыть ссылку</Btn>}
       </div>
-      {i.kind === 'leisure' && <div className="rise" style={{ ['--d' as any]: 2, marginTop: 12 }}><Places idea={i} me={me} partner={pp} onChange={n => set({ idea: n })} /></div>}
+      {i.kind === 'leisure' && <div style={{ marginTop: 12 }}><UrgentBanner ideaId={i.id} u={data.urgent || null} partner={pp?.name || 'Партнёр'} onChange={reload} /></div>}
+      {i.kind === 'leisure' && <div className="rise" style={{ ['--d' as any]: 2, marginTop: 12 }}><Places idea={i} me={me} partner={pp} onChange={n => set(d => ({ ...d, idea: n }))} /></div>}
       {i.status === 'active' && i.kind === 'leisure' && <>
         <div className="sec"><h2 className="headline">Твоя оценка</h2></div>
         <WishPicker value={i.my_wish} onChange={wish} />
         <p className="caption muted" style={{ margin: '10px 4px 0' }}>Партнёр {partner}.</p>
         <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>{fixed ? 'Идём! Позвать и в календарь' : 'Идём сюда — найти время'}</Btn></div>
+        {pp && !data.urgent && <div style={{ marginTop: 10 }}><AskUrgent ideaId={i.id} partner={pp.name} onDone={reload} /></div>}
       </>}
       {i.status === 'draft' && i.kind === 'leisure' && fixed && <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>Идём! Позвать и в календарь</Btn></div>}
+      {i.status === 'draft' && i.kind === 'leisure' && pp && !data.urgent && <div style={{ marginTop: 10 }}><AskUrgent ideaId={i.id} partner={pp.name} onDone={reload} /></div>}
       <div style={{ marginTop: 10 }}>
         {i.status === 'active' ? <Btn kind="ghost" block icon="trash" onClick={archive}>Убрать в архив</Btn> : <Btn kind="soft" block onClick={restore}>Вернуть в копилку</Btn>}
       </div>
-      <EditSheet idea={i} open={edit} onClose={() => setEdit(false)} onSaved={r => { set({ idea: r }); emit('ideas'); emit('home') }} me={me} />
+      <EditSheet idea={i} open={edit} onClose={() => setEdit(false)} onSaved={r => { set(d => ({ ...d, idea: r })); emit('ideas'); emit('home') }} me={me} />
     </>
   )
 }
