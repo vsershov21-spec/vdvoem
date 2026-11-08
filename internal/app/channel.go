@@ -160,10 +160,76 @@ func eventPick(e postEvent, post ChannelPost) ScoutPick {
 	return p
 }
 
+// prettyTitle: «ЛЮСЯ. ПРИЗНАНИЕ В ЛЮБВИ» → «Люся. Признание в любви» (channels shout; cards should not)
+func prettyTitle(t string) string {
+	letters, upper := 0, 0
+	for _, r := range t {
+		if unicode.IsLetter(r) {
+			letters++
+			if unicode.IsUpper(r) {
+				upper++
+			}
+		}
+	}
+	if letters < 4 || upper*10 < letters*8 {
+		return t
+	}
+	r := []rune(strings.ToLower(t))
+	cap := true
+	for k, c := range r {
+		if cap && unicode.IsLetter(c) {
+			r[k] = unicode.ToUpper(c)
+			cap = false
+		}
+		if c == '.' || c == '!' || c == '?' || c == '«' || c == '"' {
+			cap = true
+		}
+	}
+	out := string(r)
+	ws := strings.Split(out, " ") // names after «имени» / «им.» keep their capital
+	for k := 1; k < len(ws); k++ {
+		if p := ws[k-1]; (p == "имени" || p == "им." || p == "им" || p == "п/р") && ws[k] != "" {
+			rr := []rune(ws[k])
+			rr[0] = unicode.ToUpper(rr[0])
+			ws[k] = string(rr)
+		}
+	}
+	out = strings.Join(ws, " ")
+	for _, keep := range []string{"Мхт", "Рамт", "Гитис", "Мтс", "Ссср", "Вднх", "Би-2", "Хх", "Et cetera"} { // abbreviations stay
+		out = strings.ReplaceAll(out, keep, map[string]string{"Мхт": "МХТ", "Рамт": "РАМТ", "Гитис": "ГИТИС", "Мтс": "МТС", "Ссср": "СССР", "Вднх": "ВДНХ", "Би-2": "Би-2", "Хх": "XX", "Et cetera": "Et Cetera"}[keep])
+	}
+	return out
+}
+
+// FixShoutingTitles: once, for events imported before titles were tidied
+func (a *App) FixShoutingTitles(ctx context.Context) int {
+	rows, err := a.S.DB.QueryContext(ctx, `SELECT id, space_id, title FROM ideas WHERE source='channel'`)
+	if err != nil {
+		return 0
+	}
+	type fix struct {
+		id, space int64
+		t         string
+	}
+	var fs []fix
+	for rows.Next() {
+		var f fix
+		if rows.Scan(&f.id, &f.space, &f.t) == nil && prettyTitle(f.t) != f.t {
+			f.t = prettyTitle(f.t)
+			fs = append(fs, f)
+		}
+	}
+	rows.Close()
+	for _, f := range fs {
+		_, _ = a.S.DB.ExecContext(ctx, `UPDATE ideas SET title=? WHERE id=? AND space_id=?`, f.t, f.id, f.space)
+	}
+	return len(fs)
+}
+
 // showPick: one show, its nearest date; the other dates and the discount go into «why»
 func showPick(sc scanned, post ChannelPost, loc *time.Location) ScoutPick {
 	d := sc.dates[0]
-	p := ScoutPick{Title: sc.Title, Address: sc.Venue, Category: sc.Category, URL: post.Link, Why: "из канала «" + clip(post.From, 40) + "»",
+	p := ScoutPick{Title: prettyTitle(sc.Title), Address: prettyTitle(sc.Venue), Category: sc.Category, URL: post.Link, Why: "из канала «" + clip(post.From, 40) + "»",
 		About: sc.info.About, Genres: sc.info.Genres, Cast: sc.info.Cast, Age: sc.info.Age}
 	if len(post.Links) > 0 {
 		p.URL = post.Links[0]

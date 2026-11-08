@@ -141,6 +141,9 @@ func main() {
 	hub := live.New()
 	a := &app.App{Live: hub, S: st, TG: client, AI: aiClient, Fetch: parse.Client(false), Now: time.Now, PublicURL: public, BotName: botName, Log: log}
 	helper := &assistant.Assistant{App: a, AI: aiClient}
+	if n := a.FixShoutingTitles(ctx); n > 0 {
+		log.Info("tidied shouting titles", "n", n)
+	}
 	b := &bot.Bot{App: a, Helper: helper, TG: client, Secret: secret, Log: log}
 	ap := &api.API{App: a, Helper: helper, BotToken: token, WebDir: env("WEB_DIR", "./web/dist"), Log: log}
 	if t := env("DEV_TOKEN", ""); t != "" {
