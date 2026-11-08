@@ -181,6 +181,40 @@ var intentHoldout = []intentCase{
 	{"ну что, куда сегодня?", `{"i":"find","date":"TOD"}`},
 }
 
+// held out #2 — written after reconcile was tuned on the model's mistakes; nothing is tuned against these
+var intentHoldout2 = []intentCase{
+	{"давай сегодня без напряга, просто посидим где-нибудь", `{"i":"find","date":"TOD","moods":["chill"]}`},
+	{"есть что-то интересное в воскресенье днём?", `{"i":"find","date":"SUN","part":"day"}`},
+	{"хочу сводить Настю в оперу", `{"i":"find","cats":["culture"]}`},
+	{"какой-нибудь концерт до 5 тысяч", `{"i":"find","cats":["culture"],"max":5000}`},
+	{"во сколько начинается Мастер и Маргарита", `{"i":"about","q":"мастер"}`},
+	{"сколько стоит поход в Ботанический сад", `{"i":"price","q":"ботанич"}`},
+	{"поставь Вишнёвый сад нам в календарь", `{"i":"book","q":"вишн"}`},
+	{"терпеть не могу оперу", `{"i":"remember"}`},
+	{"Настя любит джаз", `{"i":"remember"}`},
+	{"напиши, когда будут билеты на Щелкунчик", `{"i":"goal"}`},
+	{"что мы делаем в эти выходные", `{"i":"overview"}`},
+	{"куда мы ходили в октябре", `{"i":"past"}`},
+	{"чья очередь мыть посуду", `{"i":"chores"}`},
+	{"запиши идею: покататься на теплоходе", `{"i":"add_idea"}`},
+	{"давай лимит 6000 на свидание", `{"i":"budget","rub":6000}`},
+	{"не надо присылать мне идеи", `{"i":"suggest_mode","mode":"off"}`},
+	{"давай вместе выберем, куда пойти в выходные", `{"i":"plan"}`},
+	{"придумай что-нибудь неожиданное", `{"i":"suggest","mode":"random"}`},
+	{"нужно что-то активное после работы", `{"i":"find","moods":["active"]}`},
+	{"хочется романтики в пятницу вечером", `{"i":"find","date":"FRI","part":"evening","moods":["romantic"]}`},
+	{"можно что-нибудь на свежем воздухе бесплатно", `{"i":"find","moods":["outdoor"]}`},
+	{"где-нибудь вкусно позавтракать в субботу", `{"i":"find","date":"SAT","cats":["food"]}`},
+	{"что идёт в театрах на новогодние праздники", `{"i":"find","cats":["culture"],"hz":"later"}`},
+	{"а без мюзиклов?", `{"i":"find"}`},
+	{"какие выставки сейчас идут", `{"i":"find","cats":["culture"]}`},
+	{"про что спектакль Чайка?", `{"i":"about","q":"чайк"}`},
+	{"какой состав в Пожарах", `{"i":"about","q":"пожар"}`},
+	{"это нам вообще подойдёт — Мистер Икс?", `{"i":"about","q":"мистер"}`},
+	{"привет, что нового?", `{"i":"chat"}`},
+	{"спасибо, ты лучший", `{"i":"chat"}`},
+}
+
 func caseDate(code string, now time.Time) string {
 	d := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	next := func(w time.Weekday) time.Time { return d.AddDate(0, 0, (int(w)-int(d.Weekday())+7)%7) }
@@ -285,26 +319,32 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 	var rules, model, pipe intentScore
 	_, _ = c.Structured(ctx, "warm", append(shotMsgs(now), ai.Message{Role: "user", Content: "привет"}), intentSchema, 8)
 	var hRules, hModel, hPipe intentScore
-	for k, tc := range append(append([]intentCase{}, intentCases...), intentHoldout...) {
+	var h2Rules, h2Model, h2Pipe intentScore
+	all := append(append(append([]intentCase{}, intentCases...), intentHoldout...), intentHoldout2...)
+	for k, tc := range all {
 		held := k >= len(intentCases)
+		r2, m2, p2 := &hRules, &hModel, &hPipe
+		if k >= len(intentCases)+len(intentHoldout) {
+			r2, m2, p2 = &h2Rules, &h2Model, &h2Pipe
+		}
 		var want Intent
 		_ = json.Unmarshal([]byte(tc.Want), &want)
 		if held {
 			t0 := time.Now()
 			ri := rulesIntent(tc.Q, now)
-			hRules.add(matches(ri, want, now), time.Since(t0), tc.Q, ri)
+			r2.add(matches(ri, want, now), time.Since(t0), tc.Q, ri)
 			t0 = time.Now()
 			mi, err := modelIntent(ctx, c, tc.Q, now, recall(as.bank(ctx), tc.Q, 3))
 			el := time.Since(t0)
 			if err != nil {
 				mi = Intent{I: "error"}
 			}
-			hModel.add(matches(mi, want, now), el, tc.Q, mi)
+			m2.add(matches(mi, want, now), el, tc.Q, mi)
 			t0 = time.Now()
 			pi, src := as.Understand(ctx, tc.Q, Intent{}, now)
 			el = time.Since(t0)
 			ok := matches(pi, want, now)
-			hPipe.add(ok, el, tc.Q+" ["+src+"]", pi)
+			p2.add(ok, el, tc.Q+" ["+src+"]", pi)
 			fmt.Fprintf(w, "%s %5.2fs %-14s (новый) %s\n", map[bool]string{true: "✓", false: "✗"}[ok], el.Seconds(), src, tc.Q)
 			continue
 		}
@@ -329,7 +369,10 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 	fmt.Fprintf(w, "\n## %s · %d запросов\n%s\n%s\n%s\n", c.Model, n, rules.line("правила", n), model.line("модель", n), pipe.line("вместе", n))
 	h := len(intentHoldout)
 	fmt.Fprintf(w, "\n### Новые запросы (правила под них не настраивались) · %d\n%s\n%s\n%s\n", h, hRules.line("правила", h), hModel.line("модель", h), hPipe.line("вместе", h))
+	h2 := len(intentHoldout2)
+	fmt.Fprintf(w, "\n### Новые запросы №2 (ни правила, ни сверка под них не настраивались) · %d\n%s\n%s\n%s\n", h2, h2Rules.line("правила", h2), h2Model.line("модель", h2), h2Pipe.line("вместе", h2))
 	pipe.bad = append(pipe.bad, hPipe.bad...)
+	pipe.bad = append(pipe.bad, h2Pipe.bad...)
 	model.bad = append(model.bad, hModel.bad...)
 	fmt.Fprintf(w, "\nОшибки (вместе):\n")
 	for _, b := range pipe.bad {
