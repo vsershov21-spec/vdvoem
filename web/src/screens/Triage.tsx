@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Idea, Person } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, del, humanError } from '../lib/api'
@@ -14,8 +14,10 @@ export function Triage({ partner }: { partner?: Person }) {
   const [k, setK] = useState(0)
   const [done, setDone] = useState(0)
   const [busy, setBusy] = useState(false)
-  if (!data) return <><SubHeader title="Разбор" /><Skel h={360} r={26} /><Skel h={60} /></>
-  const list = data.ideas
+  // the deck is fixed when it opens: marks made here (and the partner's live updates) must not reshuffle it
+  const [list, setList] = useState<Idea[] | null>(null)
+  useEffect(() => { if (data && !list) setList(data.ideas) }, [data])
+  if (!list) return <><SubHeader title="Разбор" /><Skel h={360} r={26} /><Skel h={60} /></>
   const i = list[k]
   const next = () => { setK(x => x + 1); setBusy(false) }
   const act = async (f: () => Promise<unknown>, ok?: string) => {
