@@ -645,3 +645,96 @@ func TestTimeTalk(t *testing.T) {
 		t.Fatal("unknown token must not open a feed")
 	}
 }
+
+func (f *fakeTG) count(chat int64, sub string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, m := range f.msgs {
+		if m.chat == chat && strings.Contains(m.text, sub) {
+			n++
+		}
+	}
+	return n
+}
+
+// «важно»: Настя asks, Вова is reminded until he answers; yes plans the meeting, no tells her
+func TestUrgent(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	res, _ := a.AddIdea(ctx, n, "Спектакль Чайка во МХТ")
+	id := res.Idea.ID
+	if _, err := a.MarkUrgent(ctx, n, id, "Билеты разбирают!"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(1), "Настя просит ответить") || !strings.Contains(f.last(1), "Билеты разбирают") {
+		t.Fatalf("alert: %q", f.last(1))
+	}
+	if i, _ := a.S.Idea(ctx, n.Space.ID, id); i.WishB != domain.WishVery && i.WishA != domain.WishVery {
+		t.Fatal("asking marks it «очень» for the author")
+	}
+	if _, err := a.AnswerUrgent(ctx, n, id, "yes"); !errors.Is(err, app.ErrNotYours) {
+		t.Fatalf("the author cannot answer her own request: %v", err)
+	}
+	ck.t = ck.t.Add(30 * time.Minute)
+	a.Tick(ctx)
+	if c := f.count(1, "Напоминаю: Настя ждёт"); c != 0 {
+		t.Fatal("too early")
+	}
+	ck.t = ck.t.Add(31 * time.Minute)
+	a.Tick(ctx)
+	if c := f.count(1, "Напоминаю: Настя ждёт"); c != 1 {
+		t.Fatalf("reminder after an hour: %d", c)
+	}
+	if msg, err := a.AnswerUrgent(ctx, v, id, "later"); err != nil || !strings.Contains(msg, "через час") {
+		t.Fatal(msg, err)
+	}
+	ck.t = ck.t.Add(50 * time.Minute)
+	a.Tick(ctx)
+	if c := f.count(1, "Напоминаю: Настя ждёт"); c != 1 {
+		t.Fatal("«later» means an hour of quiet")
+	}
+	// night: nothing until the morning
+	msk := v.Loc()
+	ck.t = time.Date(2026, 11, 11, 23, 40, 0, 0, msk)
+	a.Tick(ctx)
+	if c := f.count(1, "Напоминаю: Настя ждёт"); c != 1 {
+		t.Fatal("no reminders at night")
+	}
+	ck.t = time.Date(2026, 11, 12, 9, 5, 0, 0, msk)
+	a.Tick(ctx)
+	if c := f.count(1, "Напоминаю: Настя ждёт"); c != 2 {
+		t.Fatalf("morning reminder: %d", c)
+	}
+	if got := a.UrgentForMe(ctx, v); len(got) != 1 {
+		t.Fatal("home shows it to Вова")
+	}
+	if got := a.UrgentForMe(ctx, n); len(got) != 0 {
+		t.Fatal("not to Настя")
+	}
+	if _, err := a.AnswerUrgent(ctx, v, id, "yes"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := a.S.OpenRound(ctx, v.Space.ID)
+	if err != nil || r.Chosen != id {
+		t.Fatalf("yes plans the meeting: %v %d", err, r.Chosen)
+	}
+	ck.t = ck.t.Add(5 * time.Hour)
+	a.Tick(ctx)
+	if c := f.count(1, "Напоминаю: Настя ждёт"); c != 2 {
+		t.Fatal("answered — no more reminders")
+	}
+	if _, err := a.AnswerUrgent(ctx, v, id, "no"); !errors.Is(err, app.ErrNotPending) {
+		t.Fatal("answered once")
+	}
+	// no: the author hears at once
+	res2, _ := a.AddIdea(ctx, n, "Джаз в Эрмитаже")
+	a.MarkUrgent(ctx, n, res2.Idea.ID, "")
+	if _, err := a.AnswerUrgent(ctx, v, res2.Idea.ID, "no"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(2), "не сможет") {
+		t.Fatalf("%q", f.last(2))
+	}
+}

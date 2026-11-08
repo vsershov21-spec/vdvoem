@@ -260,6 +260,8 @@ const helpText = `<b>Как это работает</b>
 4. Совпало — подтвердите оба, и я пришлю событие в календарь. Без двух «да» ничего не планируется.
 
 Пересылайте сюда посты из каналов с афишей (даже закрытых) — я достану события, даты и цены в «Афишу».
+Боитесь, что дата уйдёт? На карточке нажмите «🔥 Важно» — я буду напоминать партнёру, пока он не ответит.
+Можно писать и говорить голосом: «хотим что-нибудь на выходных», «сколько стоит Чайка».
 
 /surprise — случайная идея из копилки. /ask — спросить помощника. Раз в неделю я сам предложу что-нибудь — режим меняется в настройках.`
 
@@ -498,6 +500,20 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		toast = "Подходит ✓"
 		if err == nil && q.Message != nil {
 			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>Ты выбрал(а) это время</i>", nil)
+		}
+	case "ur": // «важно»: ur:<idea>:yes|no|later
+		var msg string
+		msg, err = b.App.AnswerUrgent(ctx, c, id(1), arg(2))
+		switch {
+		case errors.Is(err, app.ErrNotPending):
+			toast, err = "Уже отвечено", nil
+		case errors.Is(err, app.ErrNotYours):
+			toast, err = "Это твоя просьба — ждём ответа партнёра", nil
+		case err == nil:
+			toast = msg
+			if arg(2) != "later" && q.Message != nil {
+				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>"+html.EscapeString(msg)+"</i>", nil)
+			}
 		}
 	case "ex": // «А потом?»: the partner answers a proposed next stop
 		_, err = b.App.AnswerExtra(ctx, c, id(1), arg(2) == "y")

@@ -148,6 +148,9 @@ func main() {
 		helper.SetIntentModel(m)
 		log.Info("intent model", "model", m)
 	}
+	if n := a.FillGenres(ctx); n > 0 {
+		log.Info("genres for old ideas", "n", n)
+	}
 	if n := a.FixShoutingTitles(ctx); n > 0 {
 		log.Info("tidied shouting titles", "n", n)
 	}

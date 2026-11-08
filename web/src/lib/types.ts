@@ -33,6 +33,7 @@ export type Home = {
   me: Person; partner?: Person; paired: boolean
   counts: { ideas: number; chores: number; both_want: number; unmarked: number }
   to_mark: Idea[]; round?: Round; next?: Round
+  urgent?: { idea_id: number; title: string; note?: string; when?: string; fixed: boolean }[]
 }
 
 export type Card = { type: 'idea' | 'meeting'; idea_id?: number; round_id?: number; title: string; meta?: string; image?: string; category?: string; why?: string; when?: string }

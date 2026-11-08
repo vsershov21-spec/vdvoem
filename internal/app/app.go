@@ -1264,6 +1264,7 @@ func (a *App) Tick(ctx context.Context) {
 			}
 		}
 	}
+	a.urgentTick(ctx, now)
 	spaces, _ := a.S.Spaces(ctx)
 	for _, sp := range spaces {
 		l := now.In(sp.Loc())

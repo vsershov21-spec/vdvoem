@@ -94,8 +94,8 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	}
 	score := func(h hit) float64 {
 		sc := h.m.Both + 0.35*app.MoodFit(h.i, q.Moods)
-		if v := q.Sem[h.i.ID]; v > semMin-0.12 { // closer in meaning to what was asked — higher
-			sc += 0.8 * (v - (semMin - 0.12))
+		if v := q.Sem[h.i.ID]; v > 0.5 { // closer in meaning to what was asked — a little higher (scores sit in 0.45–0.65)
+			sc += v - 0.5
 		}
 		return sc
 	}
