@@ -38,6 +38,8 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
         {!!i.price_min && <div className="trow"><Icon n="wallet" s={20} /><span className="callout">≈ {money(i.price_min)} на двоих</span></div>}
         {!!i.duration_min && <div className="trow"><Icon n="clock" s={20} /><span className="callout">{dur(i.duration_min)}</span></div>}
         {i.ends_at && <div className="trow"><Icon n="cal" s={20} /><span className="callout">До {new Date(i.ends_at * 1000).toLocaleDateString('ru', { day: 'numeric', month: 'long' })}</span></div>}
+        {i.why && <p className="acard__why" style={{ margin: 0 }}>{i.why}</p>}
+        {i.match && i.match.note && <p className="caption acard__note" style={{ margin: 0 }} data-testid="match">Совпадение {i.match.both}% · {i.match.note}</p>}
         {i.note && <p className="callout muted" style={{ margin: 0 }}>{i.note}</p>}
         {i.url && <Btn kind="soft" sm icon="link" onClick={() => openLink(i.url!)}>Открыть ссылку</Btn>}
       </div>

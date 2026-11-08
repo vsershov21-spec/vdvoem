@@ -9,7 +9,8 @@
 //	DB_PATH         ./data/vdvoem.db
 //	WEB_DIR         ./web/dist
 //	TG_API_BASE     https://api.telegram.org (emulator in tests)
-//	AI_URL, AI_KEY, AI_MODEL   OpenAI-compatible endpoint; empty = rules only
+//	AI_URL, AI_KEY, AI_MODEL   OpenAI-compatible endpoint (a local Ollama works); empty = rules only
+//	AI_TIMEOUT      seconds for one model step (default 25, local 90)
 //	TG_MODE         poll (default: the server fetches updates, no inbound connections) | webhook
 //	SETUP=1         register commands, menu button, description (and the webhook in webhook mode) at start
 //	DEV_TOKEN       e2e only: accept X-Dev-User when X-Dev-Token matches (never in production)
@@ -23,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -65,6 +67,39 @@ func main() {
 		log.Info("backup ok", "to", os.Args[2])
 		return
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "eval" {
+		// how well the configured model picks tools: vdvoem eval [model …] (several models → a comparison)
+		models := os.Args[2:]
+		if len(models) == 0 {
+			models = []string{env("AI_MODEL", "")}
+		}
+		for _, m := range models {
+			c := &ai.Client{URL: env("AI_URL", ""), Key: env("AI_KEY", ""), Model: m, Timeout: aiTimeout()}
+			if !c.Enabled() {
+				log.Error("AI_URL and a model are required")
+				os.Exit(2)
+			}
+			assistant.Eval(context.Background(), c, os.Stdout)
+		}
+		return
+	}
+	if len(os.Args) == 3 && os.Args[1] == "export-train" {
+		db, err := sql.Open("sqlite", "file:"+env("DB_PATH", "./data/vdvoem.db")+"?_pragma=busy_timeout(10000)&mode=ro")
+		if err == nil {
+			var f *os.File
+			if f, err = os.Create(os.Args[2]); err == nil {
+				var n int
+				n, err = assistant.ExportTrain(context.Background(), &store.Store{DB: db}, f)
+				f.Close()
+				log.Info("training examples written", "n", n, "to", os.Args[2])
+			}
+		}
+		if err != nil {
+			log.Error("export failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "version" {
 		os.Stdout.WriteString(version + "\n")
 		return
@@ -92,7 +127,7 @@ func main() {
 	defer stop()
 
 	client := tg.New(env("TG_API_BASE", ""), token)
-	aiClient := &ai.Client{URL: env("AI_URL", ""), Key: env("AI_KEY", ""), Model: env("AI_MODEL", "")}
+	aiClient := &ai.Client{URL: env("AI_URL", ""), Key: env("AI_KEY", ""), Model: env("AI_MODEL", ""), Timeout: aiTimeout()}
 	aiClient.Log = func(task, provider, in, out string, ok bool, ms int64) {
 		st.LogAI(context.Background(), task, provider, in, out, ok, ms, time.Now())
 	}
@@ -243,6 +278,17 @@ func secure(h http.Handler) http.Handler {
 		w.Header().Set("Content-Security-Policy", "frame-ancestors https://web.telegram.org https://*.telegram.org 'self'")
 		h.ServeHTTP(w, r)
 	})
+}
+
+// aiTimeout: AI_TIMEOUT seconds; a local model on the server's CPU needs up to a minute.
+func aiTimeout() time.Duration {
+	if n, err := strconv.Atoi(env("AI_TIMEOUT", "")); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	if strings.Contains(env("AI_URL", ""), "127.0.0.1") || strings.Contains(env("AI_URL", ""), "localhost") {
+		return 90 * time.Second
+	}
+	return 0
 }
 
 func dirOf(p string) string {

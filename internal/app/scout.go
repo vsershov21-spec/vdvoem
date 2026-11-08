@@ -25,18 +25,26 @@ const (
 
 // ScoutBrief is what the agent needs to know about a couple — no names, no chat ids.
 type ScoutBrief struct {
-	Space     int64          `json:"space"`
-	City      string         `json:"city"`
-	Budget    int64          `json:"budget_rub"` // for two, 0 = not set
-	FreeDays  []string       `json:"free_days"`  // the next two weekends without a planned meeting
-	BothWant  []string       `json:"both_want"`
-	OneWants  []string       `json:"one_wants"`
-	Skipped   []string       `json:"skipped"`
-	Repeat    []string       `json:"want_again"`
-	Been      []string       `json:"been_recently"`
-	Existing  []string       `json:"already_in_bank"`
-	Scout     map[string]any `json:"scout_feedback"` // what they did with earlier picks
-	Favorites map[string]int `json:"category_score"` // food/culture/walk/sport/other
+	Space     int64            `json:"space"`
+	City      string           `json:"city"`
+	Budget    int64            `json:"budget_rub"` // for two, 0 = not set
+	FreeDays  []string         `json:"free_days"`  // the next two weekends without a planned meeting
+	BothWant  []string         `json:"both_want"`
+	OneWants  []string         `json:"one_wants"`
+	Skipped   []string         `json:"skipped"`
+	Repeat    []string         `json:"want_again"`
+	Been      []string         `json:"been_recently"`
+	Existing  []string         `json:"already_in_bank"`
+	Scout     map[string]any   `json:"scout_feedback"` // what they did with earlier picks
+	Favorites map[string]int   `json:"category_score"` // food/culture/walk/sport/other
+	People    []TasteProfile   `json:"people"`         // each person separately: learned likes/dislikes + what they said
+	Goals     []ScoutGoal      `json:"goals"`          // things to watch for, also months ahead
+	Watch     []map[string]any `json:"recheck"`        // links to re-check price/date/sold out
+}
+
+type ScoutGoal struct {
+	ID   int64  `json:"id"`
+	Text string `json:"text"`
 }
 
 func (a *App) ScoutBriefs(ctx context.Context) ([]ScoutBrief, error) {
@@ -114,6 +122,19 @@ func (a *App) scoutBrief(ctx context.Context, sp store.Space) ScoutBrief {
 		}
 	}
 	b.BothWant, b.OneWants, b.Skipped, b.Repeat, b.Been, b.Existing = nz(b.BothWant), nz(b.OneWants), nz(b.Skipped), nz(b.Repeat), nz(b.Been), nz(b.Existing)
+	b.People, b.Goals = []TasteProfile{}, []ScoutGoal{}
+	if c, err := a.coupleOfSpace(ctx, sp.ID); err == nil {
+		me, partner := a.Profiles(ctx, c)
+		b.People = append(b.People, me)
+		if c.Partner != nil {
+			b.People = append(b.People, partner)
+		}
+	}
+	gs, _ := a.S.Goals(ctx, sp.ID)
+	for _, g := range gs {
+		b.Goals = append(b.Goals, ScoutGoal{ID: g.ID, Text: g.Text})
+	}
+	b.Watch = a.PriceChecks(ctx, sp.ID)
 	return b
 }
 
@@ -139,7 +160,10 @@ type ScoutPick struct {
 	PriceRub int64  `json:"price_rub"`
 	Duration int    `json:"duration_min"`
 	Why      string `json:"why"`
-	Score    int    `json:"score"` // agent's own 1–10; the top ones go to the bot
+	Score    int    `json:"score"`   // agent's own 1–10; the top ones go to the bot
+	Horizon  string `json:"horizon"` // week (default) | later — an announcement 1–3 months ahead
+	OnSale   string `json:"on_sale"` // when tickets go on sale, if not yet
+	GoalID   int64  `json:"goal_id"` // it answers one of the couple's goals
 }
 
 type ScoutResult struct {
@@ -159,11 +183,29 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 	}
 	loc := sp.Loc()
 	a.ScoutCleanup(ctx, spaceID)
-	sort.SliceStable(picks, func(x, y int) bool { return picks[x].Score > picks[y].Score })
+	// the agent's guess and the couple's own learned taste rank together
+	var t *Tastes
+	if c, err := a.coupleOfSpace(ctx, spaceID); err == nil {
+		tt := a.Tastes(ctx, c)
+		t = &tt
+	}
+	rank := func(p ScoutPick) float64 {
+		r := float64(p.Score) / 10
+		if t != nil {
+			i := store.Idea{Source: "scout"}
+			i.Title, i.Category, i.PriceMin, i.StartsAt = p.Title, normCategory(p.Category), p.PriceRub*100, parseWhen(p.Starts, loc)
+			r = 0.5*r + 0.5*t.Of(i).Both
+		}
+		if p.GoalID != 0 {
+			r += 0.3
+		}
+		return r
+	}
+	sort.SliceStable(picks, func(x, y int) bool { return rank(picks[x]) > rank(picks[y]) })
 	if len(picks) > ScoutPoolMax {
 		picks = picks[:ScoutPoolMax]
 	}
-	var top []store.Idea
+	var top, later, goals []store.Idea
 	now := a.now()
 	for _, p := range picks {
 		p.Title = clip(strings.TrimSpace(p.Title), 120)
@@ -188,11 +230,16 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 			i.DurationMin = defaultDuration(i.Category)
 		}
 		i.StartsAt, i.EndsAt = parseWhen(p.Starts, loc), parseWhen(p.Ends, loc)
-		if i.EndsAt != nil && i.EndsAt.Before(now) {
+		i.OnSale = parseWhen(p.OnSale, loc)
+		if i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
 			res.Skipped++
 			continue
 		}
-		if len(top) < ScoutTop && (sp.BudgetKop == 0 || i.PriceMin <= sp.BudgetKop) {
+		i.Horizon = "week"
+		if p.Horizon == "later" || i.StartsAt != nil && i.StartsAt.Sub(now) > 21*24*time.Hour {
+			i.Horizon = "later"
+		}
+		if i.Horizon == "week" && len(top) < ScoutTop && (sp.BudgetKop == 0 || i.PriceMin <= sp.BudgetKop) {
 			i.Status = domain.IdeaActive
 		}
 		ni, err := a.S.CreateIdea(ctx, i, now)
@@ -200,23 +247,34 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 			return res, err
 		}
 		res.Added++
-		if ni.Status == domain.IdeaActive {
+		switch {
+		case ni.Status == domain.IdeaActive:
 			top = append(top, ni)
 			res.Promoted++
+		case ni.Horizon == "later" && len(later) < 3:
+			later = append(later, ni)
 		}
+		if p.GoalID != 0 {
+			goals = append(goals, ni)
+		}
+		a.scheduleAnnouncement(ctx, ni)
 	}
 	_ = a.S.LogScout(ctx, spaceID, res.Added, 0, "", now)
 	a.Live.Changed(spaceID, 0, "")
-	if len(top) > 0 {
-		a.scoutDigest(ctx, ms, top, res.Added-res.Promoted, loc)
+	if len(top) > 0 || len(later) > 0 {
+		a.scoutDigest(ctx, ms, top, later, goals, res.Added-res.Promoted, loc)
 	}
 	return res, nil
 }
 
-func (a *App) scoutDigest(ctx context.Context, ms []store.Member, top []store.Idea, more int, loc *time.Location) {
+func (a *App) scoutDigest(ctx context.Context, ms []store.Member, top, later, goals []store.Idea, more int, loc *time.Location) {
 	var b strings.Builder
 	b.WriteString("🔭 <b>Скаут нашёл для вас на неделю</b>\n")
 	var rows [][]tg.Button
+	isGoal := map[int64]bool{}
+	for _, g := range goals {
+		isGoal[g.ID] = true
+	}
 	for k, i := range top {
 		fmt.Fprintf(&b, "\n%d. <b>%s</b>", k+1, esc(i.Title))
 		var meta []string
@@ -232,10 +290,25 @@ func (a *App) scoutDigest(ctx context.Context, ms []store.Member, top []store.Id
 		if i.Why != "" {
 			b.WriteString("\n<i>" + esc(i.Why) + "</i>")
 		}
+		if isGoal[i.ID] {
+			b.WriteString("\n🎯 по вашей цели")
+		}
 		rows = append(rows, tg.Row(tg.CB(fmt.Sprintf("%d · Хочу", k+1), fmt.Sprintf("w:%d:want", i.ID)), tg.CB(fmt.Sprintf("%d · Пропущу", k+1), fmt.Sprintf("w:%d:skip", i.ID))))
 	}
+	if len(later) > 0 {
+		b.WriteString("\n\n📅 <b>Анонсы на потом</b>")
+		for _, i := range later {
+			fmt.Fprintf(&b, "\n• %s", esc(i.Title))
+			if i.StartsAt != nil {
+				b.WriteString(" — " + esc(ruDayTime(*i.StartsAt, loc)))
+			}
+			if isGoal[i.ID] {
+				b.WriteString(" 🎯")
+			}
+		}
+	}
 	if more > 0 {
-		fmt.Fprintf(&b, "\n\nЕщё %d — в «Афише недели». Помощник поможет выбрать: «что в субботу до 3000?»", more)
+		fmt.Fprintf(&b, "\n\nВсего в запасе ещё %d — в «Афише». Помощник поможет выбрать: «что в субботу до 3000?»", more)
 	}
 	rows = append(rows, tg.Row(tg.App("Афиша недели", a.appURL("ideas/scout"))))
 	for _, m := range ms {
@@ -253,7 +326,8 @@ func (a *App) ScoutCleanup(ctx context.Context, spaceID int64) int {
 			continue
 		}
 		over := i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Add(6*time.Hour).Before(now)
-		if over || now.Sub(i.CreatedAt) > scoutTTL {
+		stale := i.Horizon != "later" && now.Sub(i.CreatedAt) > scoutTTL // announcements wait for their date
+		if over || stale {
 			if a.S.DeleteIdea(ctx, spaceID, i.ID) == nil {
 				n++
 			}
@@ -367,4 +441,57 @@ func ruDayTime(t time.Time, loc *time.Location) string {
 		s += fmt.Sprintf(", %02d:%02d", t.Hour(), t.Minute())
 	}
 	return s
+}
+
+// scheduleAnnouncement: for events months ahead the bot speaks at the right moments —
+// when tickets go on sale, and a month / a week before (only if someone wanted it by then).
+func (a *App) scheduleAnnouncement(ctx context.Context, i store.Idea) {
+	if i.Horizon != "later" || i.StartsAt == nil {
+		return
+	}
+	now := a.now()
+	if i.OnSale != nil && i.OnSale.After(now) {
+		_ = a.S.Enqueue(ctx, "scout_note", *i.OnSale, map[string]any{"idea": i.ID, "kind": "on_sale"}, fmt.Sprintf("onsale:%d", i.ID))
+	}
+	for _, d := range []time.Duration{30 * 24 * time.Hour, 7 * 24 * time.Hour} {
+		if at := i.StartsAt.Add(-d); at.After(now) {
+			_ = a.S.Enqueue(ctx, "scout_note", at, map[string]any{"idea": i.ID, "kind": "soon", "days": int(d.Hours() / 24)}, fmt.Sprintf("soon:%d:%d", i.ID, int(d.Hours())))
+		}
+	}
+}
+
+func (a *App) runScoutNote(ctx context.Context, ideaID int64, kind string, days int) error {
+	i, err := a.S.IdeaAny(ctx, ideaID)
+	if err != nil || i.Status == domain.IdeaArchived {
+		return nil
+	}
+	c, err := a.coupleOfSpace(ctx, i.SpaceID)
+	if err != nil {
+		return nil
+	}
+	want := func(w domain.Wish) bool { return w == domain.WishWant || w == domain.WishVery }
+	if kind == "soon" && !want(i.WishA) && !want(i.WishB) {
+		return nil // nobody wanted it: no nagging
+	}
+	text := fmt.Sprintf("🎟 Билеты на <b>%s</b> поступили в продажу.", esc(i.Title))
+	if kind == "soon" {
+		text = fmt.Sprintf("📅 Через %d дней — <b>%s</b>. Берём билеты?", days, esc(i.Title))
+	}
+	kb := tg.Keyboard(tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("idea/%d", i.ID)))))
+	if i.URL != "" {
+		kb = tg.Keyboard(tg.Row(tg.Link("Билеты", i.URL), tg.App("Открыть", a.appURL(fmt.Sprintf("idea/%d", i.ID)))))
+	}
+	for _, m := range a.both(c) {
+		a.send(ctx, m.ChatID, text, kb)
+	}
+	return nil
+}
+
+// coupleOfSpace: the couple as seen by its first member (for background work).
+func (a *App) coupleOfSpace(ctx context.Context, spaceID int64) (Couple, error) {
+	ms, err := a.S.Members(ctx, spaceID)
+	if err != nil || len(ms) == 0 {
+		return Couple{}, ErrNotPaired
+	}
+	return a.coupleOf(ctx, ms[0])
 }

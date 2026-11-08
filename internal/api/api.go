@@ -47,6 +47,8 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h := func(pattern string, f func(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error)) {
 		mux.HandleFunc(pattern, a.auth(f))
 	}
+	a.peopleRoutes(h)
+	a.agentRoutes(mux)
 	h("GET /api/me", a.me)
 	h("GET /api/home", a.home)
 	h("GET /api/ideas", a.ideas)
@@ -356,6 +358,24 @@ type ideaView struct {
 	Options       []optionView `json:"options,omitempty"`
 	Place         *placeView   `json:"place,omitempty"`
 	CreatedAt     int64        `json:"created_at"`
+	Source        string       `json:"source,omitempty"`  // scout
+	Why           string       `json:"why,omitempty"`     // the scout's reason
+	Horizon       string       `json:"horizon,omitempty"` // week | later
+	OnSale        *int64       `json:"on_sale,omitempty"`
+	Match         *matchView   `json:"match,omitempty"`
+}
+
+type matchView struct {
+	Me      int    `json:"me"` // 0..100
+	Partner int    `json:"partner"`
+	Both    int    `json:"both"`
+	Note    string `json:"note"`
+}
+
+func withMatch(v ideaView, t app.Tastes, i store.Idea, partner string) ideaView {
+	m := t.Of(i)
+	v.Match = &matchView{Me: int(m.Me * 100), Partner: int(m.Partner * 100), Both: int(m.Both * 100), Note: app.MatchNote(m, partner)}
+	return v
 }
 
 func unix(t *time.Time) *int64 {
@@ -375,7 +395,7 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 		PriceMin: i.PriceMin, PriceMax: i.PriceMax, DurationMin: i.DurationMin, StartsAt: unix(i.StartsAt), EndsAt: unix(i.EndsAt), Deadline: unix(i.Deadline),
 		Assignee: i.Assignee, Status: string(i.Status), MyWish: string(me), PartnerMarked: p != domain.WishNone, Mine: i.AuthorID == c.Me.ID,
 		Parsed: i.Parsed, Meta: app.IdeaMeta(i), LikedBefore: i.AgainYes > 0, CreatedAt: i.CreatedAt.Unix(),
-		Generic: app.Generic(i)}
+		Generic: app.Generic(i), Source: i.Source, Why: i.Why, Horizon: i.Horizon, OnSale: unix(i.OnSale)}
 	q := i.Title
 	if i.Address != "" {
 		q = i.Address
@@ -491,7 +511,11 @@ func (a *API) idea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"idea": a.withPlaces(r.Context(), c, viewIdea(c, i), i)}, nil
+	v := a.withPlaces(r.Context(), c, viewIdea(c, i), i)
+	if i.Kind == domain.KindLeisure {
+		v = withMatch(v, a.App.Tastes(r.Context(), c), i, c.PartnerName())
+	}
+	return map[string]any{"idea": v}, nil
 }
 
 func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {

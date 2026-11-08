@@ -280,7 +280,13 @@ func (a *App) SetWish(ctx context.Context, c Couple, ideaID int64, w domain.Wish
 	if err := a.S.SetWish(ctx, c.Space.ID, ideaID, c.Me.Color, w, a.now()); err != nil {
 		return store.Idea{}, err
 	}
-	return a.S.Idea(ctx, c.Space.ID, ideaID)
+	i, err := a.S.Idea(ctx, c.Space.ID, ideaID)
+	if err == nil && i.Status == domain.IdeaDraft && w != domain.WishSkip { // a scout draft someone wants joins the bank
+		i.Status = domain.IdeaActive
+		_ = a.S.UpdateIdea(ctx, i, a.now())
+	}
+	a.Live.From(ctx, c.Space.ID)
+	return i, err
 }
 
 // Merge: «Это то же» — the new idea goes away, the old one gets my wish if I had one.
@@ -1312,6 +1318,16 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 			}
 		}
 		return nil
+	case "scout_note":
+		var p struct {
+			Idea int64  `json:"idea"`
+			Kind string `json:"kind"`
+			Days int    `json:"days"`
+		}
+		if err := jsonUnmarshal(j.Payload, &p); err != nil {
+			return nil
+		}
+		return a.runScoutNote(ctx, p.Idea, p.Kind, p.Days)
 	case "partner_new":
 		var p struct {
 			Member int64 `json:"member"`

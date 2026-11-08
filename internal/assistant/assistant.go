@@ -124,11 +124,13 @@ func (as *Assistant) History(ctx context.Context, c app.Couple) ([]map[string]an
 // ---------- one question ----------
 
 type run struct {
-	as      *Assistant
-	c       app.Couple
-	cards   []Card
-	buttons []Button
-	seen    map[string]bool
+	as        *Assistant
+	c         app.Couple
+	cards     []Card
+	buttons   []Button
+	seen      map[string]bool
+	exampleID int64
+	pending   []string // action ids proposed in this run (tagged with the example once it is saved)
 }
 
 func (r *run) reset() { r.cards, r.buttons, r.seen = nil, nil, nil }
@@ -148,8 +150,38 @@ func (r *run) systemPrompt() string {
 - Изменить что-то ты не можешь: только предложить кнопкой через propose_*. Человек нажмёт сам. Не говори «я добавил» — говори «добавить?».
 - Голосовать, подтверждать встречу или отвечать за партнёра нельзя — это делают они сами.
 - Если в копилке нет подходящего — честно скажи и предложи добавить идею (propose_add_idea), можно с примерами, что поискать.
-- Отвечай по-русски, коротко: 1–3 предложения. Карточки идей приложение покажет само — не перечисляй их подробно.`,
-		r.c.Me.Name, r.c.PartnerName(), domain.When(now, loc), now.Format("2006"), loc.String(), budget, r.c.Me.Name)
+- Про афишу, события, «что на выходных», анонсы — инструмент afisha; запросы «подешевле», «без театра», «только суббота» — это фильтры afisha.
+- Если человек сообщает о своём вкусе — remember. Если просит следить за чем-то в будущем — add_goal.
+- Отвечай по-русски, коротко: 1–3 предложения. Карточки идей приложение покажет само — не перечисляй их подробно.%s`,
+		r.c.Me.Name, r.c.PartnerName(), domain.When(now, loc), now.Format("2006"), loc.String(), budget, r.c.Me.Name, r.memoryNote())
+}
+
+// memoryNote: what each person told the assistant, so answers respect it.
+func (r *run) memoryNote() string {
+	mem, _ := r.as.App.S.Memories(context.Background(), r.c.Space.ID)
+	var mine, theirs []string
+	for _, m := range mem {
+		if m.MemberID == r.c.Me.ID {
+			mine = append(mine, m.Text)
+		} else {
+			theirs = append(theirs, m.Text)
+		}
+	}
+	out := ""
+	if len(mine) > 0 {
+		out += "\nЧто помнишь о " + r.c.Me.Name + ": " + strings.Join(limitS(mine, 8), "; ") + "."
+	}
+	if len(theirs) > 0 {
+		out += "\nЧто помнишь о " + r.c.PartnerName() + ": " + strings.Join(limitS(theirs, 8), "; ") + "."
+	}
+	return out
+}
+
+func limitS(s []string, n int) []string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 func (r *run) withModel(ctx context.Context, prev []store.ChatMsg, text string) (Reply, error) {
@@ -161,14 +193,17 @@ func (r *run) withModel(ctx context.Context, prev []store.ChatMsg, text string) 
 		}
 	}
 	msgs = append(msgs, ai.Message{Role: "user", Content: text})
+	var calls []ai.ToolCall
 	for step := 0; step < maxSteps; step++ {
 		t, err := r.as.AI.Step(ctx, "assistant", msgs, Tools)
 		if err != nil {
 			return Reply{}, err
 		}
 		if len(t.Calls) == 0 {
+			r.example(ctx, text, calls, t.Content)
 			return Reply{Text: t.Content}, nil
 		}
+		calls = append(calls, t.Calls...)
 		msgs = append(msgs, ai.Message{Role: "assistant", Content: t.Content, ToolCalls: t.Calls})
 		for _, call := range t.Calls {
 			out := r.exec(ctx, call.Name, call.Args)
@@ -177,6 +212,21 @@ func (r *run) withModel(ctx context.Context, prev []store.ChatMsg, text string) 
 		}
 	}
 	return Reply{Text: "Вот что нашёл."}, nil
+}
+
+// example keeps the exchange as a training example for the local model (questions, tool calls, answer);
+// it becomes «accepted» when a proposed button from it is pressed.
+func (r *run) example(ctx context.Context, text string, calls []ai.ToolCall, answer string) {
+	b, _ := json.Marshal(calls)
+	id, err := r.as.App.S.AddExample(ctx, r.c.Me.ID, text, string(b), answer, r.as.now())
+	if err == nil {
+		r.exampleID = id
+		if len(r.pending) > 0 {
+			for _, aid := range r.pending {
+				_ = r.as.App.S.TagAction(ctx, aid, id)
+			}
+		}
+	}
 }
 
 // ---------- tools ----------
@@ -216,6 +266,20 @@ var Tools = []ai.Tool{
 		"category":   str("если просят конкретный тип", "food", "culture", "walk", "sport", "other"),
 		"count":      num("1–3"),
 	})},
+	{Name: "afisha", Description: "Поиск по находкам скаута (афиша недели и анонсы на 1–3 месяца) и, если надо, по копилке. Сервер сам ранжирует по вкусам обоих.", Parameters: obj(map[string]any{
+		"date":               str("день YYYY-MM-DD, если назван"),
+		"weekend":            map[string]any{"type": "boolean", "description": "ближайшие выходные"},
+		"part":               str("часть дня", "morning", "day", "evening"),
+		"max_price_rub":      num("максимум на двоих, ₽"),
+		"categories":         map[string]any{"type": "array", "items": str("", "food", "culture", "walk", "sport", "other")},
+		"exclude_categories": map[string]any{"type": "array", "items": str("", "food", "culture", "walk", "sport", "other")},
+		"exclude_words":      map[string]any{"type": "array", "items": str("слово, которого не должно быть: «стендап», «опера»")},
+		"query":              str("слово из названия, если ищут конкретное"),
+		"horizon":            str("week — ближайшее, later — анонсы на потом, any", "week", "later", "any"),
+		"include_bank":       map[string]any{"type": "boolean", "description": "искать и в копилке, не только у скаута"},
+	})},
+	{Name: "remember", Description: "Запомнить предпочтение того, кто пишет («не люблю стендап», «по пятницам устаём»). Сохраняется сразу, видно ему в настройках.", Parameters: obj(map[string]any{"text": str("предпочтение одной фразой, от первого лица")}, "text")},
+	{Name: "add_goal", Description: "Дать скауту цель на будущее: «театр в январе», «концерт Земфиры, когда приедет». Сохраняется сразу.", Parameters: obj(map[string]any{"text": str("что искать")}, "text")},
 	{Name: "past_meetings", Description: "Где пара была недавно и хотят ли повторить.", Parameters: obj(map[string]any{"limit": num("до 10")})},
 	{Name: "chores", Description: "Бытовые дела пары: кто делает, срок.", Parameters: obj(map[string]any{})},
 	{Name: "propose_add_idea", Description: "Предложить кнопку «Добавить в копилку». Не добавляет само.", Parameters: obj(map[string]any{"text": str("название и/или ссылка")}, "text")},
@@ -247,6 +311,22 @@ func (r *run) exec(ctx context.Context, name string, raw json.RawMessage) any {
 		return map[string]string{"error": "bad arguments"}
 	}
 	switch name {
+	case "afisha":
+		var q afishaQ
+		_ = json.Unmarshal(raw, &q)
+		return r.afisha(ctx, q)
+	case "remember":
+		m, err := r.as.App.Remember(ctx, r.c, a.Text)
+		if err != nil {
+			return map[string]string{"error": "empty"}
+		}
+		return map[string]any{"saved": m.Text}
+	case "add_goal":
+		g, err := r.as.App.AddGoal(ctx, r.c, a.Text)
+		if err != nil {
+			return map[string]string{"error": "empty"}
+		}
+		return map[string]any{"goal": g.Text, "note": "скаут будет искать это каждую неделю, в том числе на месяцы вперёд"}
 	case "overview":
 		return r.overview(ctx)
 	case "find_ideas":
@@ -332,6 +412,7 @@ func (r *run) propose(ctx context.Context, kind string, payload map[string]any, 
 		return map[string]string{"error": "cannot save"}
 	}
 	r.buttons = append(r.buttons, Button{ID: act.ID, Label: label, Kind: kind})
+	r.pending = append(r.pending, act.ID)
 	return map[string]string{"status": "button shown to the user; nothing changed yet"}
 }
 
@@ -583,7 +664,7 @@ func (r *run) chores(ctx context.Context) any {
 
 var (
 	budgetRe = regexp.MustCompile(`(?:до|за|бюджет|не дороже)\s*(\d[\d\s]{2,6})`)
-	addRe    = regexp.MustCompile(`(?i)^(?:добавь|добавить|запомни|сохрани)[:\s,-]+(.+)$`)
+	addRe    = regexp.MustCompile(`(?i)^(?:добавь|добавить|сохрани)[:\s,-]+(.+)$`)
 )
 
 func has(s string, words ...string) bool {
@@ -597,6 +678,22 @@ func has(s string, words ...string) bool {
 
 func (r *run) withRules(ctx context.Context, text string) Reply {
 	t := strings.ToLower(text)
+	if mem := memoryFromText(text); mem != "" {
+		r.exec(ctx, "remember", mustJSON(map[string]any{"text": mem}))
+		return Reply{Text: "Запомнил: «" + short(mem, 80) + "». Буду учитывать — и скаут тоже. Посмотреть и удалить можно в «Мы → Помощник помнит»."}
+	}
+	if g := goalFromText(text); g != "" {
+		r.exec(ctx, "add_goal", mustJSON(map[string]any{"text": g}))
+		return Reply{Text: "Скаут будет следить: «" + short(g, 80) + "». Напишу, когда найдётся — даже если это через пару месяцев."}
+	}
+	if has(t, "афиш", "скаут", "анонс", "событи", "мероприят", "концерт", "спектак", "что на выходн", "что в суббот", "что в воскрес", "подешевле", "без ") {
+		q := afishaFromText(t, r.as.now().In(r.c.Loc()))
+		res := r.afisha(ctx, q).(map[string]any)
+		if l, _ := res["events"].([]map[string]any); len(l) > 0 {
+			return Reply{Text: "Вот что подходит — сверху то, что зайдёт вам обоим. Можно уточнить: «подешевле», «без театра», «только вечером»."}
+		}
+		return Reply{Text: "Под эти условия ничего не нашёл. Ослабь фильтры — или скажи «следи за …», и скаут поищет специально."}
+	}
 	if m := addRe.FindStringSubmatch(strings.TrimSpace(text)); m != nil {
 		r.exec(ctx, "propose_add_idea", mustJSON(map[string]any{"text": m[1]}))
 		return Reply{Text: "Добавить это в копилку?"}
@@ -727,6 +824,9 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 		Mode   string `json:"mode"`
 	}
 	_ = json.Unmarshal(a.Payload, &p)
+	if a.Example != 0 { // the model's proposal was good enough to press: a training example
+		_ = as.App.S.AcceptExample(ctx, a.Example)
+	}
 	var rep Reply
 	switch a.Kind {
 	case "add_idea":

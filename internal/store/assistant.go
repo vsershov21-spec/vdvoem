@@ -69,6 +69,7 @@ type Action struct {
 	MemberID int64
 	Kind     string
 	Payload  json.RawMessage
+	Example  int64 // the model exchange that proposed it (0 = rules)
 }
 
 func (s *Store) SaveAction(ctx context.Context, a Action, now time.Time) error {
@@ -84,10 +85,16 @@ func (s *Store) TakeAction(ctx context.Context, id string, memberID int64, now t
 	var a Action
 	var p string
 	err := s.DB.QueryRowContext(ctx, `UPDATE assistant_actions SET used_at = ? WHERE id = ? AND member_id = ? AND used_at IS NULL AND created_at >= ?
-		RETURNING id, space_id, member_id, kind, payload`, now.Unix(), id, memberID, now.Add(-7*24*time.Hour).Unix()).Scan(&a.ID, &a.SpaceID, &a.MemberID, &a.Kind, &p)
+		RETURNING id, space_id, member_id, kind, payload, example_id`, now.Unix(), id, memberID, now.Add(-7*24*time.Hour).Unix()).Scan(&a.ID, &a.SpaceID, &a.MemberID, &a.Kind, &p, &a.Example)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrUsed
 	}
 	a.Payload = json.RawMessage(p)
 	return a, err
+}
+
+// TagAction links a proposed button to the model exchange it came from.
+func (s *Store) TagAction(ctx context.Context, id string, example int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE assistant_actions SET example_id=? WHERE id=?`, example, id)
+	return err
 }

@@ -228,14 +228,16 @@ func (s *Store) UseInvite(ctx context.Context, code string, now time.Time) (int6
 // ---------- ideas ----------
 
 const ideaCols = `id, space_id, author_id, title, kind, category, url, address, image_url, note, price_min, price_max, duration_min,
-starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, again_yes, again_no, ever_shown, last_met_at, parsed, created_at, source, why`
+starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, again_yes, again_no, ever_shown, last_met_at, parsed, created_at, source, why, horizon, on_sale`
 
 type Idea struct {
 	domain.Idea
-	Note   string
-	Parsed bool
-	Source string // "" — added by a person, "scout" — found by the afisha agent
-	Why    string // the scout's reason, in a sentence
+	Note    string
+	Parsed  bool
+	Source  string     // "" — added by a person, "scout" — found by the afisha agent
+	Why     string     // the scout's reason, in a sentence
+	Horizon string     // scout: week | later (announcements 1–3 months ahead)
+	OnSale  *time.Time // scout: when tickets go on sale
 }
 
 func tp(v sql.NullInt64) *time.Time {
@@ -255,19 +257,20 @@ func nt(t *time.Time) any {
 
 func scanIdea(sc interface{ Scan(...any) error }) (Idea, error) {
 	var i Idea
-	var st, en, dl, lm sql.NullInt64
+	var st, en, dl, lm, os sql.NullInt64
 	var kind, status, wa, wb string
 	var ever, parsed int
 	var created int64
 	err := sc.Scan(&i.ID, &i.SpaceID, &i.AuthorID, &i.Title, &kind, &i.Category, &i.URL, &i.Address, &i.ImageURL, &i.Note,
 		&i.PriceMin, &i.PriceMax, &i.DurationMin, &st, &en, &dl, &i.Assignee, &status, &i.Fingerprint, &wa, &wb,
-		&i.AgainYes, &i.AgainNo, &ever, &lm, &parsed, &created, &i.Source, &i.Why)
+		&i.AgainYes, &i.AgainNo, &ever, &lm, &parsed, &created, &i.Source, &i.Why, &i.Horizon, &os)
 	if errors.Is(err, sql.ErrNoRows) {
 		return i, ErrNotFound
 	}
 	i.Kind, i.Status, i.WishA, i.WishB = domain.IdeaKind(kind), domain.IdeaStatus(status), domain.Wish(wa), domain.Wish(wb)
 	i.StartsAt, i.EndsAt, i.Deadline, i.LastMetAt = tp(st), tp(en), tp(dl), tp(lm)
 	i.EverShown, i.Parsed = ever == 1, parsed == 1
+	i.OnSale = tp(os)
 	i.CreatedAt = time.Unix(created, 0)
 	return i, err
 }
@@ -284,11 +287,11 @@ func (s *Store) CreateIdea(ctx context.Context, i Idea, now time.Time) (Idea, er
 	}
 	i.Fingerprint = domain.Fingerprint(i.URL, i.Title)
 	r, err := s.DB.ExecContext(ctx, `INSERT INTO ideas(space_id, author_id, title, kind, category, url, address, image_url, note, price_min, price_max,
-duration_min, starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, created_at, updated_at, source, why, parsed)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+duration_min, starts_at, ends_at, deadline, assignee, status, fingerprint, wish_a, wish_b, created_at, updated_at, source, why, parsed, horizon, on_sale)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		i.SpaceID, i.AuthorID, i.Title, string(i.Kind), i.Category, i.URL, i.Address, i.ImageURL, i.Note, i.PriceMin, i.PriceMax,
 		i.DurationMin, nt(i.StartsAt), nt(i.EndsAt), nt(i.Deadline), i.Assignee, string(i.Status), i.Fingerprint, string(i.WishA), string(i.WishB),
-		now.Unix(), now.Unix(), i.Source, i.Why, b2i(i.Parsed))
+		now.Unix(), now.Unix(), i.Source, i.Why, b2i(i.Parsed), i.Horizon, nt(i.OnSale))
 	if err != nil {
 		return i, err
 	}

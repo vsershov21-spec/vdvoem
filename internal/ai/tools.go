@@ -77,10 +77,7 @@ func (c *Client) Step(ctx context.Context, task string, msgs []Message, tools []
 	if c.Key != "" {
 		hr.Header.Set("Authorization", "Bearer "+c.Key)
 	}
-	hc := c.HTTP
-	if hc == nil {
-		hc = &http.Client{Timeout: 25 * time.Second}
-	}
+	hc := c.client(25 * time.Second)
 	last := ""
 	if len(msgs) > 0 {
 		last = msgs[len(msgs)-1].Content

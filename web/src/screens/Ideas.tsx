@@ -7,6 +7,7 @@ import { post, humanError } from '../lib/api'
 import { Empty, IdeaTile, Skel, SubHeader, toast, Btn } from '../ui/kit'
 import { Folder, type TONES } from '../ui/Folder'
 import { haptic } from '../lib/tg'
+import { Afisha } from './Afisha'
 import { Icon } from '../ui/icons'
 
 type Def = { id: string; label: string; tone: keyof typeof TONES; icon: React.ReactNode; test: (i: Idea, now: number) => boolean; always?: boolean; chores?: boolean }
@@ -47,6 +48,7 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
   const leisure = ideas.filter(i => i.kind === 'leisure')
   const found = useMemo(() => q.trim() ? ideas.filter(i => (i.title + ' ' + (i.address || '') + ' ' + (i.note || '')).toLowerCase().includes(q.trim().toLowerCase())) : [], [q, ideas])
 
+  if (folder === 'scout') return <Afisha />
   if (!all.data || !home) return <><Skel h={44} /><div className="folders">{[0, 1, 2, 3, 4, 5].map(k => <Skel key={k} h={130} />)}</div></>
   if (folder && !FILTERS.some(f => f.id === folder)) {
     const def = FOLDERS.find(f => f.id === folder)
@@ -72,6 +74,7 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
       {!q.trim() && leisure.length > 0 && (
         <div className="wkchips fchips" role="tablist" aria-label="Показать">
           <button className="wkchip" role="tab" aria-selected={!flt} data-on={!flt || undefined} onClick={() => { haptic.select(); setFlt('') }}>Папки</button>
+          <button className="wkchip" onClick={() => go('ideas/scout')}>🔭 Афиша</button>
           {chips.map(f => <button key={f.id} className="wkchip" role="tab" aria-selected={flt === f.id} data-on={flt === f.id || undefined} onClick={() => pick(f.id)}>
             {f.id === 'both' && <Icon n="heart" s={13} w={2.4} />}{f.label}<b>{counts[f.id]}</b></button>)}
         </div>

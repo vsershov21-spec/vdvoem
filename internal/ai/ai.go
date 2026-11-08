@@ -22,6 +22,17 @@ type Client struct {
 	URL, Key, Model string
 	HTTP            *http.Client
 	Log             Logger
+	Timeout         time.Duration // a local model on CPU needs a minute; cloud APIs answer in seconds
+}
+
+func (c *Client) client(def time.Duration) *http.Client {
+	if c.HTTP != nil {
+		return c.HTTP
+	}
+	if c.Timeout > 0 {
+		def = c.Timeout
+	}
+	return &http.Client{Timeout: def}
 }
 
 func (c *Client) Enabled() bool { return c != nil && c.URL != "" && c.Model != "" }
@@ -50,10 +61,7 @@ func (c *Client) complete(ctx context.Context, task, system, user string) (strin
 	if c.Key != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Key)
 	}
-	hc := c.HTTP
-	if hc == nil {
-		hc = &http.Client{Timeout: 12 * time.Second}
-	}
+	hc := c.client(12 * time.Second)
 	res, err := hc.Do(req)
 	if err != nil {
 		c.log(task, user, err.Error(), false, t0)

@@ -69,6 +69,8 @@ export function Us({ home }: { home: Home | null }) {
         <div className="list">{liked.slice(0, 5).map(i => <LikedRow key={i.id} i={i} />)}</div>
       </>}
 
+      <TasteSection />
+
       <div className="sec"><h2 className="title"><span className="orange-ind" />Настройки</h2></div>
       {!s ? <Skel h={180} /> : (
         <div className="list rise">
@@ -230,4 +232,49 @@ function Budget({ value, onSave }: { value: number; onSave: (kop: number) => voi
       <Btn kind="primary" block onClick={() => onSave((Number(v) || 0) * 100)}>Сохранить</Btn>
     </div>
   )
+}
+
+// Personal: what the app learned about *me* from my marks, what I told the assistant (mine only),
+// and the couple's goals the scout watches for (also months ahead).
+type Prof = { taste: { likes: string[]; dislikes: string[]; marks: number }; memories: { id: number; text: string }[] }
+type Goals = { goals: { id: number; text: string; mine: boolean }[] }
+
+function TasteSection() {
+  const prof = useLoad<Prof>('/profile')
+  const goals = useLoad<Goals>('/goals')
+  const [text, setText] = useState('')
+  const delMem = async (id: number) => { try { await del('/memories/' + id); prof.refresh() } catch (e) { toast(humanError(e)) } }
+  const delGoal = async (id: number) => { try { await del('/goals/' + id); goals.refresh() } catch (e) { toast(humanError(e)) } }
+  const addGoal = async () => { const t = text.trim(); if (!t) return; setText(''); try { await post('/goals', { text: t }); goals.refresh(); toast('Скаут будет следить') } catch (e) { toast(humanError(e)) } }
+  const t = prof.data?.taste
+  return (<>
+    <div className="sec"><h2 className="title"><span className="orange-ind" />Твой вкус</h2></div>
+    <div className="card col" data-testid="taste">
+      {!t ? <Skel h={60} /> : t.marks < 3
+        ? <p className="callout muted" style={{ margin: 0 }}>Отметь несколько идей «хочу» или «пропущу» — и я начну понимать, что тебе нравится. Учусь на каждой отметке, у каждого из вас — свой вкус.</p>
+        : <>
+          {t.likes.length > 0 && <div><span className="caption muted">Тебе нравится</span><div className="chips">{t.likes.map(x => <span key={x} className="pill">{x}</span>)}</div></div>}
+          {t.dislikes.length > 0 && <div><span className="caption muted">Не очень</span><div className="chips">{t.dislikes.map(x => <span key={x} className="pill pill--muted">{x}</span>)}</div></div>}
+          <span className="caption muted">По {t.marks} отметкам. Это видишь только ты.</span>
+        </>}
+      {!!prof.data?.memories.length && <div>
+        <span className="caption muted">Помощник помнит о тебе</span>
+        <div className="list" style={{ marginTop: 6 }}>{prof.data.memories.map(m => (
+          <div key={m.id} className="li"><span className="li__main"><b style={{ fontWeight: 550 }}>{m.text}</b></span>
+            <button className="iconbtn" aria-label={'Забыть: ' + m.text} onClick={() => delMem(m.id)}><Icon n="x" s={14} /></button></div>))}</div>
+      </div>}
+      <span className="caption muted">Скажи помощнику «запомни, что…» — и он будет это учитывать.</span>
+    </div>
+    <div className="sec"><h2 className="title"><span className="orange-ind" />Скаут следит</h2><button className="link" onClick={() => go('ideas/scout')}>Афиша</button></div>
+    <div className="card col" data-testid="goals">
+      {(goals.data?.goals || []).map(g => (
+        <div key={g.id} className="li"><span className="li__main"><b style={{ fontWeight: 550 }}>🎯 {g.text}</b></span>
+          <button className="iconbtn" aria-label={'Убрать цель: ' + g.text} onClick={() => delGoal(g.id)}><Icon n="x" s={14} /></button></div>))}
+      <form className="places__add" onSubmit={e => { e.preventDefault(); addGoal() }}>
+        <input className="input" placeholder="Театр в январе, концерт Земфиры…" value={text} maxLength={160} onChange={e => setText(e.target.value)} aria-label="Новая цель для скаута" />
+        <button className="places__send" type="submit" disabled={!text.trim()} aria-label="Добавить цель"><Icon n="plus" s={18} w={2.6} /></button>
+      </form>
+      <span className="caption muted">Раз в неделю скаут ищет и на месяцы вперёд — напишет, когда появятся билеты.</span>
+    </div>
+  </>)
 }

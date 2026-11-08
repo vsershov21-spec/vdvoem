@@ -577,3 +577,16 @@ button,a,[role=tab]{touch-action:manipulation}
 .route__card .cover{border-radius:14px}
 .route__plus{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.92);color:#111;display:grid;place-items:center;justify-self:end}
 .route__ctitle{font:600 12.5px/1.25 var(--font-sans);color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* scout afisha */
+.acard{background:var(--surface);border-radius:22px;box-shadow:var(--shadow-card);overflow:hidden}
+.acard__main{appearance:none;border:0;background:none;padding:0;width:100%;text-align:left;cursor:pointer;display:block;color:var(--ink)}
+.acard__body{display:grid;gap:5px;padding:12px 14px 4px}
+.acard__title{font:700 17px/1.25 var(--font-sans)}
+.acard__why{font:500 14px/1.35 var(--font-sans);color:var(--ink)}
+.acard__why::before{content:"🔭 "}
+.acard__note{color:#ff701e}
+.acard__match{justify-self:end;align-self:start;background:rgba(255,255,255,.92);color:#111;font:800 13px/1 var(--font-sans);padding:6px 9px;border-radius:12px}
+.acard__acts{display:flex;gap:8px;padding:8px 14px 14px;flex-wrap:wrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pill--muted{opacity:.6}
