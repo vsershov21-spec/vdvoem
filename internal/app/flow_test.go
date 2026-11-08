@@ -575,8 +575,8 @@ func TestAboutAnswer(t *testing.T) {
 	v, n := pair(t, a)
 	as := &assistant.Assistant{App: a, AI: a.AI}
 	// Вова loves comedies, Настя skips them
-	for k := 0; k < 9; k++ {
-		r, _ := a.AddIdea(ctx, v, fmt.Sprintf("Комедия номер %d в театре", k))
+	for _, title := range []string{"Ревизор", "Слуга двух господ", "Женитьба", "Безымянная звезда", "Двенадцатая ночь", "Тартюф", "Мнимый больной", "Дядюшкин сон", "Укрощение строптивой"} {
+		r, _ := a.AddIdea(ctx, v, title)
 		i := r.Idea
 		i.Category, i.Info.Genres = "culture", []string{"комедия"}
 		a.S.UpdateIdea(ctx, i, ck.t)
