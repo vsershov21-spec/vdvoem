@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -368,5 +369,101 @@ func TestExtras(t *testing.T) {
 	}
 	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Кино"); !errors.Is(err, app.ErrExtraLimit) {
 		t.Fatalf("limit: %v", err)
+	}
+}
+
+// Скаут: a weekly draft — the best five to the bank and the bot, the rest wait; announcements months ahead
+// speak when tickets go on sale; each person's taste re-ranks; nobody-wanted drafts vanish in two weeks.
+func TestScout(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	// Вова loves theatre; Настя — Georgian food; nobody wants stand-up
+	for _, x := range []struct {
+		title, cat string
+		w          domain.Wish
+		who        app.Couple
+	}{{"Спектакль в театре Вахтангова", "culture", domain.WishVery, v}, {"Театр на Таганке", "culture", domain.WishWant, v},
+		{"Стендап вечер", "other", domain.WishSkip, v}, {"Стендап открытый микрофон", "other", domain.WishSkip, n},
+		{"Хинкальная на Арбате", "food", domain.WishVery, n}, {"Грузинский ресторан", "food", domain.WishWant, n}} {
+		r, _ := a.AddIdea(ctx, v, x.title)
+		i := r.Idea
+		i.Category = x.cat
+		a.S.UpdateIdea(ctx, i, ck.t)
+		a.SetWish(ctx, x.who, i.ID, x.w)
+	}
+	sat := ck.t.AddDate(0, 0, 3).Format("2006-01-02") + "T19:00"
+	later := ck.t.AddDate(0, 2, 0).Format("2006-01-02") + "T19:00"
+	onSale := ck.t.AddDate(0, 0, 5).Format("2006-01-02") + "T10:00"
+	g, _ := a.AddGoal(ctx, n, "театр в январе")
+	var picks []app.ScoutPick
+	for k, p := range []struct{ t, c string }{{"Большой стендап-концерт", "other"}, {"Премьера в театре Маяковского", "culture"},
+		{"Фестиваль грузинской кухни", "food"}, {"Прогулка по ВДНХ", "walk"}, {"Квиз в баре", "other"}, {"Выставка в Пушкинском", "culture"},
+		{"Каток на ВДНХ", "sport"}, {"Джазовый концерт", "culture"}} {
+		picks = append(picks, app.ScoutPick{Title: p.t, Category: p.c, Starts: sat, PriceRub: 2000 + int64(k)*100, Why: "под ваши вкусы", Score: 6, URL: fmt.Sprintf("https://afisha.example/%d", k)})
+	}
+	picks = append(picks, app.ScoutPick{Title: "Гамлет в театре Наций", Category: "culture", Starts: later, OnSale: onSale, Horizon: "later", Score: 8, GoalID: g.ID, URL: "https://afisha.example/hamlet"},
+		app.ScoutPick{Title: "Уже прошло", Starts: ck.t.AddDate(0, 0, -2).Format("2006-01-02")})
+	res, err := a.ScoutPicks(ctx, v.Space.ID, picks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Added != 9 || res.Promoted != app.ScoutTop || res.Skipped != 1 {
+		t.Fatalf("result %+v", res)
+	}
+	digest := f.last(2)
+	if !strings.Contains(digest, "Скаут нашёл") || !strings.Contains(digest, "Анонсы на потом") || !strings.Contains(digest, "🎯") {
+		t.Fatalf("digest: %q", digest)
+	}
+	if strings.Index(digest, "стендап") >= 0 && strings.Index(digest, "стендап") < strings.Index(digest, "Анонсы") {
+		t.Fatalf("taste must keep stand-up out of the top five: %q", digest)
+	}
+	// duplicates are skipped next time
+	if r2, _ := a.ScoutPicks(ctx, v.Space.ID, picks[:2]); r2.Added != 0 {
+		t.Fatalf("dupes: %+v", r2)
+	}
+	// per-person taste: Вова → theatre, Настя → food
+	tt := a.Tastes(ctx, v)
+	all, _ := a.S.Ideas(ctx, v.Space.ID, domain.IdeaDraft, domain.IdeaActive)
+	var theatre, food store.Idea
+	for _, i := range all {
+		switch i.Title {
+		case "Премьера в театре Маяковского":
+			theatre = i
+		case "Фестиваль грузинской кухни":
+			food = i
+		}
+	}
+	if m := tt.Of(theatre); m.Me <= m.Partner {
+		t.Fatalf("theatre: Вова %.2f vs Настя %.2f", m.Me, m.Partner)
+	}
+	if m := tt.Of(food); m.Partner <= m.Me {
+		t.Fatalf("food: Настя %.2f vs Вова %.2f", m.Partner, m.Me)
+	}
+	// tickets on sale → both hear it
+	ck.t = ck.t.AddDate(0, 0, 5).Add(time.Hour)
+	a.Tick(ctx)
+	heard := false
+	for _, m := range f.msgs {
+		if m.chat == 1 && strings.Contains(m.text, "Билеты на <b>Гамлет") {
+			heard = true
+		}
+	}
+	if !heard {
+		t.Fatalf("on sale: %q", f.last(1))
+	}
+	// two weeks later the drafts nobody touched are gone; the announcement waits for its date
+	ck.t = ck.t.AddDate(0, 0, 10)
+	gone := a.ScoutCleanup(ctx, v.Space.ID)
+	left, _ := a.S.Ideas(ctx, v.Space.ID, domain.IdeaDraft)
+	if gone == 0 || len(left) != 1 || left[0].Horizon != "later" {
+		t.Fatalf("cleanup %d, left %+v", gone, left)
+	}
+	// memory is personal
+	a.Remember(ctx, v, "не люблю стендап")
+	pv, _ := a.Profiles(ctx, v)
+	pn, _ := a.Profiles(ctx, n)
+	if len(pv.Said) != 1 || len(pn.Said) != 0 || len(pv.Likes) == 0 {
+		t.Fatalf("profiles: %+v / %+v", pv, pn)
 	}
 }
