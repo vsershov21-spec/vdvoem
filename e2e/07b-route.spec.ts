@@ -38,8 +38,8 @@ test('E29 «А потом?»: музей → ужин, предлагает од
   // both confirm → the calendar has both stops
   await api(v, 'POST', `/rounds/${round.id}/confirm`)
   await api(n, 'POST', `/rounds/${round.id}/confirm`)
-  const m = await waitMsg(v, /Мы идём[\s\S]*Потом:.*Ужин/)
-  const link = JSON.stringify(m.reply_markup).match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
+  const plannedMsg = await waitMsg(v, /Мы идём[\s\S]*Потом:.*Ужин/)
+  const link = JSON.stringify(plannedMsg.reply_markup).match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
   const ics = await (await fetch(link)).text()
   expect(ics.match(/BEGIN:VEVENT/g)!.length).toBe(2)
   expect(ics).toContain('SUMMARY:Ужин в грузинском ресторане')
