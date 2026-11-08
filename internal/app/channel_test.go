@@ -28,3 +28,26 @@ func TestCheckEvents(t *testing.T) {
 		t.Fatal("ncase")
 	}
 }
+
+func TestScanPost(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	for _, c := range []struct {
+		text, title string
+		dates       int
+		hour        int
+		price, orig int64
+	}{
+		{"ЗВЕЗДНЫЙ СОСТАВ🌠💫\n\n🔴💥 ЧАЙКА\n🏛МХТ имени А.П. Чехова\nОсновная сцена\n\n✅ 19 ноября 19.00\n✅ 23 декабря 19.00\n\nПартер 👍\n🔥4500 вместо 5500-5000", "ЧАЙКА", 2, 19, 4500, 5500},
+		{"🎭 ТЕАТР КОМЕДИИ 🎭\n\n🏛ДК ВДНХ\n\n9, 16, 23, 30 ноября в 19-30\n\n💥 Цена со скидкой\n2500 вместо 4000-3000\n2000 вместо 2500\n\n🔥 «ТЁЩА С СЮРПРИЗОМ!»", "ТЁЩА С СЮРПРИЗОМ!", 4, 19, 2000, 2500},
+		{"РЕДКОСТЬ\n\n🏦ТЕАТР им. Вл. МАЯКОВСКОГО\nМалый зал\n\n🔴МЕРА ЗА МЕРУ\n\n🗓 11 ноября 19.00\n\n🔥3200 (вместо 4800-4000)", "МЕРА ЗА МЕРУ", 1, 19, 3200, 4800},
+		{"«АВИАТОР»\n💥3800р\nВместо 7500-18000\n24 ноября в 19:00, Дом музыки", "АВИАТОР", 1, 19, 3800, 7500},
+	} {
+		sc, ok := scanPost(c.text, now)
+		if !ok || sc.Title != c.title || len(sc.dates) != c.dates || sc.dates[0].Hour() != c.hour || sc.Price != c.price || sc.orig != c.orig {
+			t.Errorf("%q → ok=%v %q dates=%v price=%d orig=%d", c.title, ok, sc.Title, sc.dates, sc.Price, sc.orig)
+		}
+	}
+	if _, ok := scanPost("Всем привет! Скоро новые спектакли", now); ok {
+		t.Error("no date — no event")
+	}
+}

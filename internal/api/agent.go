@@ -33,6 +33,26 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /agent/prices", local(a.agentPrices))
 	mux.HandleFunc("POST /agent/goals/{id}/done", local(a.agentGoalDone))
 	mux.HandleFunc("POST /agent/answers", local(a.agentAnswers))
+	mux.HandleFunc("POST /agent/channel", local(a.agentChannel))
+}
+
+// agentChannel: a channel's posts at once (an export) → events in «Афиша»
+func (a *API) agentChannel(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Space int64    `json:"space"`
+		From  string   `json:"from"`
+		Posts []string `json:"posts"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "bad json"})
+		return
+	}
+	n, err := a.App.ChannelImport(r.Context(), in.Space, in.From, in.Posts)
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"added": n, "posts": len(in.Posts)})
 }
 
 func (a *API) agentBriefs(w http.ResponseWriter, r *http.Request) {

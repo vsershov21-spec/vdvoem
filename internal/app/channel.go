@@ -86,12 +86,15 @@ func (a *App) runPost(ctx context.Context, j postJob) error {
 	}
 	loc := c.Loc()
 	now := a.now().In(loc)
-	var events []postEvent
-	if a.AI.Enabled() {
-		events = a.readPost(ctx, j.Post.Text, now)
+	var picks []ScoutPick
+	if sc, ok := scanPost(j.Post.Text, now); ok { // the usual afisha format: read exactly, no model needed
+		picks = []ScoutPick{showPick(sc, j.Post, loc)}
+	} else if a.AI.Enabled() {
+		for _, e := range checkEvents(a.readPost(ctx, j.Post.Text, now), j.Post, now) {
+			picks = append(picks, eventPick(e, j.Post))
+		}
 	}
-	events = checkEvents(events, j.Post, now)
-	if len(events) == 0 { // nothing certain: the post goes to the bank as one idea, the usual parser takes it
+	if len(picks) == 0 { // nothing certain: the post goes to the bank as one idea, the usual parser takes it
 		res, err := a.AddIdea(ctx, c, firstLine(j.Post.Text)+postURL(j.Post))
 		if err == nil && res.Existing == nil {
 			a.send(ctx, j.Chat, "Не нашёл в посте событий с точной датой — сохранил его в копилку как идею.", nil)
@@ -99,21 +102,7 @@ func (a *App) runPost(ctx context.Context, j postJob) error {
 		return nil
 	}
 	var made []store.Idea
-	for _, e := range events {
-		p := ScoutPick{Title: e.Title, URL: e.URL, Address: e.Venue, Category: e.Category, Why: "из канала «" + clip(j.Post.From, 40) + "»"}
-		if p.URL == "" {
-			p.URL = j.Post.Link
-		}
-		if e.Date != "" {
-			p.Starts = e.Date
-			if e.Time != "" {
-				p.Starts += "T" + e.Time
-			}
-		}
-		if e.Price > 0 {
-			p.PriceRub = e.Price * 2 // posts give the price of a ticket; the app counts for two
-			p.Why += fmt.Sprintf(": билет %s", domain.Money(e.Price*100))
-		}
+	for _, p := range picks {
 		i, ok := a.pickIdea(ctx, p, j.Space, j.Member, "channel", loc, a.now())
 		if !ok {
 			continue
@@ -153,6 +142,90 @@ func (a *App) runPost(ctx context.Context, j postJob) error {
 	rows = append(rows, tg.Row(tg.App("Афиша", a.appURL("ideas/scout"))))
 	a.send(ctx, j.Chat, b.String(), tg.Keyboard(rows...))
 	return nil
+}
+
+func eventPick(e postEvent, post ChannelPost) ScoutPick {
+	p := ScoutPick{Title: e.Title, URL: e.URL, Address: e.Venue, Category: e.Category, Why: "из канала «" + clip(post.From, 40) + "»"}
+	if p.URL == "" {
+		p.URL = post.Link
+	}
+	p.Starts = e.Date
+	if e.Time != "" {
+		p.Starts += "T" + e.Time
+	}
+	if e.Price > 0 {
+		p.PriceRub = e.Price * 2 // posts give the price of a ticket; the app counts for two
+		p.Why += fmt.Sprintf(": билет %s", domain.Money(e.Price*100))
+	}
+	return p
+}
+
+// showPick: one show, its nearest date; the other dates and the discount go into «why»
+func showPick(sc scanned, post ChannelPost, loc *time.Location) ScoutPick {
+	d := sc.dates[0]
+	p := ScoutPick{Title: sc.Title, Address: sc.Venue, Category: sc.Category, URL: post.Link, Why: "из канала «" + clip(post.From, 40) + "»"}
+	if len(post.Links) > 0 {
+		p.URL = post.Links[0]
+	}
+	p.Starts = d.Format("2006-01-02")
+	if d.Hour() != 0 || d.Minute() != 0 {
+		p.Starts = d.Format("2006-01-02T15:04")
+	}
+	if sc.Price > 0 {
+		p.PriceRub = sc.Price * 2
+		p.Why += ": билет " + domain.Money(sc.Price*100)
+		if sc.orig > sc.Price {
+			p.Why += " вместо " + domain.Money(sc.orig*100)
+		}
+	}
+	if len(sc.dates) > 1 {
+		var more []string
+		for _, x := range sc.dates[1:] {
+			if len(more) == 3 {
+				break
+			}
+			more = append(more, x.In(loc).Format("02.01"))
+		}
+		p.Why += " · ещё " + strings.Join(more, ", ")
+	}
+	return p
+}
+
+// ChannelImport: many posts at once (a chat export) → drafts in «Афиша», one quiet summary.
+func (a *App) ChannelImport(ctx context.Context, spaceID int64, from string, texts []string) (int, error) {
+	c, err := a.coupleOfSpace(ctx, spaceID)
+	if err != nil {
+		return 0, err
+	}
+	loc := c.Loc()
+	now := a.now().In(loc)
+	n := 0
+	for _, t := range texts {
+		sc, ok := scanPost(t, now)
+		if !ok {
+			continue
+		}
+		i, ok := a.pickIdea(ctx, showPick(sc, ChannelPost{From: from, Text: t}, loc), spaceID, c.Me.ID, "channel", loc, a.now())
+		if !ok {
+			continue
+		}
+		ni, err := a.S.CreateIdea(ctx, i, a.now())
+		if err != nil {
+			return n, err
+		}
+		a.scheduleAnnouncement(ctx, ni)
+		n++
+	}
+	if n > 0 {
+		a.Live.Changed(spaceID, 0, "")
+		msg := fmt.Sprintf("📨 Из канала «%s» в «Афишу» — %s со скидочными билетами. Отмечайте, что нравится: я учту вкусы обоих.", esc(clip(from, 40)), ncaseRu(n, "событие", "события", "событий"))
+		for _, m := range []*store.Member{&c.Me, c.Partner} {
+			if m != nil {
+				a.send(ctx, m.ChatID, msg, tg.Keyboard(tg.Row(tg.App("Открыть афишу", a.appURL("ideas/scout")))))
+			}
+		}
+	}
+	return n, nil
 }
 
 func ncaseRu(n int, one, few, many string) string {
@@ -304,4 +377,182 @@ func dayInText(d time.Time, low string, now time.Time) bool {
 		}
 	}
 	return false
+}
+
+// ---------- the deterministic reader: a typical afisha post («🔴 ЧАЙКА … ✅ 19 ноября 19.00 … 🔥4500 вместо 5500») ----------
+
+var (
+	monthStems = []struct {
+		stem string
+		m    time.Month
+	}{{"январ", 1}, {"феврал", 2}, {"март", 3}, {"апрел", 4}, {"мая", 5}, {"май", 5}, {"июн", 6}, {"июл", 7}, {"август", 8}, {"сентябр", 9}, {"октябр", 10}, {"ноябр", 11}, {"декабр", 12}}
+	dateRe    = regexp.MustCompile(`((?:\d{1,2}\s*(?:,|и|-|–)\s*)*\d{1,2})\s+(январ|феврал|март|апрел|мая|май|июн|июл|август|сентябр|октябр|ноябр|декабр)[а-я]*(?:\s*(?:в\s*)?([01]?\d|2[0-3])[.:\-]([0-5]\d))?`)
+	anyTimeRe = regexp.MustCompile(`(?:^|[^\d])(1\d|2[0-2])[.:\-]([0-5]\d)(?:[^\d]|$)`)
+	priceVRe  = regexp.MustCompile(`(\d[\d ]{2,6})\s*(?:₽|[рp]\.?|руб[а-я]*\.?)?\s*\(?\s*вместо\s*(\d[\d ]{2,6})?`)
+	priceRRe  = regexp.MustCompile(`(?:от\s*)?(\d[\d ]{1,5}\d)\s*(?:₽|руб)`)
+	priceFRe  = regexp.MustCompile(`[🔥💥]+\s*(?:по\s*)?(\d[\d ]{2,5}\d)`)
+	quoteRe   = regexp.MustCompile(`«([^»]{3,60})»`)
+	ageRe     = regexp.MustCompile(`[\s,]*(?:0|6|12|14|16|18)\+?$`)
+	notTitle  = regexp.MustCompile(`^хит театра|^вднх$|^рамт$|^et cetera$|^космос$|^ленком$|^огоньке$|звездн|эксклюзив|раннее бронир|^премьера|акция|редкост|мест мало|спешите|^детям|состав|билет|партер|скидк|цена|^театр|^мхт|сцен[аеы]|^зал|^дк `)
+)
+
+type scanned struct {
+	postEvent
+	dates []time.Time // every date of the show, nearest first
+	orig  int64       // the usual price, when the post gives «вместо …»
+}
+
+func digits(s string) int64 {
+	n, _ := strconv.ParseInt(strings.Map(func(r rune) rune {
+		if unicode.IsDigit(r) {
+			return r
+		}
+		return -1
+	}, s), 10, 64)
+	return n
+}
+
+func scanPost(text string, now time.Time) (scanned, bool) {
+	low := strings.ReplaceAll(strings.ReplaceAll(strings.ToLower(text), "*", ""), " ", " ")
+	var out scanned
+	seen := map[string]bool{}
+	for _, m := range dateRe.FindAllStringSubmatch(low, -1) {
+		var mon time.Month
+		for _, s := range monthStems {
+			if s.stem == m[2] {
+				mon = s.m
+			}
+		}
+		h, mi := -1, 0
+		if m[3] != "" {
+			h, _ = strconv.Atoi(m[3])
+			mi, _ = strconv.Atoi(m[4])
+		}
+		for _, ds := range regexp.MustCompile(`\d{1,2}`).FindAllString(m[1], -1) {
+			d, _ := strconv.Atoi(ds)
+			y := now.Year()
+			if int(mon) < int(now.Month())-1 {
+				y++
+			}
+			t := time.Date(y, mon, d, 0, 0, 0, 0, now.Location())
+			if t.Day() != d || t.Before(now.Truncate(24*time.Hour).Add(-24*time.Hour)) || t.After(now.AddDate(0, 6, 0)) {
+				continue
+			}
+			if h >= 0 {
+				t = t.Add(time.Duration(h)*time.Hour + time.Duration(mi)*time.Minute)
+			}
+			if k := t.Format(time.RFC3339); !seen[k] {
+				seen[k] = true
+				out.dates = append(out.dates, t)
+			}
+		}
+	}
+	if len(out.dates) == 0 {
+		return out, false
+	}
+	if tm := anyTimeRe.FindStringSubmatch(low); tm != nil { // «19.00» on its own line applies to dates without a time
+		h, _ := strconv.Atoi(tm[1])
+		mi, _ := strconv.Atoi(tm[2])
+		for k, d := range out.dates {
+			if d.Hour() == 0 && d.Minute() == 0 {
+				out.dates[k] = d.Add(time.Duration(h)*time.Hour + time.Duration(mi)*time.Minute)
+			}
+		}
+	}
+	sortTimes(out.dates)
+	future := out.dates[:0]
+	for _, d := range out.dates {
+		if d.After(now) || (d.Hour() == 0 && d.Minute() == 0 && !d.Before(now.Truncate(24*time.Hour))) {
+			future = append(future, d)
+		}
+	}
+	if out.dates = future; len(out.dates) == 0 {
+		return out, false
+	}
+	for _, m := range priceVRe.FindAllStringSubmatch(low, -1) {
+		if p := digits(m[1]); p >= 300 && p <= 100000 && (out.Price == 0 || p < out.Price) {
+			out.Price = p
+			if m[2] != "" {
+				out.orig = digits(m[2])
+			}
+		}
+	}
+	if out.Price == 0 {
+		for _, m := range append(priceFRe.FindAllStringSubmatch(low, -1), priceRRe.FindAllStringSubmatch(low, -1)...) {
+			if p := digits(m[1]); p >= 300 && p <= 100000 && (out.Price == 0 || p < out.Price) {
+				out.Price = p
+			}
+		}
+	}
+	lines := strings.Split(text, "\n")
+	clean := func(l string) string {
+		l = strings.NewReplacer("*", "", "_", "").Replace(l)
+		l = strings.TrimFunc(l, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '«' && r != '"' && r != '!' && r != '?'
+		})
+		return strings.TrimLeft(strings.TrimRightFunc(l, func(r rune) bool {
+			return r != '!' && r != '?' && !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '»' && r != '"'
+		}), "!?")
+	}
+	ok := func(c string) bool {
+		return len([]rune(c)) >= 3 && !notTitle.MatchString(strings.ToLower(c)) && !dateRe.MatchString(strings.ToLower(c))
+	}
+	for _, l := range lines { // the show is marked 🔴 in most afisha channels
+		if strings.Contains(l, "🔴") {
+			if q := quoteRe.FindStringSubmatch(l); q != nil && ok(clean(q[1])) {
+				out.Title = clean(q[1])
+				break
+			}
+			if c := clean(l); ok(c) {
+				out.Title = c
+				break
+			}
+		}
+	}
+	if out.Title == "" {
+		for _, l := range lines {
+			c := clean(l)
+			letters := 0
+			for _, r := range c {
+				if unicode.IsLetter(r) {
+					letters++
+				}
+			}
+			if letters >= 4 && strings.ToUpper(c) == c && ok(c) {
+				out.Title = c
+				break
+			}
+		}
+	}
+	if out.Title == "" {
+		if q := quoteRe.FindStringSubmatch(text); q != nil && ok(clean(q[1])) {
+			out.Title = clean(q[1])
+		}
+	}
+	out.Title = strings.Trim(ageRe.ReplaceAllString(strings.Trim(out.Title, "«»\" "), ""), "«»\" ,")
+	if out.Title == "" {
+		return out, false
+	}
+	for _, l := range lines {
+		ll := strings.ToLower(l)
+		if len([]rune(l)) < 80 && regexp.MustCompile(`театр|мхт|дк |филармон|концертн|дом музыки|кремл|оперетт|мюзик-холл|et cetera`).MatchString(ll) {
+			if c := clean(l); c != "" && c != out.Title {
+				out.Venue = c
+				break
+			}
+		}
+	}
+	out.Category = "culture"
+	if regexp.MustCompile(`гастро|ужин|ресторан|дегустац`).MatchString(low) && !strings.Contains(low, "театр") {
+		out.Category = "food"
+	}
+	return out, true
+}
+
+func sortTimes(t []time.Time) {
+	for i := 1; i < len(t); i++ {
+		for j := i; j > 0 && t[j].Before(t[j-1]); j-- {
+			t[j], t[j-1] = t[j-1], t[j]
+		}
+	}
 }
