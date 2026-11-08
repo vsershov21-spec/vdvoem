@@ -35,7 +35,7 @@ type Intent struct {
 	refined bool     // a follow-up («а подешевле?») merged into the previous request
 }
 
-var intentNames = []string{"find", "suggest", "price", "book", "remember", "goal", "overview", "past", "chores", "add_idea", "budget", "suggest_mode", "plan", "chat"}
+var intentNames = []string{"find", "suggest", "price", "book", "about", "remember", "goal", "overview", "past", "chores", "add_idea", "budget", "suggest_mode", "plan", "chat"}
 
 var intentSchema = map[string]any{
 	"type": "object",
@@ -63,6 +63,7 @@ var intentSchema = map[string]any{
 
 var (
 	priceAskRe  = regexp.MustCompile(`(?i)(?:сколько стоит|сколько стоят|сколько будет стоить|почём|почем|какая цена|цена на|цены на|стоимость|есть ли (?:ещё |еще )?билеты на|остались ли билеты на|дорого ли|дорого в|во сколько обойд[её]тся|сколько обойд[её]тся|билеты на)\s*(.*)`)
+	aboutRe     = regexp.MustCompile(`(?i)(?:расскажи (?:про|о|об|поподробнее (?:про|о))|что за спектакль|что за концерт|что за событие|что это за|что такое|о ч[её]м (?:спектакль|постановка|концерт)?|кто играет в|кто играет|кто в составе|какой жанр у|подойд[её]т ли нам|нам подойд[её]т|стоит ли идти на|стоит ли сходить на|понравится ли нам|понравится ли (?:насте|ей|ему))\s*(.*)`)
 	bookRe      = regexp.MustCompile(`(?i)(?:забронируй|бронируй|запиши нас на|запиши в календарь|добавь в календарь|поставь в календарь|идём на|идем на|пойдём на|пойдем на|давай пойдём на|давай пойдем на|берём билеты на|берем билеты на|бер[её]м|позови (?:её|ее|его) на|пойти с (?:ней|ним) на)\s*(.*)`)
 	budgetSetRe = regexp.MustCompile(`(?i)бюджет\D{0,12}(\d[\d\s]{2,6})`)
 	followRe    = regexp.MustCompile(`(?i)^(?:(?:а|и|ну|тогда|лучше|только|ещё|еще)(?:\s|,|$)|подешевле|дешевле|подороже|без |не |кроме)`)
@@ -87,6 +88,9 @@ func rulesIntent(text string, now time.Time) Intent {
 	}
 	if m := addRe.FindStringSubmatch(strings.TrimSpace(text)); m != nil {
 		return Intent{I: "add_idea", Text: strings.TrimSpace(m[1]), conf: 0.95}
+	}
+	if m := aboutRe.FindStringSubmatch(text); m != nil && len([]rune(cleanQ(m[1]))) >= 3 && !timeQ.MatchString(cleanQ(m[1])) {
+		return Intent{I: "about", Q: bookQ(m[1]), conf: 0.86}
 	}
 	if m := priceAskRe.FindStringSubmatch(text); m != nil {
 		return Intent{I: "price", Q: cleanQ(m[1]), conf: 0.9}
@@ -213,7 +217,7 @@ var LLMBudget = 6500 * time.Millisecond
 
 func intentSystem(now time.Time) string {
 	return `Ты разбираешь запросы пары к приложению «Вдвоём» и отвечаешь ТОЛЬКО JSON по схеме. Сегодня ` + now.Format("2006-01-02") + ` (` + ruWeekday(now) + `).
-i: find — что поделать/куда сходить/что есть (афиша скаута, копилка), с фильтрами; suggest — выбрать одну идею из копилки (mode random — «удиви»); price — сколько стоит что-то (q — что именно); book — записать конкретное событие в календарь/пойти на него (q); remember — человек сообщает свой вкус (text — фраза); goal — следить за чем-то в будущем (text); overview — наши планы; past — где были; chores — дела по дому; add_idea — добавить идею (text); budget — поставить бюджет (rub); suggest_mode — как бот присылает идеи (mode); plan — начать выбор вместе; chat — приветствие и прочее.
+i: find — что поделать/куда сходить/что есть (афиша скаута, копилка), с фильтрами; suggest — выбрать одну идею из копилки (mode random — «удиви»); price — сколько стоит что-то (q — что именно); book — записать конкретное событие в календарь/пойти на него (q); about — рассказать о конкретном событии: что это, жанр, кто играет, подойдёт ли нам (q); remember — человек сообщает свой вкус (text — фраза); goal — следить за чем-то в будущем (text); overview — наши планы; past — где были; chores — дела по дому; add_idea — добавить идею (text); budget — поставить бюджет (rub); suggest_mode — как бот присылает идеи (mode); plan — начать выбор вместе; chat — приветствие и прочее.
 Фильтры find: date (YYYY-MM-DD), wknd (ближайшие выходные), part (morning/day/evening), max (₽ на двоих), cats/not (food culture walk sport other), notw (слова-исключения), moods (chill — отдохнуть, расслабиться; active; romantic; culture; fun; food; outdoor; home; free; new; night), hz (week — ближайшее, later — анонсы на месяцы вперёд), scout (только находки скаута/афиша).
 Пиши только нужные поля. Ничего не придумывай.`
 }
@@ -234,6 +238,7 @@ var shots = []struct{ q, a string }{
 	{"что нашёл скаут?", `{"i":"find","scout":true,"hz":"week"}`},
 	{"сколько стоят билеты на Гамлета", `{"i":"price","q":"Гамлет"}`},
 	{"запиши нас на джаз в пятницу", `{"i":"book","q":"джаз"}`},
+	{"что за спектакль Чайка, нам подойдёт?", `{"i":"about","q":"Чайка"}`},
 	{"я не ем морепродукты", `{"i":"remember","text":"не ем морепродукты"}`},
 	{"дай знать когда будет фестиваль фейерверков", `{"i":"goal","text":"фестиваль фейерверков"}`},
 	{"удиви нас", `{"i":"suggest","mode":"random"}`},

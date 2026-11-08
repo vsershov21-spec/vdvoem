@@ -567,3 +567,34 @@ func TestChannelPost(t *testing.T) {
 		t.Fatalf("dupe: %q", f.last(1))
 	}
 }
+
+// «Расскажи про …»: facts from the data, a verdict for each of the two with reasons.
+func TestAboutAnswer(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	// Вова loves comedies, Настя skips them
+	for k := 0; k < 6; k++ {
+		r, _ := a.AddIdea(ctx, v, fmt.Sprintf("Комедия номер %d в театре", k))
+		i := r.Idea
+		i.Category, i.Info.Genres = "culture", []string{"комедия"}
+		a.S.UpdateIdea(ctx, i, ck.t)
+		a.SetWish(ctx, v, i.ID, domain.WishVery)
+		a.SetWish(ctx, n, i.ID, domain.WishSkip)
+	}
+	sat := ck.t.AddDate(0, 0, 3).Format("2006-01-02")
+	if _, err := a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{{Title: "Тёща с сюрпризом", Category: "culture", Starts: sat + "T19:30", PriceRub: 4000, Score: 7,
+		About: "Молодая пара хочет обзавестись ребёнком, а тёща готовит сюрприз.", Genres: []string{"комедия"}, Cast: []string{"Иван Иванов"}, Age: "16+"}}); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := as.Ask(ctx, v, "расскажи про Тёщу с сюрпризом")
+	for _, want := range []string{"Комедия", "16+", "В ролях: Иван Иванов", "Молодая пара", "Подойдёт ли вам", "Тебе — очень подходит", "Настя — вряд ли"} {
+		if !strings.Contains(rep.Text, want) {
+			t.Fatalf("no %q in %q", want, rep.Text)
+		}
+	}
+	if len(rep.Actions) == 0 || !strings.HasPrefix(rep.Actions[0].Label, "Идём") {
+		t.Fatalf("actions: %+v", rep.Actions)
+	}
+}

@@ -6,6 +6,7 @@ export type Idea = {
   url?: string; address?: string; image?: string; note?: string
   price_min?: number; price_max?: number; duration_min?: number
   starts_at?: number; ends_at?: number; deadline?: number; assignee?: string
+  info?: { about?: string; genres?: string[]; cast?: string[]; age?: string; src?: string }
   status: string; my_wish: Wish; partner_marked: boolean; partner_wish?: Wish
   mine: boolean; parsed: boolean; meta: string; liked_before?: boolean; created_at: number
   maps: string; generic: boolean; options?: PlaceOption[]; place?: { title: string; address?: string; url?: string; maps: string; chosen: boolean }

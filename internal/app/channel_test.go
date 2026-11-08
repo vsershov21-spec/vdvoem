@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -49,5 +50,33 @@ func TestScanPost(t *testing.T) {
 	}
 	if _, ok := scanPost("Всем привет! Скоро новые спектакли", now); ok {
 		t.Error("no date — no event")
+	}
+}
+
+func TestInfoFromText(t *testing.T) {
+	text := `💥ТЕАТР ОПЕРЕТТЫ
+
+🔴 МИСТЕР ИКС 12+
+
+✅24 ноября в 19.00
+
+Партер 👍
+🔥4300 вместо 5000-4700
+
+❗️В заказе пишем ФИО полностью и паспорта серия и номер всех идущих
+
+Жемчужина творчества Имре Кальмана. История любви между цирковым артистом, скрывающим лицо под маской, и богатой аристократкой.
+
+В ролях: Е.Зайцева, П.Иванов, П.Борисенко, А.Золотова и др.`
+	in := InfoFromText("МИСТЕР ИКС", text)
+	if in.Age != "12+" || !contains(in.Genres, "оперетта") || !contains(in.Genres, "мелодрама") || len(in.Cast) != 4 || in.Cast[3] != "А.Золотова" {
+		t.Fatalf("%+v", in)
+	}
+	if !strings.HasPrefix(in.About, "Жемчужина творчества") || strings.Contains(in.About, "паспорт") {
+		t.Fatalf("about: %q", in.About)
+	}
+	star := InfoFromText("ЧАЙКА", "🔴 ЧАЙКА\n⭐️Игорь ВЕРНИК❗️\n⭐️Анатолий КОТ❗️\n✅ 19 ноября 19.00")
+	if len(star.Cast) != 2 || star.Cast[0] != "Игорь Верник" {
+		t.Fatalf("stars: %+v", star.Cast)
 	}
 }
