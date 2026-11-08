@@ -591,3 +591,4 @@ button,a,[role=tab]{touch-action:manipulation}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .pill--muted{opacity:.6}
 .msg__link{color:var(--accent);text-decoration:underline;text-underline-offset:2px;word-break:break-all}
+.chartcard__body{min-height:150px}

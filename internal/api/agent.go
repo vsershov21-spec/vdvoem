@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 
 	"vdvoem/internal/app"
+	"vdvoem/internal/assistant"
 )
 
 // The scout agent (a scheduled Claude task) talks to the app from the server itself, through the admin
@@ -34,6 +36,36 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /agent/goals/{id}/done", local(a.agentGoalDone))
 	mux.HandleFunc("POST /agent/answers", local(a.agentAnswers))
 	mux.HandleFunc("POST /agent/channel", local(a.agentChannel))
+	mux.HandleFunc("GET /agent/model", local(a.agentModel))
+	mux.HandleFunc("POST /agent/model", local(a.agentModel))
+}
+
+// agentModel: which model reads the assistant's requests; POST {"model":"vdvoem-intent"} switches (""/"default" — back)
+func (a *API) agentModel(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var in struct {
+			Model string `json:"model"`
+		}
+		if err := readJSON(r, &in); err != nil {
+			writeJSON(w, 400, map[string]string{"error": "bad json"})
+			return
+		}
+		if in.Model == "default" {
+			in.Model = ""
+		}
+		if err := a.App.S.SetSetting(r.Context(), "intent_model", in.Model); err != nil {
+			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			return
+		}
+		a.Helper.SetIntentModel(in.Model)
+		go a.Helper.Warm(context.WithoutCancel(r.Context()))
+	}
+	c := a.Helper.IntentModel()
+	m := ""
+	if c != nil {
+		m = c.M()
+	}
+	writeJSON(w, 200, map[string]any{"intent_model": m, "tuned": assistant.Tuned(m)})
 }
 
 // agentChannel: a channel's posts at once (an export) → events in «Афиша»

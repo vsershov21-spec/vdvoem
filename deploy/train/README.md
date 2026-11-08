@@ -1,30 +1,26 @@
-# Дообучение бесплатной модели помощника (LoRA)
+# Дообучение модели помощника (LoRA)
 
-Модель учится на ваших же разговорах с помощником: сохраняется вопрос и то, какой инструмент
-модель вызвала. Пример считается хорошим, когда вы нажали предложенную кнопку. Плюс 30 «золотых»
-примеров из набора проверки.
+Модель учится понимать запросы: фраза → JSON-намерение (что сделать и с какими условиями). Отвечает по-прежнему
+сервер из данных, поэтому дообучение не может научить модель выдумывать факты — только лучше понимать.
 
-## 1. Выгрузить примеры (на сервере)
-```
-set -a; . /etc/vdvoem/vdvoem.env; set +a
-DB_PATH=/var/lib/vdvoem/vdvoem.db /opt/vdvoem/current/vdvoem export-train /root/train.jsonl
-```
-Имеет смысл, когда примеров ≥ 200. Скачать: `scp root@<сервер>:/root/train.jsonl .`
+## Данные — `gen.py`
+`python3 gen.py out/` → `train.jsonl` (2300), `valid.jsonl` (300), `test.jsonl` (250).
+Каждый пример собирается из «слотов» (день, часть дня, бюджет, категории, настроения, названия), поэтому разметка верна
+по построению; фразы — разные порядки слов, сленг, опечатки, эмодзи. `test` — свои шаблоны и названия, которых нет в
+обучении. Отложенные наборы приложения (`intentHoldout`, `intentHoldout2`) в обучение не попадают никогда — по ним сервер
+решает, ставить ли модель. Системный промпт — `system.txt`, тот же, что в приложении (проверяет `TestDatasetSystem`).
+Позже сюда же добавятся живые подтверждённые запросы (`vdvoem export-train`).
 
-## 2. Обучить (бесплатно, ~1 час, Kaggle или Colab с GPU T4)
-Открыть новый ноутбук, включить GPU, загрузить `train.jsonl` и `lora.py`, выполнить:
-```
-!pip install -q unsloth
-!python lora.py train.jsonl
-```
-На выходе `vdvoem-qwen.gguf` (~2 ГБ).
+## Обучение — `vdvoem_lora.ipynb` (бесплатно, Google Colab, ~30–40 минут)
+1. Открыть ноутбук в Colab: https://colab.research.google.com/github/vsershov21-spec/vdvoem/blob/main/deploy/train/vdvoem_lora.ipynb
+2. Среда выполнения → Сменить среду → **T4 GPU**.
+3. Ключ слева → секрет `GH_TOKEN`: токен GitHub (Settings → Developer settings → Fine-grained tokens) только на репозиторий
+   `vdvoem`, право **Contents: Read and write**, срок — 7 дней.
+4. Среда выполнения → **Выполнить все**. В конце — точность на `test` и загрузка адаптера в релиз `lora`.
 
-## 3. Подключить на сервере
-```
-scp vdvoem-qwen.gguf root@<сервер>:/root/
-# шаблон чата и вызова инструментов берём у исходной модели — меняется только веса
-ollama show qwen2.5:3b --modelfile | sed 's|^FROM .*|FROM /root/vdvoem-qwen.gguf|' > /root/Modelfile
-ollama create vdvoem-qwen -f /root/Modelfile
-/opt/vdvoem/current/vdvoem eval qwen2.5:3b vdvoem-qwen     # сравнить до и после
-MODEL=vdvoem-qwen bash ai-local.sh                          # переключить, если стало лучше
-```
+## Установка на сервер — `install-lora.sh` (без root)
+Скачивает адаптер, собирает `vdvoem-intent` = `qwen2.5:3b` + адаптер в Ollama, прогоняет `vdvoem eval` для старой и новой
+модели и включает новую (`POST /agent/model`) только если на отложенных запросах она лучше на 3+ п.п., p90 ≤ 6.5 с и не хуже
+на золотом наборе. Откат: `curl -X POST 127.0.0.1:8099/agent/model -d '{"model":"default"}'`.
+
+Дообученная модель (`vdvoem-*`) получает короткий промпт без примеров — на нём её и учили; так она ещё и быстрее.

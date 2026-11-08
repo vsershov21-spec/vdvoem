@@ -263,6 +263,10 @@ func modelIntent(ctx context.Context, c *ai.Client, text string, now time.Time, 
 	ctx, cancel := context.WithTimeout(ctx, LLMBudget)
 	defer cancel()
 	msgs := shotMsgs(now)
+	if Tuned(c.M()) { // trained on exactly this: the system prompt and the request
+		msgs = []ai.Message{{Role: "system", Content: intentSystem(now)}}
+		like = nil
+	}
 	for _, l := range like {
 		a := l.Want
 		for _, code := range []string{"TOD", "TOM", "SAT", "SUN", "FRI"} {
@@ -339,7 +343,7 @@ func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, n
 	if rule.conf >= 0.8 || !as.AI.Enabled() {
 		return rule, "rules"
 	}
-	m, err := modelIntent(ctx, as.AI, text, now, recall(as.bank(ctx), text, 3))
+	m, err := modelIntent(ctx, as.IntentModel(), text, now, recall(as.bank(ctx), text, 3))
 	if err != nil {
 		return rule, "rules-fallback"
 	}
@@ -350,10 +354,15 @@ func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, n
 
 // Warm keeps the local model loaded with its prompt prefix cached (called every few minutes).
 func (as *Assistant) Warm(ctx context.Context) {
-	if !as.AI.IsLocal() {
+	c := as.IntentModel()
+	if !c.IsLocal() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	_, _ = as.AI.Structured(ctx, "warm", append(shotMsgs(as.now()), ai.Message{Role: "user", Content: "привет"}), intentSchema, 8)
+	msgs := shotMsgs(as.now())
+	if Tuned(c.M()) {
+		msgs = msgs[:1]
+	}
+	_, _ = c.Structured(ctx, "warm", append(msgs, ai.Message{Role: "user", Content: "привет"}), intentSchema, 8)
 }

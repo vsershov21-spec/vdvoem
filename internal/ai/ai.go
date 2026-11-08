@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -23,6 +24,41 @@ type Client struct {
 	HTTP            *http.Client
 	Log             Logger
 	Timeout         time.Duration // a local model on CPU needs a minute; cloud APIs answer in seconds
+	over            atomic.Pointer[string]
+}
+
+// M: the model in use — Model, unless switched at run time (a fine-tuned local model installed later).
+func (c *Client) M() string {
+	if p := c.over.Load(); p != nil {
+		return *p
+	}
+	return c.Model
+}
+
+// SetModel switches every request to another model ("" — back to Model). One model for everything:
+// a CPU server keeps one model loaded, and swapping between two costs seconds on every request.
+func (c *Client) SetModel(m string) {
+	if m == "" || m == c.Model {
+		c.over.Store(nil)
+		return
+	}
+	c.over.Store(&m)
+}
+
+// Unload frees a local model's memory now (an eval run must not leave its model loaded: the server keeps one).
+func (c *Client) Unload(ctx context.Context, model string) {
+	if !c.IsLocal() {
+		return
+	}
+	url := strings.TrimSuffix(strings.TrimSuffix(c.URL, "/"), "/v1") + "/api/generate"
+	b, _ := json.Marshal(map[string]any{"model": model, "keep_alive": 0})
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+	if err != nil {
+		return
+	}
+	if res, err := c.client(20 * time.Second).Do(req); err == nil {
+		res.Body.Close()
+	}
 }
 
 func (c *Client) client(def time.Duration) *http.Client {
@@ -35,13 +71,13 @@ func (c *Client) client(def time.Duration) *http.Client {
 	return &http.Client{Timeout: def}
 }
 
-func (c *Client) Enabled() bool { return c != nil && c.URL != "" && c.Model != "" }
+func (c *Client) Enabled() bool { return c != nil && c.URL != "" && c.M() != "" }
 
 func (c *Client) provider() string {
 	if c == nil || c.URL == "" {
 		return "none"
 	}
-	return c.Model
+	return c.M()
 }
 
 type msg struct {
@@ -54,7 +90,7 @@ func (c *Client) complete(ctx context.Context, task, system, user string) (strin
 		return "", errors.New("ai disabled")
 	}
 	t0 := time.Now()
-	body, _ := json.Marshal(map[string]any{"model": c.Model, "temperature": 0.2, "max_tokens": 300,
+	body, _ := json.Marshal(map[string]any{"model": c.M(), "temperature": 0.2, "max_tokens": 300,
 		"messages": []msg{{"system", system}, {"user", user}}})
 	req, _ := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(c.URL, "/")+"/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

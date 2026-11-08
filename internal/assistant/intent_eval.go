@@ -315,9 +315,10 @@ func (s *intentScore) line(name string, n int) string {
 // EvalIntents: the report for one model. Returns the pipeline's share of right answers.
 func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 	as := &Assistant{AI: c}
+	defer c.Unload(context.WithoutCancel(ctx), c.M()) // leave the server's one model slot free
 	now := time.Now().In(time.FixedZone("MSK", 3*3600))
 	var rules, model, pipe intentScore
-	_, _ = c.Structured(ctx, "warm", append(shotMsgs(now), ai.Message{Role: "user", Content: "привет"}), intentSchema, 8)
+	as.Warm(ctx)
 	var hRules, hModel, hPipe intentScore
 	var h2Rules, h2Model, h2Pipe intentScore
 	all := append(append(append([]intentCase{}, intentCases...), intentHoldout...), intentHoldout2...)
@@ -382,7 +383,17 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 	for _, b := range model.bad {
 		fmt.Fprintln(w, "  ✗ "+b)
 	}
-	return float64(pipe.ok) / float64(n)
+	// one line for scripts: the score that decides whether a model is installed — requests never tuned for
+	held := float64(hPipe.ok+h2Pipe.ok) / float64(h+h2)
+	lat := append(append([]int64{}, hPipe.ms...), h2Pipe.ms...)
+	sort.Slice(lat, func(a, b int) bool { return lat[a] < lat[b] })
+	p90 := 0.0
+	if len(lat) > 0 {
+		p90 = float64(lat[len(lat)*9/10]) / 1000
+	}
+	b, _ := json.Marshal(map[string]any{"model": c.Model, "held": held, "p90": p90, "gold": float64(pipe.ok) / float64(n)})
+	fmt.Fprintf(w, "SUMMARY %s\n", b)
+	return held
 }
 
 // ExportIntents: gold cases + real requests whose answer was used (a button pressed), in the chat format

@@ -65,9 +65,28 @@ type Assistant struct {
 	cache bankCache
 }
 
+// Tuned: model names starting with «vdvoem-» were fine-tuned on the intent dataset: they get the short prompt
+// (no examples) — what they were trained on, and faster.
+func Tuned(model string) bool { return strings.HasPrefix(model, "vdvoem-") }
+
+// SetIntentModel switches the model (for everything: one model stays loaded on a CPU server); "" — back.
+func (as *Assistant) SetIntentModel(model string) {
+	if as.AI != nil {
+		as.AI.SetModel(model)
+	}
+}
+
+// IntentModel: what reads requests now
+func (as *Assistant) IntentModel() *ai.Client { return as.AI }
+
 var ErrLimit = errors.New("assistant_limit")
 
-func (as *Assistant) now() time.Time { return as.App.Now() }
+func (as *Assistant) now() time.Time {
+	if as.App == nil {
+		return time.Now()
+	}
+	return as.App.Now()
+}
 
 // Ask answers one question and stores both sides of the exchange.
 func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply, error) {

@@ -67,7 +67,7 @@ func (c *Client) Step(ctx context.Context, task string, msgs []Message, tools []
 	for _, t := range tools {
 		wt = append(wt, map[string]any{"type": "function", "function": map[string]any{"name": t.Name, "description": t.Description, "parameters": t.Parameters}})
 	}
-	req := map[string]any{"model": c.Model, "temperature": 0.3, "max_tokens": 600, "messages": wm}
+	req := map[string]any{"model": c.M(), "temperature": 0.3, "max_tokens": 600, "messages": wm}
 	if len(wt) > 0 {
 		req["tools"] = wt
 	}
