@@ -21,6 +21,10 @@ export async function reply(u: U, to: number, text: string) {
   const r = await fetch(EMU + '/_emu/say', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, text, reply: to }) })
   expect(r.ok, await r.text()).toBeTruthy()
 }
+export async function forward(u: U, channel: string, text: string) {
+  const r = await fetch(EMU + '/_emu/say', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, text, forward: channel }) })
+  expect(r.ok, await r.text()).toBeTruthy()
+}
 export async function photo(u: U) {
   const r = await fetch(EMU + '/_emu/say', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, photo: true }) })
   expect(r.ok).toBeTruthy()

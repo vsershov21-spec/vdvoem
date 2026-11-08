@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { people, pair, phone, open, shot, api, waitMsg, tab, BASE } from './lib'
+import { people, pair, phone, open, shot, api, waitMsg, tab, forward, BASE } from './lib'
 
 const day = (n: number, hm = '19:00') => { const d = new Date(Date.now() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}` }
 
@@ -28,6 +28,7 @@ test('E31 помощник v2: цена из данных, настроение,
   await expect(await ask('сколько стоит джазовый концерт?')).toContainText('₽')
   await expect(await ask('хотим почилить')).toContainText(/настроение/i)
   await expect(p.locator('.ai-card').last()).toBeVisible()
+  await expect(p.getByTestId('follow')).toBeVisible() // refine in one tap
   await shot(p, 'E31-chill')
   await expect(await ask('запиши нас на джазовый концерт')).toContainText('Позвал')
   await shot(p, 'E31-book')
@@ -48,4 +49,13 @@ test('E31 помощник v2: цена из данных, настроение,
     await p.goto('/app/idea/' + spa.id)
     await expect(p.getByTestId('fixed-when')).toHaveCount(0)
   }
+})
+
+test('E32 пост из канала: пересылаешь боту — он принимает, без модели кладёт в копилку', async () => {
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  await forward(v, 'Билеты дёшево', '🎭 «Вишнёвый сад» в Современнике — 15 декабря, 19:00. Билеты от 900 ₽, пишите в личку')
+  await waitMsg(v, /Читаю пост из «Билеты дёшево»/)
+  await waitMsg(v, /сохранил его в копилку/, 30000)
+  await expect.poll(async () => (await api(v, 'GET', '/ideas')).ideas.some((i: any) => /Вишн/.test(i.title)), { timeout: 20000 }).toBe(true)
 })

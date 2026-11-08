@@ -41,8 +41,19 @@ type User struct {
 }
 
 type Chat struct {
-	ID   int64  `json:"id"`
-	Type string `json:"type"`
+	ID       int64  `json:"id"`
+	Type     string `json:"type"`
+	Title    string `json:"title,omitempty"`
+	Username string `json:"username,omitempty"`
+}
+
+// ForwardOrigin: where a forwarded message came from (Bot API 7+)
+type ForwardOrigin struct {
+	Type       string `json:"type"` // channel | user | hidden_user | chat
+	Chat       *Chat  `json:"chat,omitempty"`
+	SenderChat *Chat  `json:"sender_chat,omitempty"`
+	MessageID  int64  `json:"message_id,omitempty"`
+	SenderName string `json:"sender_user_name,omitempty"`
 }
 
 type PhotoSize struct {
@@ -52,13 +63,25 @@ type PhotoSize struct {
 }
 
 type Message struct {
-	MessageID int64       `json:"message_id"`
-	From      *User       `json:"from,omitempty"`
-	Chat      Chat        `json:"chat"`
-	Text      string      `json:"text,omitempty"`
-	Caption   string      `json:"caption,omitempty"`
-	Photo     []PhotoSize `json:"photo,omitempty"`
-	ReplyTo   *Message    `json:"reply_to_message,omitempty"`
+	MessageID int64          `json:"message_id"`
+	From      *User          `json:"from,omitempty"`
+	Chat      Chat           `json:"chat"`
+	Text      string         `json:"text,omitempty"`
+	Caption   string         `json:"caption,omitempty"`
+	Photo     []PhotoSize    `json:"photo,omitempty"`
+	ReplyTo   *Message       `json:"reply_to_message,omitempty"`
+	Forward   *ForwardOrigin `json:"forward_origin,omitempty"`
+	FwdChat   *Chat          `json:"forward_from_chat,omitempty"` // older clients
+	Entities  []Entity       `json:"entities,omitempty"`
+	CapEnts   []Entity       `json:"caption_entities,omitempty"`
+}
+
+// Entity: we only need links hidden under words («билеты» → https://…)
+type Entity struct {
+	Type   string `json:"type"`
+	Offset int    `json:"offset"`
+	Length int    `json:"length"`
+	URL    string `json:"url,omitempty"`
 }
 
 type CallbackQuery struct {

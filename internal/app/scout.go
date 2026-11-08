@@ -215,31 +215,10 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 			res.Skipped++
 			continue
 		}
-		fp := domain.Fingerprint(p.URL, p.Title)
-		if _, err := a.S.IdeaByFingerprint(ctx, spaceID, fp); err == nil {
+		i, ok := a.pickIdea(ctx, p, spaceID, ms[0].ID, "scout", loc, now)
+		if !ok {
 			res.Skipped++
 			continue
-		}
-		i := store.Idea{Source: "scout", Why: clip(p.Why, 240), Parsed: true}
-		i.SpaceID, i.AuthorID = spaceID, ms[0].ID
-		i.Title, i.URL, i.ImageURL, i.Address = p.Title, safeURL(p.URL), safeURL(p.Image), clip(p.Address, 200)
-		i.Kind, i.Category, i.Status = domain.KindLeisure, normCategory(p.Category), domain.IdeaDraft
-		if p.PriceRub > 0 {
-			i.PriceMin, i.PriceMax = p.PriceRub*100, p.PriceRub*100
-		}
-		i.DurationMin = p.Duration
-		if i.DurationMin <= 0 {
-			i.DurationMin = defaultDuration(i.Category)
-		}
-		i.StartsAt, i.EndsAt = parseWhen(p.Starts, loc), parseWhen(p.Ends, loc)
-		i.OnSale = parseWhen(p.OnSale, loc)
-		if i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
-			res.Skipped++
-			continue
-		}
-		i.Horizon = "week"
-		if p.Horizon == "later" || i.StartsAt != nil && i.StartsAt.Sub(now) > 21*24*time.Hour {
-			i.Horizon = "later"
 		}
 		if i.Horizon == "week" && len(top) < ScoutTop && (sp.BudgetKop == 0 || i.PriceMin <= sp.BudgetKop) {
 			i.Status = domain.IdeaActive
@@ -324,7 +303,7 @@ func (a *App) ScoutCleanup(ctx context.Context, spaceID int64) int {
 	ideas, _ := a.S.Ideas(ctx, spaceID, domain.IdeaDraft, domain.IdeaActive)
 	now, n := a.now(), 0
 	for _, i := range ideas {
-		if i.Source != "scout" || i.WishA != domain.WishNone || i.WishB != domain.WishNone {
+		if !Afisha(i) || i.WishA != domain.WishNone || i.WishB != domain.WishNone {
 			continue
 		}
 		over := i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Add(6*time.Hour).Before(now)
@@ -496,4 +475,33 @@ func (a *App) coupleOfSpace(ctx context.Context, spaceID int64) (Couple, error) 
 		return Couple{}, ErrNotPaired
 	}
 	return a.coupleOf(ctx, ms[0])
+}
+
+// pickIdea: one found event → a draft idea (false: a duplicate or already over)
+func (a *App) pickIdea(ctx context.Context, p ScoutPick, spaceID, authorID int64, source string, loc *time.Location, now time.Time) (store.Idea, bool) {
+	fp := domain.Fingerprint(p.URL, p.Title)
+	if _, err := a.S.IdeaByFingerprint(ctx, spaceID, fp); err == nil {
+		return store.Idea{}, false
+	}
+	i := store.Idea{Source: source, Why: clip(p.Why, 240), Parsed: true}
+	i.SpaceID, i.AuthorID = spaceID, authorID
+	i.Title, i.URL, i.ImageURL, i.Address = p.Title, safeURL(p.URL), safeURL(p.Image), clip(p.Address, 200)
+	i.Kind, i.Category, i.Status = domain.KindLeisure, normCategory(p.Category), domain.IdeaDraft
+	if p.PriceRub > 0 {
+		i.PriceMin, i.PriceMax = p.PriceRub*100, p.PriceRub*100
+	}
+	i.DurationMin = p.Duration
+	if i.DurationMin <= 0 {
+		i.DurationMin = defaultDuration(i.Category)
+	}
+	i.StartsAt, i.EndsAt = parseWhen(p.Starts, loc), parseWhen(p.Ends, loc)
+	i.OnSale = parseWhen(p.OnSale, loc)
+	if i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
+		return store.Idea{}, false
+	}
+	i.Horizon = "week"
+	if p.Horizon == "later" || i.StartsAt != nil && i.StartsAt.Sub(now) > 21*24*time.Hour {
+		i.Horizon = "later"
+	}
+	return i, true
 }

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -531,5 +533,37 @@ func TestAssistantSeamless(t *testing.T) {
 	}
 	if !strings.Contains(f.last(1), "Скаут ответил") {
 		t.Fatalf("answer: %q", f.last(1))
+	}
+}
+
+// A post forwarded from a channel: the model's events are checked against the text, the true ones land in «Афиша».
+func TestChannelPost(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, _ := pair(t, a)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"content":"{\"events\":[{\"title\":\"Вишнёвый сад в Современнике\",\"date\":\"2026-11-15\",\"time\":\"19:00\",\"price\":900,\"category\":\"culture\"},{\"title\":\"Гамлет в МХТ\",\"date\":\"2026-11-20\",\"price\":500}]}"}}]}`))
+	}))
+	defer srv.Close()
+	a.AI = &ai.Client{URL: srv.URL, Model: "fake"}
+	post := app.ChannelPost{From: "Билеты дёшево", Text: "🎭 «Вишнёвый сад» в Современнике — 15 ноября, 19:00. Билеты от 900 ₽, пишите в личку"}
+	if err := a.Repost(ctx, v, 1, post); err != nil {
+		t.Fatal(err)
+	}
+	a.Tick(ctx)
+	got := f.last(1)
+	if !strings.Contains(got, "1 событие") || !strings.Contains(got, "Вишнёвый сад") || strings.Contains(got, "Гамлет") || !strings.Contains(got, "800") {
+		t.Fatalf("reply: %q", got)
+	}
+	all, _ := a.S.Ideas(ctx, v.Space.ID, domain.IdeaDraft)
+	if len(all) != 1 || all[0].Source != "channel" || all[0].StartsAt == nil || all[0].StartsAt.In(v.Loc()).Hour() != 19 {
+		t.Fatalf("ideas: %+v", all)
+	}
+	// the same post again: nothing new
+	_ = a.Repost(ctx, v, 1, app.ChannelPost{From: "Билеты дёшево", Text: post.Text + " "})
+	ck.t = ck.t.Add(time.Minute)
+	a.Tick(ctx)
+	if !strings.Contains(f.last(1), "уже есть") {
+		t.Fatalf("dupe: %q", f.last(1))
 	}
 }

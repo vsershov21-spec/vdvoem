@@ -102,7 +102,7 @@ func (a *API) afisha(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 	var rows []row
 	counts := map[string]int{"week": 0, "later": 0}
 	for _, i := range ideas {
-		if i.Source != "scout" {
+		if !app.Afisha(i) {
 			continue
 		}
 		h := i.Horizon

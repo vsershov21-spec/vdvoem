@@ -254,10 +254,18 @@ func shotMsgs(now time.Time) []ai.Message {
 	return msgs
 }
 
-func modelIntent(ctx context.Context, c *ai.Client, text string, now time.Time) (Intent, error) {
+func modelIntent(ctx context.Context, c *ai.Client, text string, now time.Time, like []intentCase) (Intent, error) {
 	ctx, cancel := context.WithTimeout(ctx, LLMBudget)
 	defer cancel()
-	raw, err := c.Structured(ctx, "intent", append(shotMsgs(now), ai.Message{Role: "user", Content: text}), intentSchema, 120)
+	msgs := shotMsgs(now)
+	for _, l := range like {
+		a := l.Want
+		for _, code := range []string{"TOD", "TOM", "SAT", "SUN", "FRI"} {
+			a = strings.ReplaceAll(a, `"`+code+`"`, `"`+caseDate(code, now)+`"`)
+		}
+		msgs = append(msgs, ai.Message{Role: "user", Content: l.Q}, ai.Message{Role: "assistant", Content: a})
+	}
+	raw, err := c.Structured(ctx, "intent", append(msgs, ai.Message{Role: "user", Content: text}), intentSchema, 120)
 	if err != nil {
 		return Intent{}, err
 	}
@@ -326,7 +334,7 @@ func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, n
 	if rule.conf >= 0.8 || !as.AI.Enabled() {
 		return rule, "rules"
 	}
-	m, err := modelIntent(ctx, as.AI, text, now)
+	m, err := modelIntent(ctx, as.AI, text, now, recall(as.bank(ctx), text, 3))
 	if err != nil {
 		return rule, "rules-fallback"
 	}

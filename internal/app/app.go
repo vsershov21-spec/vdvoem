@@ -1269,6 +1269,12 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 		}
 		jsonUnmarshal(j.Payload, &p)
 		return a.runOptionParse(ctx, p.Option, p.Space, p.Member)
+	case "post":
+		var p postJob
+		if err := jsonUnmarshal(j.Payload, &p); err != nil {
+			return nil
+		}
+		return a.runPost(ctx, p)
 	case "parse":
 		var p parsePayload
 		if err := jsonUnmarshal(j.Payload, &p); err != nil {
