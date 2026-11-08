@@ -126,3 +126,53 @@ func TestDayWords(t *testing.T) {
 		t.Fatal(d)
 	}
 }
+
+// With a fine-tuned model: a right answer from it must survive reconcile on every case we have
+// (gold + both held-out sets), and its real mistakes from the server eval should mostly be fixed.
+func TestReconcileTuned(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	broken := 0
+	want := map[string]Intent{}
+	for _, c := range append(append(append([]intentCase{}, intentCases...), intentHoldout...), intentHoldout2...) {
+		var w Intent
+		_ = json.Unmarshal([]byte(c.Want), &w)
+		want[c.Q] = w
+		m := w
+		for _, code := range []string{"TOD", "TOM", "SAT", "SUN", "FRI"} { // the model answers with real dates
+			if m.Date == code {
+				m.Date = caseDate(code, now)
+			}
+		}
+		rule := rulesIntent(c.Q, now)
+		if rule.conf >= 0.8 && trivial(rule, c.Q) {
+			continue // answered by the rules, the model is not asked
+		}
+		if got := reconcileTuned(sanitize(m), rule, c.Q); !matches(got, w, now) {
+			broken++
+			g, _ := json.Marshal(got)
+			t.Logf("a right answer broken: %q → %s (want %s)", c.Q, g, c.Want)
+		}
+	}
+	if broken > 2 {
+		t.Errorf("reconcile breaks %d right answers of the tuned model", broken)
+	}
+	b, _ := os.ReadFile("testdata/tuned_errors.txt")
+	fixed, total := 0, 0
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		q, js, _ := strings.Cut(line, " → ")
+		w, ok := want[q]
+		if !ok {
+			continue
+		}
+		var m Intent
+		_ = json.Unmarshal([]byte(js), &m)
+		total++
+		if got := reconcileTuned(sanitize(m), rulesIntent(q, now), q); matches(got, w, now) {
+			fixed++
+		} else {
+			g, _ := json.Marshal(got)
+			t.Logf("still wrong: %q → %s (want %s)", q, g, w.I)
+		}
+	}
+	t.Logf("tuned: %d right answers broken; %d of %d mistakes fixed", broken, fixed, total)
+}

@@ -9,26 +9,32 @@ import (
 // the request, and what the rules read reliably (days, prices, categories, moods) fills the gaps.
 // Measured on the eval: the small model defaults to «suggest random», invents days and parts of the day,
 // and calls a question about plans «plan» — each such slip is caught here.
-func reconcile(m, rule Intent, text string) Intent {
+func reconcile(m, rule Intent, text string) Intent { return reconcileWith(m, rule, text, false) }
+
+// reconcileTuned: for a fine-tuned model its choice of the kind of request stands (unless words contradict it);
+// the details still have to be in the words, and the rules fill what it missed.
+func reconcileTuned(m, rule Intent, text string) Intent { return reconcileWith(m, rule, text, true) }
+
+func reconcileWith(m, rule Intent, text string, tuned bool) Intent {
 	t := strings.ToLower(text)
 	backed := map[string]bool{
-		"random":   has(t, "удиви", "рандом", "случайн", "наугад", "сюрприз", "что выпадет", "любое"),
-		"mode":     has(t, "присылай", "предлагай", "не присылай", "перестань присылать", "режим", "раз в неделю"),
-		"plan":     has(t, "давай выберем", "выбрать вместе", "давай запланируем", "запланируй встречу", "начни выбор", "выберем куда"),
+		"random":   has(t, "удиви", "рандом", "случайн", "наугад", "сюрприз", "что выпадет", "любое", "неожидан", "придумай"),
+		"mode":     has(t, "присыла", "предлагай", "перестань", "режим", "раз в неделю", "шли "),
+		"plan":     has(t, "давай выберем", "выбрать вместе", "вместе выберем", "давай запланируем", "запланируй", "начни выбор", "выберем куда", "назначим", "голосован"),
 		"overview": has(t, "план", "встреч", "запланир", "идём на этой", "идем на этой", "впереди", "ближайш"),
 		"past":     has(t, "были", "ходили", "побыва", "прошл", "история", "раньше"),
 		"remember": has(t, "люб", "нрав", "обожа", "терпеть", "ненавиж", "не ем", "не пью", "аллерг", "вегетариан", "веган", "предпочита", "запомни", "учти", "не переношу"),
 		"book":     has(t, "запиш", "календар", "позови", "бронир", "броню", "идём на", "идем на", "пойдём на", "пойдем на", "берём", "берем", "внеси"),
-		"goal":     has(t, "следи", "дай знать", "сообщи", "держи в курсе", "напомни когда", "когда появ", "когда откро", "когда приедет"),
+		"goal":     has(t, "следи", "дай знать", "сообщи", "держи в курсе", "напомни когда", "когда появ", "когда откро", "когда приедет", "когда будут", "когда будет", "маякни", "мониторь", "отследи"),
 		"add":      has(t, "добав", "сохрани", "занеси", "в копилку"),
 		"budget":   has(t, "бюджет", "лимит"),
 		"chores":   has(t, "дела", "убор", "мусор", "посуд", "готовит", "стирк", "по дому"),
 	}
-	if rule.conf >= 0.8 {
+	if rule.conf >= 0.8 && !tuned {
 		return rule // the pipeline never asks the model then; kept here so the function is the whole decision
 	}
 	specific := map[string]bool{"remember": true, "goal": true, "book": true, "suggest_mode": true, "chores": true, "past": true, "overview": true, "add_idea": true, "price": true, "about": true, "budget": true}
-	if (m.I == "find" || m.I == "suggest" || m.I == "chat") && specific[rule.I] && rule.conf >= 0.5 {
+	if !tuned && (m.I == "find" || m.I == "suggest" || m.I == "chat") && specific[rule.I] && rule.conf >= 0.5 {
 		return rule
 	}
 	if (m.I == "find" || m.I == "suggest") && backed["remember"] && !has(t, "?", "куда", "что ", "где", "найди", "покажи", "хоч") && memoryish(t) {
@@ -96,9 +102,11 @@ func reconcile(m, rule Intent, text string) Intent {
 		}
 		reject = !backed["budget"] || m.Rub <= 0
 	case "chat":
-		if rule.I != "chat" && rule.conf >= 0.5 {
+		if rule.I != "chat" && rule.conf >= 0.5 && !(tuned && isGreeting(text)) {
 			reject = true
 		}
+	case "overview":
+		reject = !backed["overview"] && !has(t, "что мы делаем", "что делаем", "куда идём", "куда идем")
 	}
 	if !reject && m.I != "chores" && backed["chores"] && rule.I == "chores" {
 		reject = true
@@ -110,13 +118,13 @@ func reconcile(m, rule Intent, text string) Intent {
 		return rule
 	}
 	if m.I == "suggest" {
-		if m.Mode == "random" && (!backed["random"] || len(rule.Moods) > 0 || len(rule.Cats) > 0) {
+		if m.Mode == "random" && (!backed["random"] || !tuned && (len(rule.Moods) > 0 || len(rule.Cats) > 0)) {
 			m.Mode = "best"
 		}
 		if m.Mode != "random" && backed["random"] && len(rule.Moods) == 0 && len(rule.Cats) == 0 {
 			m.Mode = "random"
 		}
-		if m.Mode != "random" && (len(rule.Moods) > 0 || len(rule.Cats) > 0 || rule.Date != "" || rule.Wknd || rule.Part != "" || rule.Max > 0 || len(m.Moods) > 0) {
+		if m.Mode != "random" && !(tuned && rule.I == "chat") && (len(rule.Moods) > 0 || len(rule.Cats) > 0 || rule.Date != "" || rule.Wknd || rule.Part != "" || rule.Max > 0 || len(m.Moods) > 0) {
 			m.I = "find" // a request with conditions is a search, not one pick
 		}
 	}

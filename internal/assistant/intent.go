@@ -120,7 +120,7 @@ func rulesIntent(text string, now time.Time) Intent {
 	if has(t, "где мы были", "куда мы ходили", "где были", "куда ходили", "прошлые встречи", "история встреч", "история наших", "наши встречи были") {
 		return Intent{I: "past", conf: 0.9}
 	}
-	if has(t, "дела по дому", "дела дома", "домашние дела", "по хозяйству", "уборк", "какие у нас дела", "что по делам", "мусор", "посуд", "кто выносит", "кто моет", "кто убирает", "стирк") {
+	if has(t, "дела по дому", "дела дома", "домашние дела", "по хозяйству", "уборк", "какие у нас дела", "что по делам", "мусор", "посуд", "кто выносит", "кто моет", "кто убирает", "стирк", "готовит", "по хозяйству", "дежурит") {
 		return Intent{I: "chores", conf: 0.9}
 	}
 	if has(t, "давай выберем", "выбрать вместе", "давай запланируем", "запланируй встречу", "начни выбор", "выберем куда") {
@@ -340,16 +340,28 @@ func clipS(s string, n int) string {
 // Understand: rules first; the model only when they are unsure and it answers within the budget.
 func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, now time.Time) (Intent, string) {
 	rule := mergeFollowUp(prev, rulesIntent(text, now), text)
-	if rule.conf >= 0.8 || !as.AI.Enabled() {
+	tuned := as.AI.Enabled() && Tuned(as.AI.M())
+	// a general small model is weaker than confident rules; a fine-tuned one is stronger (eval: 84% vs 56% on
+	// unseen requests), so then the rules only answer greetings and pure «удиви» and fill the details
+	if !as.AI.Enabled() || rule.conf >= 0.8 && (!tuned || trivial(rule, text)) {
 		return rule, "rules"
 	}
 	m, err := modelIntent(ctx, as.IntentModel(), text, now, recall(as.bank(ctx), text, 3))
 	if err != nil {
 		return rule, "rules-fallback"
 	}
-	m = reconcile(m, rule, text)
+	if tuned {
+		m = reconcileTuned(m, rule, text)
+	} else {
+		m = reconcile(m, rule, text)
+	}
 	m = mergeFollowUp(prev, m, text)
 	return m, "model"
+}
+
+// trivial: nothing for a model to add
+func trivial(rule Intent, text string) bool {
+	return rule.I == "chat" && isGreeting(text) || rule.I == "suggest" && rule.Mode == "random" && len(strings.Fields(text)) <= 3
 }
 
 // Warm keeps the local model loaded with its prompt prefix cached (called every few minutes).
