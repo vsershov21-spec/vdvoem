@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRoute, go, navDir, back } from './lib/router'
 import { scheme, onTheme, setBack, statusBar } from './lib/tg'
 import { useLoad, emit, useOn, prefetch } from './lib/data'
@@ -10,13 +10,19 @@ import { PillNav, Island, TABS } from './ui/Nav'
 import { Entry } from './screens/Entry'
 import { Home } from './screens/Home'
 import { Ideas } from './screens/Ideas'
-import { IdeaScreen } from './screens/Idea'
-import { RoundScreen } from './screens/Round'
-import { Assistant } from './screens/Assistant'
-import { CalendarScreen } from './screens/Calendar'
-import { Us } from './screens/Us'
 import { AddSheet } from './screens/AddSheet'
-import { SurpriseSheet } from './screens/Surprise'
+
+// screens off the first paint load as separate chunks, fetched in the background right after start
+const load = {
+  idea: () => import('./screens/Idea'), round: () => import('./screens/Round'), assistant: () => import('./screens/Assistant'),
+  calendar: () => import('./screens/Calendar'), us: () => import('./screens/Us'), surprise: () => import('./screens/Surprise'),
+}
+const IdeaScreen = lazy(() => load.idea().then(m => ({ default: m.IdeaScreen })))
+const RoundScreen = lazy(() => load.round().then(m => ({ default: m.RoundScreen })))
+const Assistant = lazy(() => load.assistant().then(m => ({ default: m.Assistant })))
+const CalendarScreen = lazy(() => load.calendar().then(m => ({ default: m.CalendarScreen })))
+const Us = lazy(() => load.us().then(m => ({ default: m.Us })))
+const SurpriseSheet = lazy(() => load.surprise().then(m => ({ default: m.SurpriseSheet })))
 
 let themePref = ''
 export const setThemePref = (t: string) => { themePref = t; applyTheme() }
@@ -48,7 +54,10 @@ function Main() {
     get_me_theme(); startLive()
     // warm the other tabs, so the first switch to them is instant too
     const m = new Date(), ym = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`
-    const t = setTimeout(() => prefetch(['/ideas', '/ideas?status=archived', '/stats', '/calendar?month=' + ym, '/history', '/settings']), 600)
+    const t = setTimeout(() => {
+      prefetch(['/ideas', '/ideas?status=archived', '/stats', '/calendar?month=' + ym, '/history', '/settings'])
+      Object.values(load).forEach(f => f().catch(() => {}))
+    }, 600)
     return () => clearTimeout(t)
   }, [])
 
@@ -96,11 +105,11 @@ function Main() {
       {/* the island lives outside the screen: it stays put (and keeps its state) while screens change under it */}
       {!hideIsland && <Island home={home.data} actions={actions} />}
       <main key={key} className={'screen' + (hideIsland ? ' screen--sub' : '') + (anim.current.warm ? ' screen--warm' : '')} data-dir={anim.current.dir}>
-        {screen}
+        <Suspense fallback={<div style={{ minHeight: '60vh' }} />}>{screen}</Suspense>
       </main>
       {!hideIsland && <PillNav current={tab ? top : '-'} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />}
       <AddSheet open={adding} onClose={() => setAdding(false)} onAdded={() => { emit('ideas'); emit('home') }} />
-      <SurpriseSheet mode={surprise} onClose={() => setSurprise('')} />
+      {surprise && <Suspense fallback={null}><SurpriseSheet mode={surprise} onClose={() => setSurprise('')} /></Suspense>}
     </div>
   )
 }

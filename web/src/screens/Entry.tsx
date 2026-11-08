@@ -5,6 +5,7 @@ import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-mo
 import { Particles, type Shape } from '../ui/Particles'
 import { Icon } from '../ui/icons'
 import { get, post, humanError, ApiError } from '../lib/api'
+import { prefetch } from '../lib/data'
 import { openLink, haptic, biometric, bioAuth, bioRequest, bioName } from '../lib/tg'
 import './entry.css'
 
@@ -68,6 +69,8 @@ const markSeen = () => { try { localStorage.setItem('vd-intro', new Date().toDat
 
 export function Entry({ onEnter }: { onEnter: () => void }) {
   const [phase, setPhase] = useState<Phase>('dark')
+  const [netErr, setNetErr] = useState(false)
+  const quick = useRef(seenToday()).current
   const [lit, setLit] = useState(false)
   const [shape, setShape] = useState<Shape>('sphere')
   const [dissolve, setDissolve] = useState(false)
@@ -78,9 +81,16 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
 
   useEffect(() => {
     // who is it? (inside Telegram initData; in a browser, a session cookie)
-    get<{ biometric_lock?: boolean }>('/me').then(m => { authed.current = true; lock.current = !!m.biometric_lock })
-      .catch(e => { authed.current = !(e instanceof ApiError && e.status === 401) ? null : false })
-    later(noIntro ? 0 : 650, () => { setLit(true); setPhase('on'); haptic.soft() })
+    // a network blip must not leave the lamp waiting forever: retry, then offer a button
+    let tries = 0
+    const who = () => get<{ biometric_lock?: boolean }>('/me').then(m => { authed.current = true; lock.current = !!m.biometric_lock; prefetch(['/home']) })
+      .catch(e => {
+        if (e instanceof ApiError && e.status === 401) { authed.current = false; return }
+        if (++tries < 4) later(600 * tries, who); else setNetErr(true)
+      })
+    who()
+    // the full show once a day; afterwards the lamp is on almost at once
+    later(noIntro ? 0 : quick ? 220 : 650, () => { setLit(true); setPhase('on'); haptic.soft() })
     return () => timers.current.forEach(clearTimeout)
   }, [])
 
@@ -96,7 +106,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
       }
       intro()
     }
-    later(noIntro ? 0 : 500, decide)
+    later(noIntro ? 0 : quick ? 120 : 500, decide)
   }, [phase])
 
   const intro = () => {
@@ -158,6 +168,9 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
 
       <AnimatePresence>
         {phase === 'dark' && <motion.p className="room__hint" exit={{ opacity: 0, y: -12 }}>Включаю свет…</motion.p>}
+        {netErr && <motion.div key="net" className="glass login" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
+          <h1>Нет связи</h1><p>Не получилось достучаться до сервера. Проверь интернет и попробуй ещё раз.</p>
+          <button className="lbtn lbtn--light" onClick={() => location.reload()}>Попробовать снова</button></motion.div>}
       </AnimatePresence>
 
       {(phase === 'intro' || phase === 'out') && (

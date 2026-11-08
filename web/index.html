@@ -21,7 +21,7 @@
       addEventListener('unhandledrejection', function (e) { __vdlog('reject', e.reason && (e.reason.message || e.reason)) })
       __vdlog('html', navigator.userAgent.slice(-60))
     </script>
-    <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js?56" defer></script>
     <script>
       // self-heal: if the app has not started in 9 s (a stale cached page asking for old files, a flaky network),
       // reload once or twice with a fresh URL; main.tsx cancels this as soon as it runs
