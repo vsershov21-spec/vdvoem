@@ -49,6 +49,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	}
 	a.peopleRoutes(h)
 	a.agentRoutes(mux)
+	a.feedRoutes(mux, h)
 	h("GET /api/me", a.me)
 	h("GET /api/home", a.home)
 	h("GET /api/ideas", a.ideas)
@@ -680,6 +681,11 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	for _, s := range mySlots {
 		keys = append(keys, s.Key())
 	}
+	theirSlots, _ := pick(other, rd.SlotsA, rd.SlotsB).([]domain.Slot)
+	theirKeys := []string{} // time is agreed in the open: each sees what the other proposed
+	for _, s := range theirSlots {
+		theirKeys = append(theirKeys, s.Key())
+	}
 	sentMe, _ := pick(me, rd.SentA, rd.SentB).(bool)
 	sentOther, _ := pick(other, rd.SentA, rd.SentB).(bool)
 	voteMe, _ := pick(me, rd.VoteA, rd.VoteB).(int64)
@@ -694,7 +700,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	}
 	first, last := app.SlotRange(a.App.Now(), c.Loc())
 	out := map[string]any{"id": rd.ID, "today": first.Format("2006-01-02"), "horizon": last.Format("2006-01-02"), "state": string(rd.State), "version": rd.Version, "opened_at": rd.OpenedAt.Unix(), "expires_at": rd.ExpiresAt.Unix(),
-		"days": days, "my_slots": keys, "sent": sentMe, "partner_sent": sentOther, "voted": voteMe != 0, "partner_voted": voteOther != 0,
+		"days": days, "my_slots": keys, "partner_slots": theirKeys, "sent": sentMe, "partner_sent": sentOther, "voted": voteMe != 0, "partner_voted": voteOther != 0,
 		"confirmed": confMe, "partner_confirmed": confOther, "again": againMe, "budget": rd.BudgetKop}
 	if voteMe != 0 {
 		out["my_vote"] = voteMe

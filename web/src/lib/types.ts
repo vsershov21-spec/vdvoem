@@ -19,7 +19,7 @@ export type RoundState = 'time' | 'vote' | 'confirm' | 'planned' | 'done' | 'exp
 
 export type Round = {
   id: number; state: RoundState; version: number; opened_at: number; expires_at: number
-  days: string[]; today?: string; horizon?: string; my_slots: string[]; sent: boolean; partner_sent: boolean
+  days: string[]; today?: string; horizon?: string; my_slots: string[]; partner_slots?: string[]; sent: boolean; partner_sent: boolean
   voted: boolean; partner_voted: boolean; my_vote?: number; partner_vote?: number
   confirmed: boolean; partner_confirmed: boolean; again: string; budget: number
   windows?: { from: number; to: number }[]; triple: Idea[]; chosen?: Idea

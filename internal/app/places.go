@@ -238,6 +238,9 @@ func (a *App) ChooseOption(ctx context.Context, c Couple, ideaID, optID int64) e
 	if r, err := a.S.NextPlanned(ctx, c.Space.ID); err == nil && r.Chosen == i.ID && r.StartsAt.After(a.now()) {
 		ics := a.ICS(ctx, c, r, r.Version+1, false)
 		for _, m := range a.both(c) {
+			if a.Subscribed(ctx, m.ID) {
+				continue
+			}
 			_ = a.TG.SendDocument(ctx, m.ChatID, "vdvoem.ics", ics, "Место обновлено — событие в календаре тоже.")
 		}
 	}
