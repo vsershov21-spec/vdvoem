@@ -164,7 +164,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         ] })}
       </motion.div>
       {(myBusy.size > 0 || pBusy.size > 0) ? <p className="caption" style={{ margin: 0 }}><span className="busy-key" /> занято по твоему календарю{pBusy.size > 0 && <> · <span className="pbusy-key" /> {partner} занят(а)</>}</p>
-        : <p className="caption muted" style={{ margin: 0 }}><button className="link" onClick={() => go('calendar')}>Подключи свой календарь</button> — занятые часы отметятся сами.</p>}
+        : <button className="wkchip" style={{ alignSelf: 'flex-start' }} onClick={() => go('calendar')}><Icon n="cal" s={14} />Подключи свой календарь — занятое отметится само</button>}
       <p className="caption muted" style={{ margin: 0 }}>Утро 9–13 · день 13–18 · вечер 18–23. Можно вести пальцем; нажми на день — отметится целиком, на «Вечер» — все вечера недели. <span style={{ color: '#ff701e' }}>●</span> — предлагаю эти дни.</p>
       <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Отметь хотя бы одно' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
       <Sheet open={picker} onClose={() => setPicker(false)}>
