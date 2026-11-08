@@ -141,6 +141,10 @@ func main() {
 	hub := live.New()
 	a := &app.App{Live: hub, S: st, TG: client, AI: aiClient, Fetch: parse.Client(false), Now: time.Now, PublicURL: public, BotName: botName, Log: log}
 	helper := &assistant.Assistant{App: a, AI: aiClient}
+	if m := st.Setting(ctx, "intent_model"); m != "" && aiClient.Enabled() { // the fine-tuned model survives restarts
+		helper.SetIntentModel(m)
+		log.Info("intent model", "model", m)
+	}
 	if n := a.FixShoutingTitles(ctx); n > 0 {
 		log.Info("tidied shouting titles", "n", n)
 	}
