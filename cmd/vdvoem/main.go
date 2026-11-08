@@ -11,6 +11,8 @@
 //	TG_API_BASE     https://api.telegram.org (emulator in tests)
 //	AI_URL, AI_KEY, AI_MODEL   OpenAI-compatible endpoint (a local Ollama works); empty = rules only
 //	AI_TIMEOUT      seconds for one model step (default 25, local 90)
+//	EMBED_MODEL     embedding model on the same endpoint for search by meaning (bge-m3); empty = words only
+//	STT_URL         local whisper.cpp server for voice (deploy/stt.sh); empty = voice off
 //	TG_MODE         poll (default: the server fetches updates, no inbound connections) | webhook
 //	SETUP=1         register commands, menu button, description (and the webhook in webhook mode) at start
 //	DEV_TOKEN       e2e only: accept X-Dev-User when X-Dev-Token matches (never in production)
@@ -40,6 +42,7 @@ import (
 	"vdvoem/internal/live"
 	"vdvoem/internal/parse"
 	"vdvoem/internal/store"
+	"vdvoem/internal/stt"
 	"vdvoem/internal/tg"
 )
 
@@ -140,7 +143,7 @@ func main() {
 
 	hub := live.New()
 	a := &app.App{Live: hub, S: st, TG: client, AI: aiClient, Fetch: parse.Client(false), Now: time.Now, PublicURL: public, BotName: botName, Log: log}
-	helper := &assistant.Assistant{App: a, AI: aiClient}
+	helper := &assistant.Assistant{App: a, AI: aiClient, EmbedModel: env("EMBED_MODEL", "")}
 	if m := st.Setting(ctx, "intent_model"); m != "" && aiClient.Enabled() { // the fine-tuned model survives restarts
 		helper.SetIntentModel(m)
 		log.Info("intent model", "model", m)
@@ -148,8 +151,12 @@ func main() {
 	if n := a.FixShoutingTitles(ctx); n > 0 {
 		log.Info("tidied shouting titles", "n", n)
 	}
-	b := &bot.Bot{App: a, Helper: helper, TG: client, Secret: secret, Log: log}
-	ap := &api.API{App: a, Helper: helper, BotToken: token, WebDir: env("WEB_DIR", "./web/dist"), Log: log}
+	voice := &stt.Client{URL: env("STT_URL", "")}
+	if voice.Enabled() {
+		log.Info("voice on", "stt", voice.URL)
+	}
+	b := &bot.Bot{App: a, Helper: helper, TG: client, STT: voice, Secret: secret, Log: log}
+	ap := &api.API{App: a, Helper: helper, STT: voice, BotToken: token, WebDir: env("WEB_DIR", "./web/dist"), Log: log}
 	if t := env("DEV_TOKEN", ""); t != "" {
 		if len(t) < 24 {
 			log.Error("DEV_TOKEN must be at least 24 characters")

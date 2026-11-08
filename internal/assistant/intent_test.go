@@ -209,3 +209,57 @@ func TestRefersTo(t *testing.T) {
 		t.Error("nothing was shown")
 	}
 }
+
+// every one-tap follow-up must be understood without the model (instant, never misread)
+func TestNextUnderstood(t *testing.T) {
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	titles := []string{"Чайка", "Джаз в саду"}
+	seen := map[string]bool{}
+	for _, in := range []Intent{{I: "find"}, {I: "find", Wknd: true, Max: 1000}, {I: "suggest"}, {I: "about"}, {I: "price"}, {I: "overview"}, {I: "chat"}} {
+		for _, q := range nextFor(in, []Card{{Type: "idea", Title: titles[0]}, {Type: "idea", Title: titles[1]}}) {
+			if seen[q] {
+				continue
+			}
+			seen[q] = true
+			if r, ok := refersTo(q, titles); ok {
+				if r.Q == "" {
+					t.Errorf("%q: refers to nothing", q)
+				}
+				continue
+			}
+			r := mergeFollowUp(Intent{I: "find"}, rulesIntent(q, now), q)
+			if r.conf < 0.8 || r.I == "chat" {
+				t.Errorf("%q: rules give %s %.2f", q, r.I, r.conf)
+			}
+		}
+	}
+}
+
+func TestDescribe(t *testing.T) {
+	for in, want := range map[string]string{
+		`{"i":"find","date":"2026-11-10","part":"evening","max":3000}`: "Подобрать, куда сходить во вторник вечером до 3000 ₽",
+		`{"i":"price","q":"Чайка"}`:                                    "Узнать цену «Чайка»",
+		`{"i":"price"}`:                                                "",
+	} {
+		var x Intent
+		_ = json.Unmarshal([]byte(in), &x)
+		if got := describe(x); got != want {
+			t.Errorf("%s → %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestAltFor(t *testing.T) {
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	q := "хотим в субботу вечером что-то спокойное"
+	rule := rulesIntent(q, now)
+	if a := altFor(Intent{I: "chat"}, rule, q); a.I == "" {
+		t.Errorf("chat for a request: no alternative offered (rule %s %.2f)", rule.I, rule.conf)
+	}
+	if a := altFor(Intent{I: "chat"}, rulesIntent("привет", now), "привет"); a.I != "" {
+		t.Errorf("greeting got an alternative %s", a.I)
+	}
+	if a := altFor(rule, rule, q); a.I != "" {
+		t.Errorf("same reading offered again")
+	}
+}

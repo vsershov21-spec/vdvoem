@@ -6,7 +6,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
@@ -38,6 +40,93 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /agent/channel", local(a.agentChannel))
 	mux.HandleFunc("GET /agent/model", local(a.agentModel))
 	mux.HandleFunc("POST /agent/model", local(a.agentModel))
+	mux.HandleFunc("GET /agent/learn", local(a.agentLearn))
+	mux.HandleFunc("POST /agent/learn", local(a.agentLabel))
+	mux.HandleFunc("GET /agent/train", local(a.agentTrain))
+	mux.HandleFunc("GET /agent/semantic", local(a.agentSemantic))
+}
+
+// agentSemantic: what a request is closest to by meaning (?space=1&q=…) — to tune the threshold
+func (a *API) agentSemantic(w http.ResponseWriter, r *http.Request) {
+	space, _ := strconv.ParseInt(r.URL.Query().Get("space"), 10, 64)
+	sim := a.Helper.Semantic(r.Context(), space, r.URL.Query().Get("q"))
+	ideas, _ := a.App.S.Ideas(r.Context(), space, "draft", "active")
+	type row struct {
+		Title string  `json:"title"`
+		Sim   float64 `json:"sim"`
+	}
+	out := []row{}
+	for _, i := range ideas {
+		if v, ok := sim[i.ID]; ok {
+			out = append(out, row{i.Title, float64(int(v*1000)) / 1000})
+		}
+	}
+	sort.Slice(out, func(x, y int) bool { return out[x].Sim > out[y].Sim })
+	if len(out) > 15 {
+		out = out[:15]
+	}
+	writeJSON(w, 200, map[string]any{"indexed": len(sim), "top": out})
+}
+
+// agentLearn: how live requests ended over the last days, and the misses to label (GET ?days=7)
+func (a *API) agentLearn(w http.ResponseWriter, r *http.Request) {
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	if days <= 0 {
+		days = 7
+	}
+	since := a.App.Now().AddDate(0, 0, -days)
+	out, err := a.App.S.Outcomes(r.Context(), since)
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+	ms, _ := a.App.S.Misses(r.Context(), since)
+	type miss struct {
+		ID      int64           `json:"id"`
+		Text    string          `json:"text"`
+		Was     json.RawMessage `json:"was"`
+		Outcome string          `json:"outcome"`
+		Src     string          `json:"src"`
+	}
+	list := []miss{}
+	for _, m := range ms {
+		was := json.RawMessage(strings.TrimPrefix(m.Calls, "intent:"))
+		if !json.Valid(was) {
+			was = json.RawMessage("null")
+		}
+		list = append(list, miss{m.ID, m.Input, was, m.Outcome, m.Src})
+	}
+	writeJSON(w, 200, map[string]any{"days": days, "outcomes": out, "misses": list,
+		"how": "POST /agent/learn {\"labels\":[{\"id\":<miss id>,\"intent\":{…the right reading, same format as was…}}]} — each becomes a training example; GET /agent/train — the dataset (JSONL) for the next fine-tune"})
+}
+
+// agentLabel: the right readings of missed requests
+func (a *API) agentLabel(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Labels []struct {
+			ID     int64           `json:"id"`
+			Intent json.RawMessage `json:"intent"`
+		} `json:"labels"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "bad json"})
+		return
+	}
+	n, bad := 0, []int64{}
+	for _, l := range in.Labels {
+		if !assistant.ValidIntent(l.Intent) || a.App.S.LabelExample(r.Context(), l.ID, "intent:"+string(l.Intent), a.App.Now()) != nil {
+			bad = append(bad, l.ID)
+			continue
+		}
+		n++
+	}
+	writeJSON(w, 200, map[string]any{"labeled": n, "rejected": bad})
+}
+
+// agentTrain: gold cases + every accepted live example, in the fine-tune format (JSONL)
+func (a *API) agentTrain(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+	_, _ = assistant.ExportIntents(r.Context(), a.App.S, w)
 }
 
 // agentModel: which model reads the assistant's requests; POST {"model":"vdvoem-intent"} switches (""/"default" — back)

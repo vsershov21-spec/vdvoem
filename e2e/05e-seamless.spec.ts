@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { people, pair, phone, open, shot, api, waitMsg, tab, forward, BASE } from './lib'
+import { people, pair, phone, open, shot, api, waitMsg, tab, forward, say, lastId, BASE } from './lib'
 
 const day = (n: number, hm = '19:00') => { const d = new Date(Date.now() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}` }
 
@@ -69,4 +69,34 @@ test('E32 пост из канала: пересылаешь боту — соб
   const r = await (await fetch(BASE + '/agent/channel', { method: 'POST', body: JSON.stringify({ space, from: 'Билеты дёшево', posts }) })).json()
   expect(r).toMatchObject({ added: 2, posts: 3 })
   await waitMsg(n, /Из канала «Билеты дёшево»/)
+})
+
+test('E33 чат: подсказки при печати, следующий шаг в одно касание, бот отвечает на просьбу текстом', async ({ browser }) => {
+  test.setTimeout(90_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const space = (await api(v, 'GET', '/me')).space.id
+  const picks = [{ title: 'Щелкунчик в Кремлёвском дворце', category: 'culture', starts: day(4, '19:00'), price_rub: 6000, why: 'классика', score: 9, url: 'https://afisha.example/e33/' + space + '/nut', image: '' }]
+  await (await fetch(BASE + '/agent/picks', { method: 'POST', body: JSON.stringify({ space, picks }) })).json()
+  const p = await open(await phone(browser), v)
+  await tab(p, 'ai')
+  // completion: a phrase, then a title after «сколько стоит»
+  const field = p.getByPlaceholder(/Спроси/)
+  await field.fill('что на вы')
+  await expect(p.getByTestId('type-hints')).toContainText('Что есть на выходных?')
+  await field.fill('сколько стоит щелк')
+  await expect(p.getByTestId('type-hints')).toContainText('Сколько стоит «Щелкунчик в Кремлёвском дворце»?')
+  await shot(p, 'E33-hints')
+  await p.getByTestId('type-hints').getByRole('button').first().click()
+  await expect(p.locator('.msg--ai').last()).toContainText('₽', { timeout: 10000 })
+  // the answer brings its own next steps, and each is understood at once
+  await expect(p.getByTestId('follow')).toBeVisible()
+  await p.getByTestId('follow').getByRole('button', { name: 'Расскажи про это' }).click()
+  await expect(p.locator('.msg--ai').last()).toContainText('Щелкунчик', { timeout: 10000 })
+  await shot(p, 'E33-next')
+  // in the bot a request is answered, a bare name is still an idea
+  const before = await lastId(v)
+  await say(v, 'хотим что-нибудь на выходных')
+  await waitMsg(v, /Лучше всего|Щелкунчик|ничего/i, 15000, before)
+  expect((await api(v, 'GET', '/ideas')).ideas.some((i: any) => /хотим что-нибудь/i.test(i.title))).toBe(false)
 })

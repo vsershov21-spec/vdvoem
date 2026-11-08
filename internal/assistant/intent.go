@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -345,20 +346,27 @@ func clipS(s string, n int) string {
 
 // Understand: rules first; the model only when they are unsure and it answers within the budget.
 func (as *Assistant) Understand(ctx context.Context, text string, pt Turn, now time.Time) (Intent, string) {
+	in, src, _ := as.understand(ctx, text, pt, now)
+	return in, src
+}
+
+// understand also returns the other plausible reading (alt.I == "" — none): when the model and fairly sure rules
+// disagree, the answer follows one and offers the other as a button, so a wrong guess costs one tap, not a retype.
+func (as *Assistant) understand(ctx context.Context, text string, pt Turn, now time.Time) (Intent, string, Intent) {
 	prev := pt.In
 	if in, ok := refersTo(text, pt.Titles); ok { // «расскажи про второе», «сколько стоит первое», «давай туда»
-		return in, "rules"
+		return in, "rules", Intent{}
 	}
 	rule := mergeFollowUp(prev, rulesIntent(text, now), text)
 	tuned := as.AI.Enabled() && Tuned(as.AI.M())
 	// a general small model is weaker than confident rules; a fine-tuned one is stronger (eval: 84% vs 56% on
 	// unseen requests), so then the rules only answer greetings and pure «удиви» and fill the details
 	if !as.AI.Enabled() || rule.conf >= 0.8 && (!tuned || trivial(rule, text)) {
-		return rule, "rules"
+		return rule, "rules", Intent{}
 	}
 	m, err := modelIntent(ctx, as.IntentModel(), text, now, recall(as.bank(ctx), text, 3), pt)
 	if err != nil {
-		return rule, "rules-fallback"
+		return rule, "rules-fallback", altFor(rule, rule, text)
 	}
 	if tuned {
 		m = reconcileTuned(m, rule, text)
@@ -366,7 +374,115 @@ func (as *Assistant) Understand(ctx context.Context, text string, pt Turn, now t
 		m = reconcile(m, rule, text)
 	}
 	m = mergeFollowUp(prev, m, text)
-	return m, "model"
+	return m, "model", altFor(m, rule, text)
+}
+
+// altFor: the reading worth offering next to the chosen one
+func altFor(chosen, rule Intent, text string) Intent {
+	if chosen.I == "chat" && isGreeting(text) {
+		return Intent{}
+	}
+	if rule.I != chosen.I && rule.I != "chat" && rule.conf >= 0.5 && describe(rule) != "" {
+		return rule
+	}
+	// a request answered with small talk, or small talk the rules could not place: offer a search with what
+	// the request did say (day, part, budget, mood)
+	if chosen.I == "chat" && rule.conf < 0.5 && len(strings.Fields(text)) >= 3 {
+		f := rule
+		f.I, f.conf = "find", 0
+		if f.Date != "" || f.Wknd || f.Part != "" || f.Max > 0 || len(f.Moods) > 0 || len(f.Cats) > 0 {
+			return f
+		}
+	}
+	return Intent{}
+}
+
+// describe: a button label for a reading («Найти, куда сходить в субботу вечером»); "" — not offerable
+func describe(in Intent) string {
+	q := func(s string) string {
+		if s == "" {
+			return ""
+		}
+		return " «" + s + "»"
+	}
+	switch in.I {
+	case "find", "suggest":
+		var sb strings.Builder
+		if in.I == "suggest" && in.Mode == "random" {
+			return "Удивить случайной идеей"
+		}
+		sb.WriteString("Подобрать, куда сходить")
+		switch {
+		case in.Date != "":
+			if t, err := time.Parse("2006-01-02", in.Date); err == nil {
+				if t.Weekday() == time.Tuesday {
+					sb.WriteString(" во вторник")
+				} else {
+					sb.WriteString(" в " + ruWeekdayAcc(t))
+				}
+			}
+		case in.Wknd:
+			sb.WriteString(" на выходных")
+		case in.Hz == "week":
+			sb.WriteString(" на неделе")
+		}
+		switch in.Part {
+		case "morning":
+			sb.WriteString(" утром")
+		case "day":
+			sb.WriteString(" днём")
+		case "evening":
+			sb.WriteString(" вечером")
+		}
+		if in.Max > 0 {
+			sb.WriteString(fmt.Sprintf(" до %d ₽", in.Max))
+		}
+		return sb.String()
+	case "price":
+		if in.Q == "" {
+			return ""
+		}
+		return "Узнать цену" + q(in.Q)
+	case "book":
+		if in.Q == "" {
+			return ""
+		}
+		return "Записать нас на" + q(in.Q)
+	case "about":
+		if in.Q == "" {
+			return ""
+		}
+		return "Рассказать про" + q(in.Q)
+	case "goal":
+		return "Следить за" + q(firstNonEmpty(in.Q, in.Text))
+	case "remember":
+		return "Запомнить это"
+	case "add_idea":
+		return "Добавить в копилку"
+	case "overview":
+		return "Показать, что запланировано"
+	case "past":
+		return "Показать, где мы были"
+	case "chores":
+		return "Показать дела по дому"
+	case "plan":
+		return "Позвать вместе выбрать время"
+	case "budget":
+		if in.Rub <= 0 {
+			return ""
+		}
+		return fmt.Sprintf("Поставить бюджет %d ₽", in.Rub)
+	}
+	return ""
+}
+
+func firstNonEmpty(a ...string) string {
+	for _, s := range a {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 var (
@@ -422,6 +538,11 @@ func trivial(rule Intent, text string) bool {
 
 // Warm keeps the local model loaded with its prompt prefix cached (called every few minutes).
 func (as *Assistant) Warm(ctx context.Context) {
+	if as.EmbedModel != "" && as.AI.Enabled() { // the embedding model stays loaded too
+		ectx, ecancel := context.WithTimeout(ctx, 30*time.Second)
+		_, _ = as.AI.Embed(ectx, as.EmbedModel, []string{"привет"})
+		ecancel()
+	}
 	c := as.IntentModel()
 	if !c.IsLocal() {
 		return
@@ -434,3 +555,32 @@ func (as *Assistant) Warm(ctx context.Context) {
 	}
 	_, _ = c.Structured(ctx, "warm", append(msgs, ai.Message{Role: "user", Content: "привет"}), intentSchema, 8)
 }
+
+// ValidIntent: a label from outside (the labeling agent) is a known intent in the trained format
+func ValidIntent(b []byte) bool {
+	var in Intent
+	if json.Unmarshal(b, &in) != nil {
+		return false
+	}
+	for _, n := range intentNames {
+		if n == in.I {
+			return true
+		}
+	}
+	return false
+}
+
+// LooksLikeRequest: free text in the bot that asks for something («хотим почилить в субботу») goes to the
+// assistant; a bare name («Чайка во МХТ») still lands in the bank as an idea.
+func LooksLikeRequest(text string, now time.Time) bool {
+	in := rulesIntent(text, now)
+	switch {
+	case in.I == "chat" || in.I == "add_idea" || in.conf < 0.5:
+		return false
+	case in.I != "find" && in.I != "suggest":
+		return in.conf >= 0.8 // «сколько стоит Чайка», «запиши нас на джаз», «следи за билетами»
+	}
+	return wantRe.MatchString(strings.ToLower(text)) // a category or a place alone is an idea for the bank
+}
+
+var wantRe = regexp.MustCompile(`(?:^|\s)(?:хоч|хотим|хотели|давай|пойд|сход|сгоня|можно|подбер|найд|найти|ищ|есть\s+ли|что-нибудь|что-то|чего-нибудь|куда|почил|отдохн|развле|погуля|скучно|чем\s+заня)`)

@@ -402,8 +402,12 @@ func ExportIntents(ctx context.Context, st *store.Store, w io.Writer) (int, erro
 	now := time.Now().In(time.FixedZone("MSK", 3*3600))
 	sys := intentSystem(now)
 	n := 0
-	write := func(q, a string) {
-		b, _ := json.Marshal(map[string]any{"messages": []map[string]string{{"role": "system", "content": sys}, {"role": "user", "content": q}, {"role": "assistant", "content": a}}})
+	write := func(q, a string, at ...time.Time) {
+		s := sys
+		if len(at) > 0 { // a live request: its dates were relative to the day it was asked
+			s = intentSystem(at[0].In(now.Location()))
+		}
+		b, _ := json.Marshal(map[string]any{"messages": []map[string]string{{"role": "system", "content": s}, {"role": "user", "content": q}, {"role": "assistant", "content": a}}})
 		fmt.Fprintln(w, string(b))
 		n++
 	}
@@ -421,7 +425,7 @@ func ExportIntents(ctx context.Context, st *store.Store, w io.Writer) (int, erro
 		}
 		for _, e := range ex {
 			if strings.HasPrefix(e.Calls, "intent:") {
-				write(e.Input, strings.TrimPrefix(e.Calls, "intent:"))
+				write(e.Input, strings.TrimPrefix(e.Calls, "intent:"), e.At)
 			}
 		}
 	}

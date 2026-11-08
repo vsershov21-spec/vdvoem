@@ -3,6 +3,8 @@
 #   bash ai-local.sh            поставить Ollama + qwen2.5:3b, подключить к «Вдвоём», прогнать проверку качества
 #   bash ai-local.sh compare    ещё и сравнить с llama3.2:3b и qwen2.5:1.5b — отчёт в /root/llm-eval.md
 #   bash ai-local.sh off        отключить модель (помощник вернётся к правилам)
+#   bash ai-local.sh embed      поиск по смыслу: bge-m3 (~1,2 ГБ) рядом с основной моделью
+#   bash ai-local.sh embed off  выключить поиск по смыслу
 # Память занимается только пока модель отвечает (OLLAMA_KEEP_ALIVE=5m), на диске ~2 ГБ на модель.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "запусти под root"; exit 1; }
@@ -18,6 +20,27 @@ if [ "${1:-}" = off ]; then
   sed -i '/^AI_URL=/d;/^AI_MODEL=/d;/^AI_KEY=/d;/^AI_TIMEOUT=/d' "$ENVF"
   systemctl restart vdvoem && echo "Модель отключена, помощник работает на правилах."
   exit 0
+fi
+
+if [ "${1:-}" = embed ]; then
+  EMB=${EMB:-bge-m3}
+  if [ "${2:-}" = off ]; then
+    sed -i '/^EMBED_MODEL=/d' "$ENVF"; rm -f /etc/systemd/system/ollama.service.d/zz-embed.conf
+    systemctl daemon-reload; systemctl restart ollama vdvoem; echo "Поиск по смыслу выключен."; exit 0
+  fi
+  # two models at once (the main one + the small embedding one), so neither unloads the other
+  cat > /etc/systemd/system/ollama.service.d/zz-embed.conf <<'U'
+[Service]
+Environment=OLLAMA_MAX_LOADED_MODELS=2
+MemoryMax=5G
+U
+  systemctl daemon-reload && systemctl restart ollama
+  for i in $(seq 1 30); do curl -sf http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
+  ollama pull "$EMB"
+  curl -sf http://127.0.0.1:11434/v1/embeddings -d "{\"model\":\"$EMB\",\"input\":[\"проверка\"]}" >/dev/null || { echo "модель $EMB не отвечает"; exit 1; }
+  setenv EMBED_MODEL "$EMB"
+  systemctl restart vdvoem
+  echo "Готово: поиск по смыслу включён ($EMB)."; free -m | head -2; exit 0
 fi
 
 if ! command -v ollama >/dev/null; then

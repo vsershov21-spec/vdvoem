@@ -69,11 +69,20 @@ type Message struct {
 	Text      string         `json:"text,omitempty"`
 	Caption   string         `json:"caption,omitempty"`
 	Photo     []PhotoSize    `json:"photo,omitempty"`
+	Voice     *Voice         `json:"voice,omitempty"`
+	Audio     *Voice         `json:"audio,omitempty"` // a voice note sent as a file
 	ReplyTo   *Message       `json:"reply_to_message,omitempty"`
 	Forward   *ForwardOrigin `json:"forward_origin,omitempty"`
 	FwdChat   *Chat          `json:"forward_from_chat,omitempty"` // older clients
 	Entities  []Entity       `json:"entities,omitempty"`
 	CapEnts   []Entity       `json:"caption_entities,omitempty"`
+}
+
+type Voice struct {
+	FileID   string `json:"file_id"`
+	Duration int    `json:"duration"`
+	FileSize int64  `json:"file_size,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
 }
 
 // Entity: we only need links hidden under words («билеты» → https://…)
@@ -194,6 +203,39 @@ func (c *Client) SendDocument(ctx context.Context, chatID int64, filename string
 	req, _ := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/bot%s/sendDocument", c.Base, c.Token), &buf)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	return c.do(req, "sendDocument", nil)
+}
+
+// File downloads a file the user sent (a voice message), at most max bytes.
+func (c *Client) File(ctx context.Context, fileID string, max int64) ([]byte, error) {
+	var f struct {
+		Path string `json:"file_path"`
+		Size int64  `json:"file_size"`
+	}
+	if err := c.call(ctx, "getFile", map[string]string{"file_id": fileID}, &f); err != nil {
+		return nil, err
+	}
+	if f.Path == "" || f.Size > max {
+		return nil, fmt.Errorf("tg file: %q %d bytes", f.Path, f.Size)
+	}
+	req, _ := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/file/bot%s/%s", c.Base, c.Token, f.Path), nil)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("tg file: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("tg file: %d", res.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, max+1))
+	if err == nil && int64(len(b)) > max {
+		err = fmt.Errorf("tg file: too big")
+	}
+	return b, err
+}
+
+// Typing shows «печатает…» while a slow answer is being made
+func (c *Client) Typing(ctx context.Context, chatID int64) {
+	_ = c.call(ctx, "sendChatAction", map[string]any{"chat_id": chatID, "action": "typing"}, nil)
 }
 
 func (c *Client) SetWebhook(ctx context.Context, url, secret string) error {

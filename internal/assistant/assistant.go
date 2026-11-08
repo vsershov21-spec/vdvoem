@@ -57,12 +57,15 @@ type Reply struct {
 	Intent  *Intent  `json:"intent,omitempty"` // how the request was understood — for follow-ups («а подешевле?»)
 	Src     string   `json:"src,omitempty"`    // rules | model | rules-fallback
 	Ms      int64    `json:"ms,omitempty"`
+	Next    []string `json:"next,omitempty"` // what to ask next in one tap («А подешевле?», «Расскажи про первое»)
 }
 
 type Assistant struct {
-	App   *app.App
-	AI    *ai.Client
-	cache bankCache
+	App        *app.App
+	AI         *ai.Client
+	EmbedModel string // search by meaning (e.g. bge-m3 in Ollama); "" — words only
+	cache      bankCache
+	sem        semIndex
 }
 
 // Tuned: model names starting with «vdvoem-» were fine-tuned on the intent dataset: they get the short prompt
@@ -107,19 +110,28 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	start := time.Now()
 	run := &run{as: as, c: c}
 	pt := lastTurn(prev, as.now())
-	in, src := as.Understand(ctx, text, pt, as.now().In(c.Loc()))
+	in, src, alt := as.understand(ctx, text, pt, as.now().In(c.Loc()))
 	rep := run.do(ctx, in, text)
 	rep.Intent, rep.Src, rep.Ms = &in, src, time.Since(start).Milliseconds()
-	if in.I != "chat" { // a labelled example for the model: accepted once a button from it is pressed
+	as.noteRephrase(ctx, c, in)
+	var exID int64
+	if in.I != "chat" || alt.I != "" { // a labelled example for the model: accepted once a button from it is pressed
 		b, _ := json.Marshal(in)
 		if id, err := as.App.S.AddExample(ctx, c.Me.ID, text, "intent:"+string(b), rep.Text, as.now()); err == nil {
+			exID = id
+			_ = as.App.S.SetOutcome(ctx, id, "", src)
 			for _, aid := range run.pending {
 				_ = as.App.S.TagAction(ctx, aid, id)
 			}
 		}
 	}
-	as.App.Log.Info("assistant", "intent", in.I, "src", src, "ms", rep.Ms)
+	if alt.I != "" { // the other reading, one tap away
+		ab, _ := json.Marshal(alt)
+		run.proposeAlt(ctx, map[string]any{"intent": json.RawMessage(ab), "text": text, "ex": exID}, "Или: "+lowerFirst(describe(alt)))
+	}
+	as.App.Log.Info("assistant", "intent", in.I, "src", src, "alt", alt.I, "ms", rep.Ms)
 	rep.Cards, rep.Actions = run.cards, run.buttons
+	rep.Next = nextFor(in, rep.Cards)
 	if rep.Text == "" {
 		rep.Text = "Готово."
 	}
@@ -127,8 +139,77 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	return rep, nil
 }
 
+// noteRephrase: the same person asked again within a minute and a half without pressing anything, and the new
+// request reads differently — the previous one was most likely misunderstood.
+func (as *Assistant) noteRephrase(ctx context.Context, c app.Couple, in Intent) {
+	e, err := as.App.S.LastExample(ctx, c.Me.ID)
+	if err != nil || e.Accepted || e.Outcome != "" || as.now().Sub(e.At) > 90*time.Second {
+		return
+	}
+	var was Intent
+	if json.Unmarshal([]byte(strings.TrimPrefix(e.Calls, "intent:")), &was) != nil || was.I == in.I || in.refined {
+		return
+	}
+	_ = as.App.S.SetOutcome(ctx, e.ID, "rephrased", "")
+}
+
+func lowerFirst(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
+	}
+	return strings.ToLower(string(r[:1])) + string(r[1:])
+}
+
+// nextFor: follow-ups that make sense after this answer — each one is understood without the model
+func nextFor(in Intent, cards []Card) []string {
+	ideas := 0
+	for _, c := range cards {
+		if c.Type == "idea" {
+			ideas++
+		}
+	}
+	var out []string
+	switch in.I {
+	case "find", "suggest":
+		if ideas > 0 {
+			out = append(out, "Расскажи про первое")
+		}
+		if ideas > 1 {
+			out = append(out, "Сколько стоит второе?")
+		}
+		if in.Max == 0 || in.Max > 1500 {
+			out = append(out, "А подешевле?")
+		}
+		if in.Date == "" && !in.Wknd {
+			out = append(out, "А на выходных?")
+		} else {
+			out = append(out, "А на неделе?")
+		}
+		out = append(out, "А спокойнее?")
+	case "about":
+		if ideas > 0 {
+			out = append(out, "Сколько это стоит?", "Давай туда")
+		}
+		out = append(out, "Что ещё есть на неделе?")
+	case "price":
+		if ideas > 0 {
+			out = append(out, "Расскажи про это", "Давай туда")
+		}
+		out = append(out, "Что-нибудь подешевле на неделе")
+	case "overview", "past", "chores", "plan", "book":
+		out = append(out, "Что интересного на неделе?", "Удиви нас")
+	case "chat":
+		out = append(out, "Что интересного на неделе?", "Куда сходить в субботу вечером?", "Удиви нас")
+	}
+	if len(out) > 4 {
+		out = out[:4]
+	}
+	return out
+}
+
 func (as *Assistant) hello(c app.Couple) Reply {
-	return Reply{Text: "Я помогаю вам двоим выбирать, куда сходить, и договариваться. Можно просто сказать, например:\n• Что интересного на неделе?\n• Хотим почилить в субботу вечером\n• Расскажи про Чайку — нам подойдёт?\n• Сколько стоит Щелкунчик?\n• Запиши нас на джаз в пятницу\n• Следи за билетами на Земфиру"}
+	return Reply{Text: "Я помогаю вам двоим выбирать, куда сходить, и договариваться. Можно просто сказать, например:\n• Что интересного на неделе?\n• Хотим почилить в субботу вечером\n• Расскажи про Чайку — нам подойдёт?\n• Сколько стоит Щелкунчик?\n• Запиши нас на джаз в пятницу\n• Следи за билетами на Земфиру\nМожно и голосом — в боте просто пришли голосовое."}
 }
 
 // Turn: the previous exchange — what was asked, how it was understood, what was shown — for follow-ups
@@ -478,6 +559,15 @@ func (r *run) propose(ctx context.Context, kind string, payload map[string]any, 
 	r.buttons = append(r.buttons, Button{ID: act.ID, Label: label, Kind: kind})
 	r.pending = append(r.pending, act.ID)
 	return map[string]string{"status": "button shown to the user; nothing changed yet"}
+}
+
+// proposeAlt: the «или …» button with the other reading; always fits (a fifth button at most)
+func (r *run) proposeAlt(ctx context.Context, payload map[string]any, label string) {
+	b, _ := json.Marshal(payload)
+	act := store.Action{ID: token(), SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Kind: "clarify", Payload: b}
+	if r.as.App.S.SaveAction(ctx, act, r.as.now()) == nil {
+		r.buttons = append(r.buttons, Button{ID: act.ID, Label: label, Kind: "clarify"})
+	}
 }
 
 func (r *run) addCard(cd Card) {
@@ -885,6 +975,38 @@ func dayFrom(t string, now time.Time) string {
 // ---------- pressing a button ----------
 
 // Act runs a proposed action once, as the person who pressed it.
+// clarify: the person picked the other reading. The first guess becomes a miss, the chosen one a training
+// example for the same words, and the answer is a full reply (cards, buttons) — not a toast.
+func (as *Assistant) clarify(ctx context.Context, c app.Couple, payload []byte) (Reply, error) {
+	var p struct {
+		Intent Intent `json:"intent"`
+		Text   string `json:"text"`
+		Ex     int64  `json:"ex"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil || p.Intent.I == "" {
+		return Reply{Text: "Эта кнопка устарела — спроси ещё раз."}, nil
+	}
+	if p.Ex != 0 {
+		_ = as.App.S.SetOutcome(ctx, p.Ex, "clarified", "")
+	}
+	start := time.Now()
+	run := &run{as: as, c: c}
+	rep := run.do(ctx, p.Intent, p.Text)
+	b, _ := json.Marshal(p.Intent)
+	if id, err := as.App.S.AddExample(ctx, c.Me.ID, p.Text, "intent:"+string(b), rep.Text, as.now()); err == nil {
+		_ = as.App.S.AcceptExample(ctx, id)
+		_ = as.App.S.SetOutcome(ctx, id, "chosen", "user")
+	}
+	in := p.Intent
+	rep.Intent, rep.Src, rep.Ms = &in, "user", time.Since(start).Milliseconds()
+	rep.Cards, rep.Actions, rep.Next = run.cards, run.buttons, nextFor(in, run.cards)
+	if rep.Text == "" {
+		rep.Text = "Готово."
+	}
+	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
+	return rep, nil
+}
+
 func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, error) {
 	a, err := as.App.S.TakeAction(ctx, id, c.Me.ID, as.now())
 	if err != nil {
@@ -898,6 +1020,9 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 		Mode   string `json:"mode"`
 	}
 	_ = json.Unmarshal(a.Payload, &p)
+	if a.Kind == "clarify" {
+		return as.clarify(ctx, c, a.Payload)
+	}
 	if a.Example != 0 { // the model's proposal was good enough to press: a training example
 		_ = as.App.S.AcceptExample(ctx, a.Example)
 	}
@@ -978,3 +1103,35 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 }
 
 func randSrc(now time.Time) *mrand.Rand { return mrand.New(mrand.NewSource(now.UnixNano())) }
+
+// Phrases: what the composer completes while typing — each one is understood without the model
+var Phrases = []string{
+	"Что интересного на неделе?", "Что есть на выходных?", "Куда сходить в субботу вечером?", "Куда сходить в пятницу вечером?",
+	"Куда сходить сегодня вечером?", "Куда сходить завтра?", "Хотим почилить", "Хотим что-нибудь активное", "Что-нибудь романтичное",
+	"Что-нибудь до 3000 ₽", "Что-нибудь бесплатное", "Удиви нас", "Что нашёл скаут?", "Что у нас запланировано?", "Где мы были?",
+	"Анонсы на пару месяцев", "Какие дела по дому?", "Поставь бюджет 10000 ₽ в месяц", "Запомни, что я не люблю стендап",
+	"Следи за билетами на ", "Сколько стоит ", "Расскажи про ", "Запиши нас на ", "Добавь в копилку ",
+	"Театр на выходных", "Концерт на неделе", "Выставка в воскресенье", "Ресторан в пятницу вечером", "Прогулка в субботу днём",
+}
+
+// Hints: phrases plus the titles the couple can ask about (the bank and the afisha), for completion while typing
+func (as *Assistant) Hints(ctx context.Context, c app.Couple) (map[string]any, error) {
+	ideas, err := as.App.S.Ideas(ctx, c.Space.ID, domain.IdeaActive, domain.IdeaDraft)
+	if err != nil {
+		return nil, err
+	}
+	now := as.now()
+	titles := []string{}
+	seen := map[string]bool{}
+	for _, i := range ideas {
+		if i.Kind != domain.KindLeisure || i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now.Add(-24*time.Hour)) {
+			continue
+		}
+		k := strings.ToLower(i.Title)
+		if !seen[k] && len(titles) < 300 {
+			seen[k] = true
+			titles = append(titles, i.Title)
+		}
+	}
+	return map[string]any{"phrases": Phrases, "titles": titles}, nil
+}

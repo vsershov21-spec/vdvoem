@@ -21,6 +21,7 @@ import (
 	"vdvoem/internal/live"
 	"vdvoem/internal/parse"
 	"vdvoem/internal/store"
+	"vdvoem/internal/stt"
 	"vdvoem/internal/tg"
 )
 
@@ -28,6 +29,7 @@ type Bot struct {
 	App    *app.App
 	Helper *assistant.Assistant
 	TG     *tg.Client
+	STT    *stt.Client // voice messages → text; nil or empty — voice is off
 	Secret string
 	Log    *slog.Logger
 }
@@ -156,6 +158,13 @@ func (b *Bot) message(ctx context.Context, m *tg.Message) {
 		b.say(ctx, chat, "📨 Читаю пост из «"+html.EscapeString(fp.From)+"» — достану события, даты и цены и пришлю сюда.", nil)
 		return
 	}
+	if v := m.Voice; v != nil || m.Audio != nil {
+		if v == nil {
+			v = m.Audio
+		}
+		b.voice(ctx, c, chat, v)
+		return
+	}
 	if len(m.Photo) > 0 {
 		ok, _ := b.App.Photo(ctx, c, m.Photo[len(m.Photo)-1].FileID)
 		if ok {
@@ -270,7 +279,7 @@ func (b *Bot) free(ctx context.Context, c app.Couple, chat int64, text string) {
 	if text == "" {
 		return
 	}
-	if parse.FirstURL(text) == "" && looksLikeQuestion(text) {
+	if parse.FirstURL(text) == "" && (looksLikeQuestion(text) || assistant.LooksLikeRequest(text, b.App.Now())) {
 		b.ask(ctx, c, chat, text)
 		return
 	}
@@ -310,6 +319,50 @@ func (b *Bot) ask(ctx context.Context, c app.Couple, chat int64, q string) {
 		b.say(ctx, chat, "Не получилось ответить — попробуй ещё раз.", nil)
 		return
 	}
+	b.reply(ctx, chat, rep)
+}
+
+// voice: a spoken request — heard locally, then answered like a typed one (with what was heard on top)
+func (b *Bot) voice(ctx context.Context, c app.Couple, chat int64, v *tg.Voice) {
+	if !b.STT.Enabled() {
+		b.say(ctx, chat, "Голосовые я пока не слушаю — напиши, пожалуйста, текстом.", nil)
+		return
+	}
+	if v.Duration > 60 {
+		b.say(ctx, chat, "Это длинновато — скажи покороче, до минуты.", nil)
+		return
+	}
+	b.TG.Typing(ctx, chat)
+	audio, err := b.TG.File(ctx, v.FileID, stt.MaxBytes)
+	var text string
+	if err == nil {
+		text, err = b.STT.Text(ctx, audio, "voice.ogg")
+	}
+	if errors.Is(err, stt.ErrEmpty) {
+		b.say(ctx, chat, "Не расслышал — повтори, пожалуйста, или напиши.", nil)
+		return
+	}
+	if err != nil {
+		b.Log.Warn("voice", "err", err)
+		b.say(ctx, chat, "Не получилось разобрать голосовое — напиши текстом.", nil)
+		return
+	}
+	rep, err := b.Helper.Ask(ctx, c, text)
+	if errors.Is(err, assistant.ErrLimit) {
+		b.say(ctx, chat, "На сегодня вопросов достаточно — продолжим завтра.", nil)
+		return
+	}
+	if err != nil {
+		b.Log.Error("assistant", "err", err)
+		b.say(ctx, chat, "Не получилось ответить — попробуй ещё раз.", nil)
+		return
+	}
+	rep.Text = "🎙 «" + text + "»\n\n" + rep.Text
+	b.reply(ctx, chat, rep)
+}
+
+// reply: the assistant's answer as one message — text, up to three cards, its buttons
+func (b *Bot) reply(ctx context.Context, chat int64, rep assistant.Reply) {
 	var sb strings.Builder
 	sb.WriteString(html.EscapeString(rep.Text))
 	for k, cd := range rep.Cards {
@@ -516,7 +569,10 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 	case "aa":
 		rep, e := b.Helper.Act(ctx, c, arg(1))
 		err = e
-		if e == nil {
+		if e == nil && rep.Intent != nil { // «или: …» — the other reading answers as a message
+			b.reply(ctx, chat, rep)
+			toast = "Понял"
+		} else if e == nil {
 			toast = short(rep.Text, 180)
 		}
 	}

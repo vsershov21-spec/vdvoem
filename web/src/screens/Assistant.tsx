@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ChatMsg, Home, Reply } from '../lib/types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ActionBtn, ChatMsg, Home, Reply } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
-import { post, del, humanError } from '../lib/api'
+import { post, del, get, upload, humanError } from '../lib/api'
+import { complete } from '../lib/complete'
 import { go } from '../lib/router'
 import { haptic, openLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
@@ -9,12 +10,20 @@ import { Cover, toast } from '../ui/kit'
 import { Particles } from '../ui/Particles'
 
 const SUGG = ['Куда сходить в субботу вечером?', 'Хотим почилить', 'Удиви нас', 'Что нашёл скаут?', 'Что у нас запланировано?', 'Анонсы на пару месяцев', 'Что-нибудь до 3000 ₽']
-// after a search: refine it in one tap (the server keeps the rest of the request)
+// after a search when the server sent no follow-ups (older answers): refine it in one tap
 const FOLLOW = ['А подешевле?', 'А в воскресенье?', 'А спокойнее?', 'А без театра?']
+const canRecord = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
 
 export function Assistant({ home }: { home: Home | null }) {
-  const { data, set } = useLoad<{ messages: ChatMsg[]; ai: boolean }>('/assistant')
+  const { data, set } = useLoad<{ messages: ChatMsg[]; ai: boolean; voice?: boolean }>('/assistant')
   const [text, setText] = useState('')
+  const [hints, setHints] = useState<{ phrases: string[]; titles: string[] }>({ phrases: [], titles: [] })
+  const [rec, setRec] = useState<{ r: MediaRecorder; started: number } | null>(null)
+  const [secs, setSecs] = useState(0)
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => { get<{ phrases: string[]; titles: string[] }>('/assistant/hints').then(setHints).catch(() => {}) }, [])
+  const typed = useMemo(() => complete(text, hints.phrases, hints.titles), [text, hints])
+  useEffect(() => { if (!rec) return; const t = setInterval(() => setSecs(Math.round((Date.now() - rec.started) / 1000)), 250); return () => clearInterval(t) }, [rec])
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<Record<string, string>>({})
   const end = useRef<HTMLDivElement>(null)
@@ -28,23 +37,55 @@ export function Assistant({ home }: { home: Home | null }) {
     if (!q || busy) return
     haptic.tap(); setText('')
     const mine: ChatMsg = { id: Date.now(), role: 'user', at: Date.now() / 1000, reply: { text: q } }
-    set(d => ({ ai: d?.ai ?? false, messages: [...(d?.messages || []), mine] }))
+    set(d => ({ ...d, ai: d?.ai ?? false, messages: [...(d?.messages || []), mine] }))
     setBusy(true)
     try {
       const r = await post<{ reply: Reply }>('/assistant', { text: q })
-      set(d => ({ ai: d?.ai ?? false, messages: [...(d?.messages || []), { id: Date.now() + 1, role: 'assistant', at: Date.now() / 1000, reply: r.reply }] }))
+      say(r.reply)
       haptic.soft()
     } catch (e) { toast(humanError(e)) } finally { setBusy(false) }
   }
-  const press = async (id: string) => {
-    if (done[id]) return
+  const say = (r: Reply) => set(d => ({ ...d, ai: d?.ai ?? false, messages: [...(d?.messages || []), { id: Date.now() + 1, role: 'assistant', at: Date.now() / 1000, reply: r }] }))
+  const press = async (a: ActionBtn) => {
+    if (done[a.id] || busy) return
+    if (a.kind === 'clarify') setBusy(true) // the other reading answers as a new message
     try {
-      const r = await post<{ reply: Reply }>('/assistant/act', { id })
-      setDone(d => ({ ...d, [id]: r.reply.text })); haptic.ok(); emit('home'); emit('ideas')
-      toast(r.reply.text)
-    } catch (e) { toast(humanError(e)) }
+      const r = await post<{ reply: Reply }>('/assistant/act', { id: a.id })
+      setDone(d => ({ ...d, [a.id]: r.reply.text })); haptic.ok()
+      if (a.kind === 'clarify') say(r.reply)
+      else { emit('home'); emit('ideas'); toast(r.reply.text) }
+    } catch (e) { toast(humanError(e)) } finally { setBusy(false) }
   }
-  const clear = async () => { await del('/assistant'); set(d => ({ ai: d?.ai ?? false, messages: [] })) }
+  // a phrase that wants a name («Сколько стоит ») goes into the field; the rest is asked right away
+  const pick = (s: string) => { if (s.endsWith(' ')) { setText(s); input.current?.focus() } else ask(s) }
+
+  const record = async () => {
+    if (rec) { rec.r.stop(); return }
+    let stream: MediaStream
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) } catch { toast('Нет доступа к микрофону'); return }
+    const r = new MediaRecorder(stream)
+    const parts: Blob[] = []
+    r.ondataavailable = e => e.data.size && parts.push(e.data)
+    r.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop()); setRec(null); setSecs(0)
+      const blob = new Blob(parts, { type: r.mimeType || 'audio/webm' })
+      if (blob.size < 2000) return // a tap, not speech
+      const ext = /mp4|aac|m4a/.test(blob.type) ? 'mp4' : /ogg/.test(blob.type) ? 'ogg' : 'webm'
+      const f = new FormData(); f.append('audio', blob, 'rec.' + ext)
+      setBusy(true)
+      try {
+        const res = await upload<{ heard: string; reply?: Reply }>('/assistant/voice', f)
+        if (!res.heard || !res.reply) { toast('Не расслышал — повтори или напиши'); return }
+        set(d => ({ ai: d?.ai ?? false, voice: d?.voice, messages: [...(d?.messages || []), { id: Date.now(), role: 'user', at: Date.now() / 1000, reply: { text: res.heard } }] }))
+        say(res.reply); haptic.soft()
+      } catch (e) { toast(humanError(e)) } finally { setBusy(false) }
+    }
+    r.start(); haptic.tap(); setRec({ r, started: Date.now() })
+    setTimeout(() => r.state === 'recording' && r.stop(), 60000)
+  }
+  const clear = async () => { await del('/assistant'); set(d => ({ ...d, ai: d?.ai ?? false, messages: [] })) }
+  const next = lastAi?.reply.next?.length ? lastAi.reply.next : lastAi?.reply.intent?.i === 'find' ? FOLLOW : []
+  const voice = !!data?.voice && canRecord()
 
   return (
     <>
@@ -64,18 +105,24 @@ export function Assistant({ home }: { home: Home | null }) {
         {busy && <div className="msg msg--ai typing" aria-label="Печатает"><i /><i /><i /></div>}
         <div ref={end} style={{ scrollMarginBottom: "calc(var(--dock-h) + var(--safe-b) + 90px)" }} /* stop above the composer and the tab bar */ />
       </div>
-      {msgs.length >= 2 && !busy && lastAi?.reply.intent?.i === 'find' && lastAi === msgs[msgs.length - 1] &&
-        <div className="sugg sugg--dock rise" data-testid="follow">{FOLLOW.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
-      {msgs.length < 2 && !busy && <div className="sugg sugg--dock rise" style={{ ['--d' as any]: 2 }}>{SUGG.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
-      <form className="composer" onSubmit={e => { e.preventDefault(); ask(text) }}>
-        <input className="input" placeholder={home?.paired ? 'Спроси про ваши планы…' : 'Спроси что-нибудь…'} value={text} maxLength={600} onChange={e => setText(e.target.value)} />
-        <button className="send" type="submit" disabled={!text.trim() || busy} aria-label="Отправить"><Icon n="send" s={20} w={2.4} /></button>
+      {text.trim() && typed.length > 0 && !busy
+        ? <div className="sugg sugg--dock" data-testid="type-hints">{typed.map(s => <button key={s} onClick={() => pick(s)}>{s.trim()}</button>)}</div>
+        : !text.trim() && msgs.length >= 2 && !busy && next.length > 0 && lastAi === msgs[msgs.length - 1]
+          ? <div className="sugg sugg--dock rise" data-testid="follow">{next.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>
+          : !text.trim() && msgs.length < 2 && !busy && <div className="sugg sugg--dock rise" style={{ ['--d' as any]: 2 }}>{SUGG.map(s => <button key={s} onClick={() => ask(s)}>{s}</button>)}</div>}
+      <form className="composer" data-rec={rec ? '' : undefined} onSubmit={e => { e.preventDefault(); ask(text) }}>
+        {rec
+          ? <div className="composer__rec" aria-live="polite"><i />Слушаю… {secs} с</div>
+          : <input ref={input} className="input" placeholder={home?.paired ? 'Спроси про ваши планы…' : 'Спроси что-нибудь…'} value={text} maxLength={600} onChange={e => setText(e.target.value)} enterKeyHint="send" />}
+        {voice && !text.trim()
+          ? <button className="send" type="button" data-testid="mic" onClick={record} disabled={busy} aria-label={rec ? 'Остановить' : 'Сказать голосом'}><Icon n={rec ? 'stop' : 'mic'} s={20} w={2.2} /></button>
+          : <button className="send" type="submit" disabled={!text.trim() || busy} aria-label="Отправить"><Icon n="send" s={20} w={2.4} /></button>}
       </form>
     </>
   )
 }
 
-function AiMsg({ r, done, onPress }: { r: Reply; done: Record<string, string>; onPress: (id: string) => void }) {
+function AiMsg({ r, done, onPress }: { r: Reply; done: Record<string, string>; onPress: (a: ActionBtn) => void }) {
   return (
     <div className="col" style={{ gap: 8 }}>
       <div className="msg msg--ai">{linkify(r.text)}</div>
@@ -98,8 +145,8 @@ function AiMsg({ r, done, onPress }: { r: Reply; done: Record<string, string>; o
       {!!r.actions?.length && (
         <div className="ai-acts">
           {r.actions.map(a => (
-            <button key={a.id} className="ai-act" data-done={done[a.id] ? '' : undefined} onClick={() => onPress(a.id)}>
-              <Icon n={done[a.id] ? 'check' : a.kind === 'plan' || a.kind === 'book' ? 'cal' : a.kind === 'add_idea' ? 'plus' : 'spark'} s={16} w={2.4} />{done[a.id] ? 'Готово' : a.label}
+            <button key={a.id} className={'ai-act' + (a.kind === 'clarify' ? ' ai-act--alt' : '')} data-done={done[a.id] ? '' : undefined} data-kind={a.kind} onClick={() => onPress(a)}>
+              <Icon n={done[a.id] ? 'check' : a.kind === 'plan' || a.kind === 'book' ? 'cal' : a.kind === 'add_idea' ? 'plus' : a.kind === 'clarify' ? 'spark' : 'spark'} s={16} w={2.4} />{done[a.id] ? (a.kind === 'clarify' ? 'Ответил ниже' : 'Готово') : a.label}
             </button>
           ))}
         </div>
