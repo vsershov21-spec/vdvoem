@@ -1355,6 +1355,12 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 			return nil
 		}
 		return a.runPost(ctx, p)
+	case "picture":
+		var p picJob
+		if err := jsonUnmarshal(j.Payload, &p); err != nil {
+			return nil
+		}
+		return a.runPicture(ctx, p)
 	case "parse":
 		var p parsePayload
 		if err := jsonUnmarshal(j.Payload, &p); err != nil {

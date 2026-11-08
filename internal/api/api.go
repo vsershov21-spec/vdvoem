@@ -470,7 +470,16 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 			both++
 		}
 	}
-	out["counts"] = map[string]int{"ideas": leisure, "chores": chores, "both_want": both, "unmarked": nUnmarked}
+	fresh := 0
+	if drafts, err := a.App.S.Ideas(ctx, c.Space.ID, domain.IdeaDraft); err == nil {
+		now := a.App.Now()
+		for _, i := range drafts {
+			if app.Afisha(i) && i.WishA == domain.WishNone && i.WishB == domain.WishNone && !(i.StartsAt != nil && i.StartsAt.Before(now) && (i.EndsAt == nil || i.EndsAt.Before(now))) {
+				fresh++
+			}
+		}
+	}
+	out["counts"] = map[string]int{"ideas": leisure, "chores": chores, "both_want": both, "unmarked": nUnmarked, "fresh": fresh}
 	out["to_mark"] = unmarked
 	out["urgent"] = a.App.UrgentForMe(ctx, c)
 	out["going"] = a.goingRounds(ctx, c)
@@ -760,6 +769,26 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	out := map[string]any{"id": rd.ID, "today": first.Format("2006-01-02"), "horizon": last.Format("2006-01-02"), "state": string(rd.State), "version": rd.Version, "opened_at": rd.OpenedAt.Unix(), "expires_at": rd.ExpiresAt.Unix(),
 		"days": days, "my_slots": keys, "partner_slots": theirKeys, "sent": sentMe, "partner_sent": sentOther, "voted": voteMe != 0, "partner_voted": voteOther != 0,
 		"confirmed": confMe, "partner_confirmed": confOther, "again": againMe, "budget": rd.BudgetKop}
+	if rd.State == domain.StateTime {
+		// busy times from each person's own calendar: only «занят», never what
+		n := int(last.Sub(first).Hours()/24) + 1
+		list := func(m map[string]bool) []string {
+			l := []string{}
+			for k := range m {
+				l = append(l, k)
+			}
+			sort.Strings(l)
+			return l
+		}
+		if b := a.App.BusySlots(ctx, c.Me.ID, c.Loc(), n); b != nil {
+			out["my_busy"] = list(b)
+		}
+		if c.Partner != nil {
+			if b := a.App.BusySlots(ctx, c.Partner.ID, c.Loc(), n); b != nil {
+				out["partner_busy"] = list(b)
+			}
+		}
+	}
 	if voteMe != 0 {
 		out["my_vote"] = voteMe
 	}

@@ -9,7 +9,7 @@ import { relLeft } from '../lib/format'
 
 export const TABS = [
   { path: '', id: 'home', label: 'Главная', icon: 'home' },
-  { path: 'ideas', id: 'bank', label: 'Копилка', icon: 'folder' },
+  { path: 'ideas', id: 'bank', label: 'Куда пойти', icon: 'folder' },
   { path: 'calendar', id: 'cal', label: 'Календарь', icon: 'cal' },
   { path: 'assistant', id: 'ai', label: 'Помощник', icon: 'spark' },
   { path: 'us', id: 'us', label: 'Мы', icon: 'user' },

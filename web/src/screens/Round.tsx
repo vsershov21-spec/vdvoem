@@ -78,10 +78,11 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
   const toggle = (k: string, on?: boolean) => setSel(s => { const n = new Set(s); const v = on ?? !n.has(k); if (v === n.has(k)) return s; v ? n.add(k) : n.delete(k); haptic.select(); return n })
   const send = async () => { await act('slots', { slots: [...sel] }); setEditing(false) }
   // «любое возможное»: a whole day, one part of the day all week, or everything in the next two weeks
-  const setMany = (ks: string[]) => { const free = ks.filter(k => !past(k.slice(0, 10), +k.slice(11))); if (!free.length) return
+  const setMany = (ks: string[]) => { const free = ks.filter(k => !past(k.slice(0, 10), +k.slice(11)) && !myBusy.has(k)); if (!free.length) return
     const on = !free.every(k => sel.has(k)); haptic.select(); setSel(s => { const n = new Set(s); free.forEach(k => on ? n.add(k) : n.delete(k)); return n }) }
   const anyTime = () => { const ks: string[] = []; for (let d = 0; d < 14; d++) { const day = ymd(addDays(t0, d)); if (day > last) break; PARTS.forEach(([p]) => ks.push(`${day}:${p}`)) }
-    const free = ks.filter(k => !past(k.slice(0, 10), +k.slice(11))); setSel(s => new Set([...s, ...free])); haptic.ok(); toast(`Отметил всё свободное на две недели — ${free.length} ${slotWord(free.length)}. Лишнее можно снять`) }
+    const free = ks.filter(k => !past(k.slice(0, 10), +k.slice(11)) && !myBusy.has(k)); setSel(s => new Set([...s, ...free])); haptic.ok()
+    toast(`Отметил всё свободное на две недели — ${free.length} ${slotWord(free.length)}${myBusy.size ? ' (занятое по твоему календарю пропустил)' : ''}. Лишнее можно снять`) }
   const noOverlap = r.sent && r.partner_sent
   const goWeek = (m: Date) => { const t = clamp(m); if (+t === +week) return; haptic.select(); setDir(t > week ? 1 : -1); setWeek(t) }
   const perDay = useMemo(() => { const m: Record<string, number> = {}; sel.forEach(k => { const d = k.slice(0, 10); m[d] = (m[d] || 0) + 1 }); return m }, [sel])
@@ -90,6 +91,8 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
   const past = (d: string, p: number) => d < today || d > last || (d === today && nowH >= PART_END[p])
   // time is agreed in the open: the partner's proposals are visible, one tap takes one of them
   const theirs = useMemo(() => new Set(r.partner_slots || []), [r.partner_slots?.join()])
+  const myBusy = useMemo(() => new Set(r.my_busy || []), [r.my_busy?.join()])
+  const pBusy = useMemo(() => new Set(r.partner_busy || []), [r.partner_busy?.join()])
   const accept = async (k: string) => { haptic.ok(); await act('slots', { slots: [...new Set([k, ...r.my_slots])] }); setEditing(false) }
   const theirList = [...theirs].sort().filter(k => !past(k.slice(0, 10), +k.slice(11)))
   const Proposals = ({ title }: { title: string }) => theirList.length ? (
@@ -153,13 +156,15 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         {days.map(d => { const L = dayLabel(d); const off = d < today || d > last; return [
           <div key={d} role="button" aria-label={`${L.long} целиком`} onClick={() => setMany(PARTS.map(([p]) => `${d}:${p}`))} className={'slots__day' + (sug.has(d) ? ' is-sug' : '') + (off ? ' is-off' : '') + (d === focus ? ' is-focus' : '')}><b>{L.wd}</b><span>{L.num} {L.mon}</span></div>,
           ...PARTS.map(([p]) => { const k = `${d}:${p}`; const dis = past(d, p); return (
-            <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} data-their={theirs.has(k) || undefined} data-common={(theirs.has(k) && sel.has(k)) || undefined} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}`} style={{ ['--c' as any]: 'var(--person-a)' }}
+            <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} data-their={theirs.has(k) || undefined} data-common={(theirs.has(k) && sel.has(k)) || undefined} data-busy={myBusy.has(k) || undefined} data-pbusy={pBusy.has(k) || undefined} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}${myBusy.has(k) ? ', занято в твоём календаре' : ''}${pBusy.has(k) ? `, ${partner} занят(а)` : ''}`} style={{ ['--c' as any]: 'var(--person-a)' }}
               onPointerDown={e => { if (dis) return; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); paint.current = !sel.has(k); toggle(k, paint.current) }}
               onPointerEnter={() => { if (paint.current !== null && !dis) toggle(k, paint.current) }}>
               <Icon n="check" s={20} w={2.6} />
             </button>) }),
         ] })}
       </motion.div>
+      {(myBusy.size > 0 || pBusy.size > 0) ? <p className="caption" style={{ margin: 0 }}><span className="busy-key" /> занято по твоему календарю{pBusy.size > 0 && <> · <span className="pbusy-key" /> {partner} занят(а)</>}</p>
+        : <p className="caption muted" style={{ margin: 0 }}><button className="link" onClick={() => go('calendar')}>Подключи свой календарь</button> — занятые часы отметятся сами.</p>}
       <p className="caption muted" style={{ margin: 0 }}>Утро 9–13 · день 13–18 · вечер 18–23. Можно вести пальцем; нажми на день — отметится целиком, на «Вечер» — все вечера недели. <span style={{ color: '#ff701e' }}>●</span> — предлагаю эти дни.</p>
       <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Отметь хотя бы одно' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
       <Sheet open={picker} onClose={() => setPicker(false)}>

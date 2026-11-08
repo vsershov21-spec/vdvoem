@@ -234,6 +234,18 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		}
 		found, _ := res["found"].(int)
 		r.found = found
+		if ids, _ := res["ids"].([]int64); len(ids) > 1 {
+			title := upperFirst(cond)
+			if title == "" {
+				title = upperFirst(short(strings.TrimSpace(text), 48))
+			}
+			if title == "" {
+				title = "Подборка"
+			}
+			if id, err := r.as.App.S.AddPick(ctx, store.Pick{SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Title: title, IDs: ids}, r.as.now()); err == nil {
+				r.pick = &PickRef{ID: id, Title: title, N: len(ids)}
+			}
+		}
 		if in.All {
 			r.propose(ctx, "open", map[string]any{"path": "ideas/scout"}, "Вся афиша")
 			return Reply{Text: r.list(events, found, in, cond)}
@@ -529,7 +541,7 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 		fmt.Fprintf(&b, "Нашёл %s.", plural(found, "вариант", "варианта", "вариантов"))
 	}
 	if found > len(events) {
-		fmt.Fprintf(&b, " Вот лучшие %d — остальные по кнопке «Покажи все».", len(events))
+		fmt.Fprintf(&b, " Вот лучшие %d — все %d в подборке ниже: там можно отметить и отправить %s.", len(events), found, app.NameDat(r.c.PartnerName()))
 	}
 	top := events[0]
 	b.WriteString(" Лучше всего вам двоим — «" + fmt.Sprint(top["title"]) + "»")

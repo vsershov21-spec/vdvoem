@@ -160,7 +160,13 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		}
 		r.addCard(ideaCard(h.i, note))
 	}
-	res := map[string]any{"events": out, "found": len(hits), "total": len(hits)}
+	ids := make([]int64, 0, len(hits))
+	for _, h := range hits {
+		if len(ids) < 300 {
+			ids = append(ids, h.i.ID)
+		}
+	}
+	res := map[string]any{"events": out, "found": len(hits), "total": len(hits), "ids": ids}
 	if len(hits) == 0 {
 		res["note"] = "ничего не подошло под эти условия — можно ослабить фильтры или добавить цель скауту (add_goal)"
 	}

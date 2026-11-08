@@ -1,29 +1,21 @@
 // «Афиша» — what the scout found: the week ahead and announcements 1–3 months out, ranked by how much
 // you both would like it (each person's own learned taste). Images load straight from the listing sites.
 import { useState } from 'react'
-import { motion } from 'framer-motion'
 import type { Idea, Wish } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, humanError } from '../lib/api'
 import { go } from '../lib/router'
-import { dayLabel, money } from '../lib/format'
 import { haptic } from '../lib/tg'
 import { Icon } from '../ui/icons'
-import { Cover, Empty, Segmented, Skel, SubHeader, toast } from '../ui/kit'
+import { Empty, Segmented, Skel, SubHeader, toast } from '../ui/kit'
+import { EventCard } from '../ui/EventCard'
 
 type KV = { k: string; n: number }
 type Res = { ideas: Idea[]; counts: Record<string, number>; genres: KV[]; cats: KV[] }
 type F = { hz: 'all' | 'week' | 'later'; source: 'all' | 'scout' | 'channel' | 'ours'; sort: 'match' | 'date' | 'price'; fresh: boolean; genre: string; cat: string }
 const SRC: [F['source'], string][] = [['all', 'Все'], ['scout', '🔭 Скаут'], ['channel', '📣 Каналы'], ['ours', '🗂 Наши']]
-const SRC_BADGE: Record<string, string> = { scout: '🔭 скаут', channel: '📣 канал' }
 const load = (): F => { try { return { hz: 'all', source: 'all', sort: 'match', fresh: false, genre: '', cat: '', ...JSON.parse(localStorage.getItem('vd-afisha') || '{}') } } catch { return { hz: 'all', source: 'all', sort: 'match', fresh: false, genre: '', cat: '' } } }
 
-const when = (i: Idea) => {
-  if (!i.starts_at) return ''
-  const d = new Date(i.starts_at * 1000), L = dayLabel(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
-  const t = d.getHours() || d.getMinutes() ? `, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : ''
-  return `${L.wd} ${L.num} ${L.mon}${t}`
-}
 
 export function Afisha() {
   const [f, setF] = useState<F>(load)
@@ -66,28 +58,6 @@ export function Afisha() {
       : res.data.ideas.length === 0 ? <Empty title="Под эти фильтры пусто" text={f.genre || f.fresh || f.source !== 'all' || f.hz !== 'all'
         ? 'Сними фильтр — или скажи помощнику «следи за …», и скаут поищет специально.'
         : 'Скаут приносит события под ваши вкусы, каналы — посты, которые ты пересылаешь боту.'} />
-      : <div className="col">{res.data.ideas.map((i, k) => (
-        <motion.article key={i.id} className="acard" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(k, 6) * 0.04, type: 'spring', stiffness: 400, damping: 30 }}>
-          <button className="acard__main" onClick={() => go('idea/' + i.id)}>
-            <Cover idea={i} h={132}>
-              {i.match && <span className="acard__match" title={i.match.note}>{i.match.both}%</span>}
-              <span className="acard__src">{SRC_BADGE[i.source || ''] || '🗂 наше'}</span>
-            </Cover>
-            <span className="acard__body">
-              <b className="acard__title">{i.title}</b>
-              <span className="caption muted">{[when(i), i.price_min ? '≈ ' + money(i.price_min) : '', i.address].filter(Boolean).join(' · ')}</span>
-              {i.why && <span className="acard__why">{i.why}</span>}
-              {i.match?.note && <span className="caption acard__note">{i.match.note}</span>}
-              {i.on_sale && i.on_sale * 1000 > Date.now() && <span className="caption acard__note">Продажа билетов с {when({ ...i, starts_at: i.on_sale })}</span>}
-            </span>
-          </button>
-          <div className="acard__acts">
-            {(['want', 'very', 'skip'] as Wish[]).map(w => (
-              <button key={w} className="wkchip" data-on={i.my_wish === w || undefined} aria-pressed={i.my_wish === w} onClick={() => mark(i, w)}>
-                {w === 'very' && <Icon n="heart" s={13} w={2.4} />}{w === 'want' ? 'Хочу' : w === 'very' ? 'Очень' : 'Пропущу'}</button>
-            ))}
-          </div>
-        </motion.article>
-      ))}</div>}
+      : <div className="col">{res.data.ideas.map((i, k) => <EventCard key={i.id} i={i} k={k} onMark={mark} />)}</div>}
   </>)
 }

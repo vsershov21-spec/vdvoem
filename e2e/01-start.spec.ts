@@ -26,7 +26,7 @@ test('E02 один в приложении: приглашение, идеи к�
   await p.getByRole('button', { name: 'В копилку' }).click()
   await p.waitForTimeout(1200)
   await tab(p, 'bank')
-  await expect(p.locator('.folder', { hasText: 'Еда' })).toBeVisible()
+  await expect(p.locator('.icard', { hasText: 'Бранч на Патриках' })).toBeVisible()
   await shot(p, 'E02-solo-bank')
   // the bot works for the solo user too
   await say(solo, '/invite')

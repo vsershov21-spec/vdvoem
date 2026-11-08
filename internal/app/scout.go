@@ -234,6 +234,7 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 		if err != nil {
 			return res, err
 		}
+		a.wantPicture(ctx, ni, time.Duration(res.Added)*15*time.Second)
 		res.Added++
 		switch {
 		case ni.Status == domain.IdeaActive:

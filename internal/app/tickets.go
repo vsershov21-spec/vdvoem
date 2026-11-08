@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"vdvoem/internal/domain"
 	"vdvoem/internal/store"
@@ -102,4 +103,41 @@ func (a *App) GotTickets(ctx context.Context, c Couple, roundID int64) error {
 	}
 	a.Live.From(ctx, c.Space.ID)
 	return nil
+}
+
+// SendPick: «посмотри, что нашлось» — the partner gets the list in the bot, marks what they like
+func (a *App) SendPick(ctx context.Context, c Couple, pickID int64) error {
+	if c.Partner == nil {
+		return ErrNotPaired
+	}
+	p, err := a.S.Pick(ctx, c.Space.ID, pickID)
+	if err != nil {
+		return err
+	}
+	var top []string
+	for k, id := range p.IDs {
+		if k == 3 {
+			break
+		}
+		if i, err := a.S.Idea(ctx, c.Space.ID, id); err == nil {
+			top = append(top, "• "+esc(i.Title))
+		}
+	}
+	a.send(ctx, c.Partner.ChatID, fmt.Sprintf("📋 %s прислал(а) подборку: <b>%s</b> — %d %s.\n%s\n\nОтметь, что нравится, — совпадения появятся у вас обоих.",
+		esc(c.Me.Name), esc(p.Title), len(p.IDs), plural(len(p.IDs), "вариант", "варианта", "вариантов"), strings.Join(top, "\n")),
+		tg.Keyboard(tg.Row(tg.App("Открыть подборку", a.appURL(fmt.Sprintf("pick/%d", p.ID))))))
+	return nil
+}
+
+func plural(n int, one, few, many string) string {
+	m := n % 100
+	switch {
+	case m >= 11 && m <= 14:
+		return many
+	case m%10 == 1:
+		return one
+	case m%10 >= 2 && m%10 <= 4:
+		return few
+	}
+	return many
 }

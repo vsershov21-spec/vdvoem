@@ -185,6 +185,10 @@ function AiMsg({ r, at, done, onPress }: { r: Reply; at: number; done: Record<st
           ))}
         </div>
       )}
+      {r.pick && <button className="pickcard rise" data-testid="pick-open" onClick={() => go('pick/' + r.pick!.id)}>
+        <span className="pickcard__ico"><Icon n="folder" s={20} /></span>
+        <span className="pickcard__main"><b>Подборка · {r.pick.n}</b><small>{r.pick.title} — открыть все, отметить, отправить партнёру</small></span>
+        <Icon n="chev" s={16} w={2.4} /></button>}
       {!!r.actions?.length && (
         <div className="ai-acts">
           {r.actions.map(a => (

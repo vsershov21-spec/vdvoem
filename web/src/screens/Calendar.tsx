@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { CalEvent, Home, Round, Stats } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
-import { post, humanError } from '../lib/api'
+import { post, del, humanError } from '../lib/api'
 import { go } from '../lib/router'
 import { money, plural } from '../lib/format'
 import { MonthGrid, type DayMark } from '../ui/Charts'
@@ -71,7 +71,8 @@ export function CalendarScreen({ home }: { home: Home | null }) {
 
 // A permanent link to the phone's calendar: meetings appear, move and disappear there by themselves.
 function PhoneCalendar() {
-  const feed = useLoad<{ url: string; webcal: string; subscribed: boolean }>('/calendar/feed')
+  const feed = useLoad<{ url: string; webcal: string; subscribed: boolean; busy?: boolean; partner_busy?: boolean }>('/calendar/feed')
+  const [busyOpen, setBusyOpen] = useState(false)
   const [open, setOpen] = useState(false)
   const f = feed.data
   const ios = /iPhone|iPad|Mac/.test(navigator.userAgent)
@@ -83,6 +84,13 @@ function PhoneCalendar() {
         <span>{f?.subscribed ? 'Встречи появляются и переносятся сами' : 'Один раз — и встречи будут там всегда'}</span></span>
       <span className="calsub__go">›</span>
     </button>
+    <button className="calsub rise" onClick={() => setBusyOpen(true)} data-testid="busy-open" style={{ marginTop: 8 }}>
+      <span className="calsub__ic">🗓</span>
+      <span className="calsub__t"><b>{f?.busy ? 'Твоя занятость подключена' : 'Показывать мою занятость'}</b>
+        <span>{f?.busy ? 'Занятые часы отмечаются сами' : 'Свяжи свой календарь — при выборе времени занятое отметится само'}{f?.partner_busy ? ' · у партнёра подключено' : ''}</span></span>
+      <span className="calsub__go">›</span>
+    </button>
+    <BusySheet open={busyOpen} onClose={() => setBusyOpen(false)} connected={!!f?.busy} onDone={feed.refresh} />
     <Sheet open={open} onClose={() => setOpen(false)}>
       <h2 className="title" style={{ margin: '0 0 6px' }}>Календарь на телефоне</h2>
       <p className="callout muted" style={{ margin: '0 0 14px' }}>Подписка на ваши встречи: когда вы договоритесь, встреча появится в календаре, перенесёте или отмените в приложении — изменится и там (обновляется каждые 15 минут). Ссылка личная.</p>
@@ -96,4 +104,36 @@ function PhoneCalendar() {
       </div>}
     </Sheet>
   </>)
+}
+
+// «Моя занятость»: the private iCal link of my own calendar. Only busy times are read — the partner sees
+// «занят(а)», never what it is.
+function BusySheet({ open, onClose, connected, onDone }: { open: boolean; onClose: () => void; connected: boolean; onDone: () => void }) {
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    try { const r = await post<{ busy: number }>('/calendar/busy', { url }); haptic.ok(); toast(`Подключено — вижу ${r.busy} занятых промежутков`); setUrl(''); onDone(); onClose() }
+    catch { toast('Не получилось прочитать календарь — проверь, что это секретная ссылка iCal') } finally { setBusy(false) }
+  }
+  const off = async () => { await del('/calendar/busy'); onDone(); onClose(); toast('Отключено') }
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <h2 className="title" style={{ margin: '0 0 6px' }}>Моя занятость</h2>
+      <p className="callout muted" style={{ margin: '0 0 12px' }}>Когда выбираете время, занятые у тебя часы отметятся сами, а «Мне подходит любое» их пропустит. {''}
+        Партнёр увидит только «занят(а)» — без названий и подробностей.</p>
+      <div className="col" style={{ gap: 10 }}>
+        <div className="field"><label>Секретная ссылка на календарь (iCal)</label>
+          <input className="input" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" value={url} onChange={e => setUrl(e.target.value)} /></div>
+        <Btn kind="accent" block busy={busy} disabled={!/^(https|webcal):\/\//.test(url.trim())} onClick={save}>Подключить</Btn>
+        <details className="howto"><summary>Где взять ссылку</summary>
+          <p><b>Google:</b> calendar.google.com → ⚙ Настройки → слева твой календарь → «Секретный адрес в формате iCal» → скопировать.</p>
+          <p><b>iPhone (iCloud):</b> приложение Календарь → «Календари» → ⓘ у нужного → «Общий календарь» включить → «Поделиться ссылкой» → скопировать.</p>
+          <p><b>Яндекс:</b> Календарь → ⚙ у календаря → «Экспорт» → ссылка iCal.</p>
+          <p><b>Outlook:</b> Настройки → Календарь → «Общие календари» → «Опубликовать» → ссылка ICS.</p>
+        </details>
+        {connected && <button className="link" onClick={off}>Отключить мою занятость</button>}
+      </div>
+    </Sheet>
+  )
 }
