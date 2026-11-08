@@ -135,7 +135,7 @@ func rulesIntent(text string, now time.Time) Intent {
 	in := Intent{I: "find", Date: q.Date, Wknd: q.Weekend, Part: q.Part, Max: q.MaxRub, Cats: q.Include, Not: q.Exclude, NotW: q.NotWords,
 		Moods: moods, Q: q.Query, Hz: q.Horizon, Scout: !q.WholeBank}
 	signals := 0
-	for _, b := range []bool{q.Date != "", q.Weekend, q.Part != "", q.MaxRub > 0, len(q.Include) > 0, len(q.Exclude) > 0, len(moods) > 0, q.Horizon == "later", !q.WholeBank, q.Query != ""} {
+	for _, b := range []bool{q.Date != "", q.Weekend, q.Part != "", q.MaxRub > 0, len(q.Include) > 0, len(q.Exclude) > 0, len(moods) > 0, q.Horizon == "later" || q.Horizon == "week" && q.Date == "" && !q.Weekend, !q.WholeBank, q.Query != ""} {
 		if b {
 			signals++
 		}
@@ -149,8 +149,10 @@ func rulesIntent(text string, now time.Time) Intent {
 		in.conf = 0.7
 	case signals == 1:
 		in.conf = 0.6
-	case asks:
+	case asks && has(t, "куда", "посовет", "предлож", "подбер", "идею", "идея", "чем заняться", "что делать"):
 		in.I, in.Mode, in.conf = "suggest", "best", 0.5
+	case asks:
+		in.I, in.conf = "chat", 0.3 // «как дела?» — talk, not a pick
 	default:
 		in.I, in.conf = "chat", 0.2
 	}
@@ -259,7 +261,7 @@ func shotMsgs(now time.Time) []ai.Message {
 	return msgs
 }
 
-func modelIntent(ctx context.Context, c *ai.Client, text string, now time.Time, like []intentCase) (Intent, error) {
+func modelIntent(ctx context.Context, c *ai.Client, text string, now time.Time, like []intentCase, pt ...Turn) (Intent, error) {
 	ctx, cancel := context.WithTimeout(ctx, LLMBudget)
 	defer cancel()
 	msgs := shotMsgs(now)
@@ -273,6 +275,10 @@ func modelIntent(ctx context.Context, c *ai.Client, text string, now time.Time, 
 			a = strings.ReplaceAll(a, `"`+code+`"`, `"`+caseDate(code, now)+`"`)
 		}
 		msgs = append(msgs, ai.Message{Role: "user", Content: l.Q}, ai.Message{Role: "assistant", Content: a})
+	}
+	if len(pt) > 0 && pt[0].Text != "" && pt[0].In.I != "" { // the previous exchange: a follow-up is read in its light
+		b, _ := json.Marshal(pt[0].In)
+		msgs = append(msgs, ai.Message{Role: "user", Content: pt[0].Text}, ai.Message{Role: "assistant", Content: string(b)})
 	}
 	raw, err := c.Structured(ctx, "intent", append(msgs, ai.Message{Role: "user", Content: text}), intentSchema, 120)
 	if err != nil {
@@ -338,7 +344,11 @@ func clipS(s string, n int) string {
 }
 
 // Understand: rules first; the model only when they are unsure and it answers within the budget.
-func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, now time.Time) (Intent, string) {
+func (as *Assistant) Understand(ctx context.Context, text string, pt Turn, now time.Time) (Intent, string) {
+	prev := pt.In
+	if in, ok := refersTo(text, pt.Titles); ok { // «расскажи про второе», «сколько стоит первое», «давай туда»
+		return in, "rules"
+	}
 	rule := mergeFollowUp(prev, rulesIntent(text, now), text)
 	tuned := as.AI.Enabled() && Tuned(as.AI.M())
 	// a general small model is weaker than confident rules; a fine-tuned one is stronger (eval: 84% vs 56% on
@@ -346,7 +356,7 @@ func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, n
 	if !as.AI.Enabled() || rule.conf >= 0.8 && (!tuned || trivial(rule, text)) {
 		return rule, "rules"
 	}
-	m, err := modelIntent(ctx, as.IntentModel(), text, now, recall(as.bank(ctx), text, 3))
+	m, err := modelIntent(ctx, as.IntentModel(), text, now, recall(as.bank(ctx), text, 3), pt)
 	if err != nil {
 		return rule, "rules-fallback"
 	}
@@ -357,6 +367,52 @@ func (as *Assistant) Understand(ctx context.Context, text string, prev Intent, n
 	}
 	m = mergeFollowUp(prev, m, text)
 	return m, "model"
+}
+
+var (
+	ordinals = []struct {
+		re *regexp.Regexp
+		k  int
+	}{{regexp.MustCompile(`перв`), 0}, {regexp.MustCompile(`втор`), 1}, {regexp.MustCompile(`трет`), 2}, {regexp.MustCompile(`четв[её]рт`), 3}, {regexp.MustCompile(`последн`), -1}}
+	namedRe   = regexp.MustCompile(`\s[«"A-ZА-ЯЁ]`)
+	pronounRe = regexp.MustCompile(`(?:^|\s)(?:это|этот|эту|его|её|ее|туда|на него|на неё|про него|про неё|про это)(?:\s|$|[?!.,])`)
+)
+
+// refersTo: a short request about something just shown («расскажи про второе», «почём первое», «давай туда»)
+func refersTo(text string, titles []string) (Intent, bool) {
+	if len(titles) == 0 {
+		return Intent{}, false
+	}
+	t := strings.ToLower(strings.TrimSpace(text))
+	if len(strings.Fields(t)) > 7 {
+		return Intent{}, false
+	}
+	k := -2
+	for _, o := range ordinals {
+		if o.re.MatchString(t) {
+			k = o.k
+			break
+		}
+	}
+	if k == -2 && pronounRe.MatchString(" "+t+" ") && len(strings.Fields(t)) <= 4 && !namedRe.MatchString(text) {
+		k = 0 // «давай туда», «почём это» — but not «что это за Чайка»: that names its own thing
+	}
+	if k == -1 {
+		k = len(titles) - 1
+	}
+	if k < 0 || k >= len(titles) {
+		return Intent{}, false
+	}
+	q := titles[k]
+	switch {
+	case has(t, "сколько", "почём", "почем", "цена", "стоит", "дорог", "дорож", "дешевл"):
+		return Intent{I: "price", Q: q, conf: 0.95}, true
+	case has(t, "запиш", "идём", "идем", "пойд", "бронир", "календар", "давай", "берём", "берем", "позови", "хочу на", "хотим на"):
+		return Intent{I: "book", Q: q, conf: 0.95}, true
+	case has(t, "добав", "сохрани", "в копилку"):
+		return Intent{I: "add_idea", Text: q, conf: 0.95}, true
+	}
+	return Intent{I: "about", Q: q, conf: 0.95}, true
 }
 
 // trivial: nothing for a model to add

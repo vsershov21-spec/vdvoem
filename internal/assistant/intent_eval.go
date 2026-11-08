@@ -342,7 +342,7 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 			}
 			m2.add(matches(mi, want, now), el, tc.Q, mi)
 			t0 = time.Now()
-			pi, src := as.Understand(ctx, tc.Q, Intent{}, now)
+			pi, src := as.Understand(ctx, tc.Q, Turn{}, now)
 			el = time.Since(t0)
 			ok := matches(pi, want, now)
 			p2.add(ok, el, tc.Q+" ["+src+"]", pi)
@@ -360,7 +360,7 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 		}
 		model.add(matches(mi, want, now), el, tc.Q, mi)
 		t0 = time.Now()
-		pi, src := as.Understand(ctx, tc.Q, Intent{}, now)
+		pi, src := as.Understand(ctx, tc.Q, Turn{}, now)
 		el = time.Since(t0)
 		ok := matches(pi, want, now)
 		pipe.add(ok, el, tc.Q+" ["+src+"]", pi)

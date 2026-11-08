@@ -229,7 +229,7 @@ func afishaFromText(t string, now time.Time) afishaQ {
 	case has(t, "на неделе", "эту неделю", "этой неделе", "выходн", "сегодня", "завтра"):
 		q.Horizon = "week"
 	}
-	q.WholeBank = !has(t, "афиш", "скаут", "нашёл", "нашел", "анонс")
+	q.WholeBank = !has(t, "афиш", "скаут", "нашёл", "нашел", "анонс", "агент", "нарыл", "подборк")
 	return q
 }
 

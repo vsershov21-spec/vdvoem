@@ -250,8 +250,53 @@ def g_mode(today, test=False):
                     [("off", "хватит слать идеи"), ("random", "шли рандомные варианты раз в неделю")])
     return ex(t, {"i": "suggest_mode", "mode": m}, today)
 
+# ---------- dialogue: the second message is read in the light of the first ----------
+
+FOLLOW = [  # (phrase, how it changes the previous search)
+    ("а подешевле?", "cheaper"), ("а можно подешевле", "cheaper"), ("подешевле есть?", "cheaper"),
+    ("а в воскресенье?", ("date", 6)), ("а в субботу?", ("date", 5)), ("а в пятницу?", ("date", 4)), ("а завтра?", ("rel", 1)), ("а сегодня?", ("rel", 0)),
+    ("а вечером?", ("part", "evening")), ("а утром?", ("part", "morning")), ("а днём?", ("part", "day")),
+    ("а без театра?", ("not", "culture", "театр")), ("только не рестораны", ("not", "food", "ресторан")), ("а без стендапа", ("not", "other", "стендап")),
+    ("а что-нибудь поспокойнее?", ("mood", "chill")), ("а поактивнее?", ("mood", "active")), ("а что-то романтичное?", ("mood", "romantic")),
+    ("а на выходных?", "wknd"),
+]
+TEST_FOLLOW = [("а если дешевле?", "cheaper"), ("а в воскресенье можно?", ("date", 6)), ("а вечерком?", ("part", "evening")), ("и без театров", ("not", "culture", "театр"))]
+
+def follow(prev, how, today):
+    it = json.loads(json.dumps(prev))
+    it.pop("scout", None)
+    if how == "cheaper":
+        it["max"] = it["max"] * 2 // 3 if it.get("max") else 3000
+    elif how == "wknd":
+        it.pop("date", None); it["wknd"] = True
+    elif how[0] == "date":
+        it.pop("wknd", None); it["date"] = nearest(today, how[1]).isoformat()
+    elif how[0] == "rel":
+        it.pop("wknd", None); it["date"] = (today + dt.timedelta(days=how[1])).isoformat()
+    elif how[0] == "part":
+        it["part"] = how[1]
+    elif how[0] == "not":
+        it["not"] = sorted(set(it.get("not", []) + [how[1]])); it["notw"] = it.get("notw", []) + [how[2]]
+        if how[1] in it.get("cats", []):
+            it["cats"] = [c for c in it["cats"] if c != how[1]]
+    elif how[0] == "mood":
+        it["moods"] = [how[1]]
+    return it
+
+def g_dialog(today, test=False):
+    first = g_find(today, test)
+    prev = json.loads(first["messages"][2]["content"])
+    if R.random() < 0.2:  # a new topic after a search: not merged
+        nxt = R.choice([g_price, g_about, g_book, g_simple])(today, test)
+        msgs = first["messages"] + nxt["messages"][1:]
+        return {"messages": msgs}
+    phrase, how = R.choice(TEST_FOLLOW if test else FOLLOW)
+    it = {k: v for k, v in follow(prev, how, today).items() if v not in (None, "", [], False, 0)}
+    return {"messages": first["messages"] + [{"role": "user", "content": noisy(phrase)},
+                                             {"role": "assistant", "content": json.dumps(it, ensure_ascii=False, separators=(",", ":"))}]}
+
 GENS = [(g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
-        (g_add, 3), (g_budget, 2), (g_mode, 2)]
+        (g_add, 3), (g_budget, 2), (g_mode, 2), (g_dialog, 14)]
 
 def build(n, test=False):
     out, seen = [], set()
@@ -260,7 +305,7 @@ def build(n, test=False):
         g = R.choices([g for g, _ in GENS], weights)[0]
         today = dt.date(2026, 11, 1) + dt.timedelta(days=R.randrange(0, 150))
         e = g(today, test)
-        key = e["messages"][1]["content"].lower()
+        key = " | ".join(m["content"].lower() for m in e["messages"][1::2])
         if key in seen:
             continue
         seen.add(key)
@@ -281,7 +326,7 @@ def main():
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")
     stats = {}
     for e in train:
-        k = json.loads(e["messages"][2]["content"])["i"]
+        k = json.loads(e["messages"][-1]["content"])["i"] + ("+dialog" if len(e["messages"]) > 3 else "")
         stats[k] = stats.get(k, 0) + 1
     print(f"train {len(train)} · valid {len(valid)} · test {len(test)}", json.dumps(stats, ensure_ascii=False))
 
