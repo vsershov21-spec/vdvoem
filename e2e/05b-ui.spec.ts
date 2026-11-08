@@ -10,7 +10,11 @@ const probe = () => {
     for (const e of l.getEntries() as any[]) {
       if (e.hadRecentInput) continue
       ;(window as any).__cls += e.value
-      ;(window as any).__shifts.push({ v: +e.value.toFixed(4), n: (e.sources || []).map((s: any) => s.node?.className || s.node?.nodeName).slice(0, 3) })
+      ;(window as any).__shifts.push({ v: +e.value.toFixed(4), t: Math.round(e.startTime), n: (e.sources || []).map((s: any) => {
+        let el = s.node, path = []
+        while (el && path.length < 4) { path.push((el.className && typeof el.className === 'string' ? el.className.split(' ')[0] : el.nodeName) || '?'); el = el.parentElement }
+        return path.join('<') + ` y${Math.round(s.previousRect?.y)}→${Math.round(s.currentRect?.y)} h${Math.round(s.previousRect?.height)}→${Math.round(s.currentRect?.height)}`
+      }).slice(0, 3) })
     }
   }).observe({ type: 'layout-shift', buffered: true })
 }
