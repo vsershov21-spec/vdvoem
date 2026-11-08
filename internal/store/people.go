@@ -199,7 +199,7 @@ type Example struct {
 }
 
 func (s *Store) Examples(ctx context.Context, onlyAccepted bool) ([]Example, error) {
-	q := `SELECT input, calls, answer, accepted FROM llm_examples`
+	q := `SELECT id, input, calls, answer, accepted, outcome, src, created_at FROM llm_examples`
 	if onlyAccepted {
 		q += ` WHERE accepted=1`
 	}
@@ -212,10 +212,11 @@ func (s *Store) Examples(ctx context.Context, onlyAccepted bool) ([]Example, err
 	for rows.Next() {
 		var e Example
 		var a int
-		if err := rows.Scan(&e.Input, &e.Calls, &e.Answer, &a); err != nil {
+		var at int64
+		if err := rows.Scan(&e.ID, &e.Input, &e.Calls, &e.Answer, &a, &e.Outcome, &e.Src, &at); err != nil {
 			return nil, err
 		}
-		e.Accepted = a == 1
+		e.Accepted, e.At = a == 1, time.Unix(at, 0)
 		out = append(out, e)
 	}
 	return out, rows.Err()
