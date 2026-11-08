@@ -17,18 +17,19 @@ import (
 // only turns a request into filters; the server filters and ranks by both people's learned taste.
 
 type afishaQ struct {
-	Date      string   `json:"date"`    // YYYY-MM-DD
-	Weekend   bool     `json:"weekend"` // the nearest Saturday or Sunday
-	Part      string   `json:"part"`    // morning | day | evening
-	MaxRub    int64    `json:"max_price_rub"`
-	Include   []string `json:"categories"`
-	Exclude   []string `json:"exclude_categories"`
-	NotWords  []string `json:"exclude_words"`
-	Query     string   `json:"query"`
-	Horizon   string   `json:"horizon"` // week | later | any
-	WholeBank bool     `json:"include_bank"`
-	Limit     int      `json:"limit"`
-	Moods     []string `json:"moods"`
+	Date      string            `json:"date"`    // YYYY-MM-DD
+	Weekend   bool              `json:"weekend"` // the nearest Saturday or Sunday
+	Part      string            `json:"part"`    // morning | day | evening
+	MaxRub    int64             `json:"max_price_rub"`
+	Include   []string          `json:"categories"`
+	Exclude   []string          `json:"exclude_categories"`
+	NotWords  []string          `json:"exclude_words"`
+	Query     string            `json:"query"`
+	Horizon   string            `json:"horizon"` // week | later | any
+	WholeBank bool              `json:"include_bank"`
+	Limit     int               `json:"limit"`
+	Moods     []string          `json:"moods"`
+	Sem       map[int64]float64 `json:"-"` // similarity by meaning to the request (nil — off)
 }
 
 func (r *run) afisha(ctx context.Context, q afishaQ) any {
@@ -78,7 +79,7 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 				skip = true
 			}
 		}
-		if skip || q.Query != "" && !strings.Contains(low, stemQ(strings.ToLower(q.Query))) {
+		if skip || q.Query != "" && !strings.Contains(low, stemQ(strings.ToLower(q.Query))) && q.Sem[i.ID] < semMin {
 			continue
 		}
 		if !fitsDay(i, q, now, loc) {
@@ -91,7 +92,13 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		}
 		hits = append(hits, hit{i, t.Of(i)})
 	}
-	score := func(h hit) float64 { return h.m.Both + 0.35*app.MoodFit(h.i, q.Moods) }
+	score := func(h hit) float64 {
+		sc := h.m.Both + 0.35*app.MoodFit(h.i, q.Moods)
+		if v := q.Sem[h.i.ID]; v > semMin-0.12 { // closer in meaning to what was asked — higher
+			sc += 0.8 * (v - (semMin - 0.12))
+		}
+		return sc
+	}
 	sort.SliceStable(hits, func(a, b int) bool { return score(hits[a]) > score(hits[b]) })
 	if len(hits) == 0 && len(q.Moods) > 0 && len(late) > 0 && len(q.Moods) > 1 {
 		hits = late // two moods asked and nothing fits both: show the best of the rest

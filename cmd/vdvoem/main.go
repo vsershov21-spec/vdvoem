@@ -11,6 +11,7 @@
 //	TG_API_BASE     https://api.telegram.org (emulator in tests)
 //	AI_URL, AI_KEY, AI_MODEL   OpenAI-compatible endpoint (a local Ollama works); empty = rules only
 //	AI_TIMEOUT      seconds for one model step (default 25, local 90)
+//	EMBED_MODEL     embedding model on the same endpoint for search by meaning (bge-m3); empty = words only
 //	STT_URL         local whisper.cpp server for voice (deploy/stt.sh); empty = voice off
 //	TG_MODE         poll (default: the server fetches updates, no inbound connections) | webhook
 //	SETUP=1         register commands, menu button, description (and the webhook in webhook mode) at start
@@ -142,7 +143,7 @@ func main() {
 
 	hub := live.New()
 	a := &app.App{Live: hub, S: st, TG: client, AI: aiClient, Fetch: parse.Client(false), Now: time.Now, PublicURL: public, BotName: botName, Log: log}
-	helper := &assistant.Assistant{App: a, AI: aiClient}
+	helper := &assistant.Assistant{App: a, AI: aiClient, EmbedModel: env("EMBED_MODEL", "")}
 	if m := st.Setting(ctx, "intent_model"); m != "" && aiClient.Enabled() { // the fine-tuned model survives restarts
 		helper.SetIntentModel(m)
 		log.Info("intent model", "model", m)

@@ -61,9 +61,11 @@ type Reply struct {
 }
 
 type Assistant struct {
-	App   *app.App
-	AI    *ai.Client
-	cache bankCache
+	App        *app.App
+	AI         *ai.Client
+	EmbedModel string // search by meaning (e.g. bge-m3 in Ollama); "" — words only
+	cache      bankCache
+	sem        semIndex
 }
 
 // Tuned: model names starting with «vdvoem-» were fine-tuned on the intent dataset: they get the short prompt

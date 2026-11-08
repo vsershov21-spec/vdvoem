@@ -538,6 +538,11 @@ func trivial(rule Intent, text string) bool {
 
 // Warm keeps the local model loaded with its prompt prefix cached (called every few minutes).
 func (as *Assistant) Warm(ctx context.Context) {
+	if as.EmbedModel != "" && as.AI.Enabled() { // the embedding model stays loaded too
+		ectx, ecancel := context.WithTimeout(ctx, 30*time.Second)
+		_, _ = as.AI.Embed(ectx, as.EmbedModel, []string{"привет"})
+		ecancel()
+	}
 	c := as.IntentModel()
 	if !c.IsLocal() {
 		return

@@ -80,7 +80,7 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 	case "suggest":
 		return r.suggestText(ctx, in)
 	case "find":
-		return r.find(ctx, in)
+		return r.find(ctx, in, text)
 	}
 	if !isGreeting(text) {
 		if t, ok := r.chatter(ctx, text); ok {
@@ -198,9 +198,10 @@ func ruWeekdayAcc(t time.Time) string {
 	return [...]string{"воскресенье", "понедельник", "вторник", "среду", "четверг", "пятницу", "субботу"}[t.Weekday()]
 }
 
-func (r *run) find(ctx context.Context, in Intent) Reply {
+func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 	cond := r.cond(in)
 	q := in.afisha()
+	q.Sem = r.as.Semantic(ctx, r.c.Space.ID, firstNonEmpty(in.Q, text))
 	q.WholeBank = true // the bank and the afisha together; the scout's own finds rank by the same taste
 	if in.Scout && !in.refined {
 		q.WholeBank = false
@@ -312,7 +313,7 @@ func (r *run) suggestText(ctx context.Context, in Intent) Reply {
 	}
 	if len(in.Moods) > 0 && in.Mode != "random" { // a mood is a search, not a lottery
 		in.I = "find"
-		return r.find(ctx, in)
+		return r.find(ctx, in, "")
 	}
 	res := r.suggest(ctx, in.Mode, in.Date, in.Part, in.Max, cat, 3)
 	if in.Mode == "random" {

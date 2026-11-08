@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -42,6 +43,29 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /agent/learn", local(a.agentLearn))
 	mux.HandleFunc("POST /agent/learn", local(a.agentLabel))
 	mux.HandleFunc("GET /agent/train", local(a.agentTrain))
+	mux.HandleFunc("GET /agent/semantic", local(a.agentSemantic))
+}
+
+// agentSemantic: what a request is closest to by meaning (?space=1&q=…) — to tune the threshold
+func (a *API) agentSemantic(w http.ResponseWriter, r *http.Request) {
+	space, _ := strconv.ParseInt(r.URL.Query().Get("space"), 10, 64)
+	sim := a.Helper.Semantic(r.Context(), space, r.URL.Query().Get("q"))
+	ideas, _ := a.App.S.Ideas(r.Context(), space, "draft", "active")
+	type row struct {
+		Title string  `json:"title"`
+		Sim   float64 `json:"sim"`
+	}
+	out := []row{}
+	for _, i := range ideas {
+		if v, ok := sim[i.ID]; ok {
+			out = append(out, row{i.Title, float64(int(v*1000)) / 1000})
+		}
+	}
+	sort.Slice(out, func(x, y int) bool { return out[x].Sim > out[y].Sim })
+	if len(out) > 15 {
+		out = out[:15]
+	}
+	writeJSON(w, 200, map[string]any{"indexed": len(sim), "top": out})
 }
 
 // agentLearn: how live requests ended over the last days, and the misses to label (GET ?days=7)
