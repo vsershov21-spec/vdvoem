@@ -185,8 +185,8 @@ func TestPersonas(t *testing.T) {
 		}
 		if rd.State == domain.StateTime {
 			days := app.SlotDays(a.Now(), v.Loc())
-			k1 := days[2].Format("2006-01-02") + ":2"
-			_, _ = a.SubmitSlots(ctx, v, rd.ID, []string{k1, days[3].Format("2006-01-02") + ":2"})
+			k1 := days[len(days)-1].Format("2006-01-02") + ":2"
+			_, _ = a.SubmitSlots(ctx, v, rd.ID, []string{k1, days[0].Format("2006-01-02") + ":2"})
 			rd, _ = a.SubmitSlots(ctx, n, rd.ID, []string{k1})
 		}
 		if rd.State == domain.StateConfirm {
