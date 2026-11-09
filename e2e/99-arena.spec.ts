@@ -5,6 +5,7 @@ import { people, pair, phone, open, api, addIdeas, planMeeting, say, chat, waitM
 // ARENA: one couple's whole week in the app, every screen captured (light and dark, as each partner) with the text
 // on it and both bot chats — the material for the UI/UX review. It never fails the build: a step that breaks is
 // written down as a finding instead.
+test.use({ actionTimeout: 6000, navigationTimeout: 15000 })
 const LOG = '.run/arena.log', BOT = '.run/arena-bot.log'
 let n = 0
 const day = (d: number, hm = '19:00') => { const t = new Date(Date.now() + d * 86400_000); const [h, m] = hm.split(':'); t.setHours(+h, +m, 0, 0); return t.toISOString() }
@@ -28,7 +29,7 @@ async function step(name: string, f: () => Promise<unknown>) {
 const go = async (p: Page, path: string) => { await p.goto(`/app/${path}`); await p.waitForTimeout(600) }
 
 test('ARENA: неделя пары в приложении — все экраны для разбора', async ({ browser }) => {
-  test.setTimeout(420_000)
+  test.setTimeout(900_000)
   mkdirSync('.run', { recursive: true }); mkdirSync('shots', { recursive: true })
   writeFileSync(LOG, 'ARENA run ' + new Date().toISOString() + '\n')
   const [v, a] = people('Вова', 'Настя')
@@ -95,7 +96,7 @@ test('ARENA: неделя пары в приложении — все экран
     await p.keyboard.press('Escape')
   })
   await step('surprise', async () => {
-    await go(p, ''); await p.getByTestId('island').click(); await p.getByRole('button', { name: 'Удиви нас' }).click(); await cap(p, 'surprise', '«Удиви нас»')
+    await go(p, ''); await p.getByTestId('island').click(); await p.getByText('Удиви нас').first().click(); await cap(p, 'surprise', '«Удиви нас»')
     await p.keyboard.press('Escape')
   })
   // ---------- choosing together: a fresh round ----------
