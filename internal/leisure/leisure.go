@@ -74,6 +74,21 @@ func at(t, stem string) bool {
 	}
 }
 
+// wanted: the text without what is turned down — «без стендапа», «кроме квестов», «не хотим караоке»
+func wanted(t string) string {
+	w := strings.Fields(t)
+	no := map[string]bool{"без": true, "кроме": true, "не": true, "никаких": true, "никакого": true, "никакой": true, "нет": true}
+	verb := map[string]bool{"хочу": true, "хотим": true, "люблю": true, "любим": true, "надо": true, "нужно": true, "нужен": true, "нужна": true, "предлагай": true}
+	out := make([]string, 0, len(w))
+	for i, x := range w {
+		if i > 0 && no[w[i-1]] && !no[x] || i > 1 && w[i-2] == "не" && verb[w[i-1]] {
+			continue
+		}
+		out = append(out, x)
+	}
+	return " " + strings.Join(out, " ") + " "
+}
+
 func atWords(t, w []string) bool {
 	for i := 0; i+len(w) <= len(t); i++ {
 		ok := true
@@ -100,7 +115,7 @@ func lastRune(s string) rune {
 
 // Detect: the kinds a text speaks of, most specific first (an «органный концерт при свечах» is both)
 func Detect(text string) []string {
-	t := norm(text)
+	t := wanted(norm(text))
 	var out []string
 	for _, k := range Kinds {
 		for _, s := range k.Stems {
