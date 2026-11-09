@@ -123,5 +123,5 @@ test('E37 подборка: помощник показывает лучшие, 
   await shot(p, 'E37-pick')
   const before = await lastId(n)
   await p.getByTestId('pick-send').getByRole('button').click()
-  await waitMsg(n, /прислал\(а\) подборку/, 10000, before)
+  await waitMsg(n, /Вова прислал подборку/, 10000, before)
 })

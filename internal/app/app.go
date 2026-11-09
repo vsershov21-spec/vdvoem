@@ -493,18 +493,20 @@ const ideaBatch = 2 * time.Minute
 
 func (a *App) sendIdeaCard(ctx context.Context, chatID int64, i store.Idea, similar int64) {
 	if similar == 0 {
-		var first *store.Idea
+		// the first two get their own card (a person typing ideas one by one sees each); from the third on — one summary
+		var recent []store.Idea
 		if all, err := a.S.Ideas(ctx, i.SpaceID, domain.IdeaActive, domain.IdeaDraft); err == nil {
-			for k := range all {
-				x := all[k]
-				if x.ID != i.ID && x.AuthorID == i.AuthorID && x.CreatedAt.After(a.now().Add(-ideaBatch)) && earlier(x, i) && (first == nil || earlier(x, *first)) {
-					first = &all[k]
+			for _, x := range all {
+				if x.ID != i.ID && x.AuthorID == i.AuthorID && x.CreatedAt.After(a.now().Add(-ideaBatch)) && earlier(x, i) {
+					recent = append(recent, x)
 				}
 			}
 		}
-		if first != nil {
-			_ = a.S.Enqueue(ctx, "idea_batch", first.CreatedAt.Add(ideaBatch+30*time.Second), map[string]any{"chat": chatID, "space": i.SpaceID, "author": i.AuthorID, "first": first.ID, "since": first.CreatedAt.Unix()},
-				fmt.Sprintf("idea_batch:%d:%d", chatID, first.ID))
+		if len(recent) >= 2 {
+			sort.Slice(recent, func(p, q int) bool { return earlier(recent[p], recent[q]) })
+			anchor := recent[1] // the last one that got a card
+			_ = a.S.Enqueue(ctx, "idea_batch", recent[0].CreatedAt.Add(ideaBatch+30*time.Second), map[string]any{"chat": chatID, "space": i.SpaceID, "author": i.AuthorID, "first": anchor.ID},
+				fmt.Sprintf("idea_batch:%d:%d", chatID, anchor.ID))
 			return
 		}
 	}
@@ -545,15 +547,24 @@ func earlier(x, y store.Idea) bool {
 	return x.CreatedAt.Before(y.CreatedAt) || x.CreatedAt.Equal(y.CreatedAt) && x.ID < y.ID
 }
 
-func (a *App) sendIdeaBatch(ctx context.Context, chat, space, author, first int64, since time.Time) error {
+func (a *App) sendIdeaBatch(ctx context.Context, chat, space, author, first int64) error {
 	all, err := a.S.Ideas(ctx, space, domain.IdeaActive, domain.IdeaDraft)
 	if err != nil {
 		return err
 	}
+	var anchor store.Idea
+	for _, x := range all {
+		if x.ID == first {
+			anchor = x
+		}
+	}
+	if anchor.ID == 0 {
+		return nil
+	}
 	var lines []string
 	n := 0
 	for _, x := range all {
-		if x.ID == first || x.AuthorID != author || x.CreatedAt.Before(since) || !x.Parsed {
+		if x.AuthorID != author || !earlier(anchor, x) || x.CreatedAt.Sub(anchor.CreatedAt) > 2*ideaBatch || !x.Parsed {
 			continue
 		}
 		n++
@@ -1500,12 +1511,12 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 		return a.runScoutNote(ctx, p.Idea, p.Kind, p.Days)
 	case "idea_batch":
 		var p struct {
-			Chat, Space, Author, First, Since int64
+			Chat, Space, Author, First int64
 		}
 		if err := jsonUnmarshal(j.Payload, &p); err != nil {
 			return nil
 		}
-		return a.sendIdeaBatch(ctx, p.Chat, p.Space, p.Author, p.First, time.Unix(p.Since, 0))
+		return a.sendIdeaBatch(ctx, p.Chat, p.Space, p.Author, p.First)
 	case "partner_new":
 		var p struct {
 			Member int64 `json:"member"`

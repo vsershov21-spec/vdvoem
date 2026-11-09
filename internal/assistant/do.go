@@ -572,6 +572,8 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 	var b strings.Builder
 	n := plural(found, "вариант", "варианта", "вариантов")
 	switch {
+	case len(in.Moods) > 0:
+		fmt.Fprintf(&b, "Под настроение%s — %s.", condSuffix(cond), n)
 	case in.Scout:
 		fmt.Fprintf(&b, "Скаут нашёл%s %s.", condSuffix(cond), n)
 	case cond != "":

@@ -5,7 +5,7 @@ test('E23 «Где именно»: общая идея → ссылка отве
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   await say(v, 'Каток')
-  const card = await waitMsg(v, /Это пока общая идея — уточни место/)
+  const card = await waitMsg(v, /Где именно\?/)
   const buttons = JSON.stringify(card.reply_markup)
   expect(buttons).toContain('yandex.ru/maps/?text=')
   expect(buttons).toContain('Подобрать места')
