@@ -26,7 +26,7 @@ test('E23 «Где именно»: общая идея → ссылка отве
   await np.getByLabel('Добавить вариант места').fill('Каток в Измайлово')
   await np.getByLabel('Добавить вариант', { exact: true }).click()
   await expect(np.getByTestId('place-option')).toHaveCount(5)
-  await expect(np.getByTestId('place-option').filter({ hasText: 'Каток в Измайлово' })).toContainText('добавил(а) ты')
+  await expect(np.getByTestId('place-option').filter({ hasText: 'Каток в Измайлово' })).toContainText('ты добавила')
   await shot(np, 'E23-options')
   await waitMsg(v, /Настя добавила вариант места к «Каток»: <b>Каток в Измайлово/)
   // after the match: pick the place on the ticket → the calendar event carries the address
