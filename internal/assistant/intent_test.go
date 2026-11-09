@@ -275,6 +275,11 @@ func TestKindCases(t *testing.T) {
 		if s := sanitize(want); !sameSet(s.G, want.G) {
 			t.Errorf("%q: label kinds %v are not on the map", tc.Q, want.G)
 		}
+		lab := want
+		lab.G, lab.Cats = nil, nil
+		if m := withKinds(lab, tc.Q); !sameSet(m.Cats, want.Cats) {
+			t.Errorf("%q: label cats %v, the map says %v", tc.Q, want.Cats, m.Cats)
+		}
 		got := withKinds(rulesIntent(tc.Q, now), tc.Q)
 		if !sameSet(got.G, want.G) || got.I != "find" {
 			b, _ := json.Marshal(got)

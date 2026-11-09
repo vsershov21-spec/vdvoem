@@ -80,7 +80,8 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 				continue
 			}
 		}
-		if len(q.Include) > 0 && !in(q.Include, i.Category) || in(q.Exclude, i.Category) {
+		// a kind asked for says more than a category: a stand-up filed under «культура» is still a stand-up
+		if len(q.Include) > 0 && len(q.G) == 0 && !in(q.Include, i.Category) || in(q.Exclude, i.Category) {
 			continue
 		}
 		if q.MaxRub > 0 && i.PriceMin > q.MaxRub*100 {

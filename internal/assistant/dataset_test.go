@@ -65,15 +65,18 @@ func TestDatasetLabels(t *testing.T) {
 			if matches(rulesIntent(e.Messages[1].Content, now), in, now) {
 				ok++
 			}
-			if len(in.G) > 0 { // the kinds named in words must be found by the app's own map, whatever the model says
+			// the kinds named in words are what the app's own map finds — in every request, labelled or not
+			lab := in
+			lab.G = nil
+			got := withKinds(lab, e.Messages[1].Content)
+			if len(in.G) > 0 || len(got.G) > 0 || got.I != in.I {
 				kinds++
-				got := withKinds(rulesIntent(e.Messages[1].Content, now), e.Messages[1].Content)
-				if sameSet(got.G, in.G) {
+				if sameSet(got.G, in.G) && got.I == in.I {
 					kindsOK++
-				} else if misspelt(e.Messages[1].Content, in.G) {
+				} else if len(got.G) < len(in.G) && misspelt(e.Messages[1].Content, in.G) {
 					kinds-- // a typo inside the very word is the model's job, not the map's
 				} else if kinds-kindsOK <= 8 {
-					t.Logf("kinds: %q → %v, label %v", e.Messages[1].Content, got.G, in.G)
+					t.Logf("kinds: %q → %s %v, label %s %v", e.Messages[1].Content, got.I, got.G, in.I, in.G)
 				}
 			}
 		}
