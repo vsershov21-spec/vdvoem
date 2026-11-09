@@ -32,23 +32,18 @@ test('E08 копилка и папки: умные папки, поиск, пр�
   await api(n, 'POST', `/ideas/${ужин}/wish`, { wish: 'want' })
   const ctx = await phone(browser)
   const p = await open(ctx, v, 'ideas')
-  // folders are categories only: every idea sits in exactly one of them
-  await expect(p.locator('.folder', { hasText: 'Еда' })).toBeVisible()
-  const total = await p.locator('.folder').evaluateAll(fs => fs.reduce((n, f) => n + Number(f.getAttribute('aria-label')!.split(': ')[1]), 0))
-  expect(total, 'no idea is counted twice').toBe(5)
-  await expect(p.locator('.folder', { hasText: 'Дела' })).toContainText('1')
+  // one screen instead of folders: what you both want on top, then your ideas as pictures, categories as chips
+  await expect(p.getByTestId('rail-both')).toContainText('Ужин в грузинском ресторане')
+  await expect(p.getByText('Ваши идеи · 4')).toBeVisible()
+  await expect(p.locator('.grid .icard')).toHaveCount(4)
   await shot(p, 'E08-folders')
-  // «Хотим оба» is a filter, not a folder
+  // «Хотим оба» is a filter
   await p.getByRole('tab', { name: /Хотим оба/ }).click()
   await expect(p.locator('.icard')).toHaveCount(1)
   await expect(p.locator('.icard')).toContainText('Ужин в грузинском ресторане')
   await shot(p, 'E08-filter-both')
-  await p.getByRole('tab', { name: 'Папки' }).click()
-  const food = p.locator('.folder', { hasText: 'Еда' })
-  await food.click()                       // first tap fans the cards
-  await expect(food.locator('.folder__wrap.is-fan')).toBeVisible()
-  await shot(p, 'E08-fan')
-  await food.click()                       // second tap opens
+  await p.getByRole('tab', { name: 'Всё' }).click()
+  await p.locator('.fchips').last().getByRole('button', { name: /Еда/ }).click()
   await expect(p.getByText('Ужин в грузинском ресторане')).toBeVisible()
   await p.goto('/app/ideas')
   await p.getByPlaceholder('Найти в копилке').fill('музе')

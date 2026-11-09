@@ -1,4 +1,6 @@
+import type React from 'react'
 import { useEffect, useState } from 'react'
+import { motion, useMotionValue, useTransform } from 'framer-motion'
 import type { Idea, Person } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, del, humanError } from '../lib/api'
@@ -39,7 +41,9 @@ export function Triage({ partner }: { partner?: Person }) {
   return (<>
     <SubHeader title={`Разбор · ${k + 1} из ${list.length}`} />
     <div className="progress rise" style={{ ['--p' as any]: `${Math.round(100 * k / list.length)}%` }}><i /></div>
-    <div key={i.id} className="card rise" data-testid="triage-card" style={{ padding: 8 }}>
+    <p className="caption muted" style={{ margin: '0 2px 8px', textAlign: 'center' }}>Свайп вправо — хочу · вверх — очень · влево — пропущу</p>
+    <Swipe key={i.id} onSwipe={d => wish(d === 'right' ? 'want' : d === 'up' ? 'very' : 'skip')}>
+    <div className="card" data-testid="triage-card" style={{ padding: 8 }}>
       <Cover idea={i} h={220} big>
         <span>{when && <span className="pill pill--glass"><Icon n="cal" s={12} w={2.2} />{when}</span>}</span>
         <div className="cover__title" style={{ fontSize: 22, lineHeight: '26px' }}>{i.title}</div>
@@ -53,6 +57,7 @@ export function Triage({ partner }: { partner?: Person }) {
         {i.partner_marked && <p className="caption muted" style={{ margin: 0 }}>{partner?.name || 'Партнёр'} уже отметил(а) — увидишь после своей отметки</p>}
       </div>
     </div>
+    </Swipe>
     <div className="triage__acts rise" style={{ ['--d' as any]: 1 }}>
       <Btn kind="accent" block shine icon="heart" onClick={() => wish('very')}>Очень хочу</Btn>
       <div className="row" style={{ gap: 8 }}>
@@ -66,4 +71,26 @@ export function Triage({ partner }: { partner?: Person }) {
       </div>
     </div>
   </>)
+}
+
+// a card you can throw: right — хочу, up — очень, left — пропущу (the buttons below do the same)
+function Swipe({ children, onSwipe }: { children: React.ReactNode; onSwipe: (d: 'left' | 'right' | 'up') => void }) {
+  const x = useMotionValue(0), y = useMotionValue(0)
+  const rotate = useTransform(x, [-200, 200], [-12, 12])
+  const like = useTransform(x, [30, 120], [0, 1]), nope = useTransform(x, [-120, -30], [1, 0]), very = useTransform(y, [-120, -30], [1, 0])
+  return (
+    <motion.div className="swipe" style={{ x, y, rotate, touchAction: 'none' }} drag dragSnapToOrigin dragElastic={0.9}
+      initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+      onDragEnd={(_, info) => {
+        const { offset: o, velocity: v } = info
+        if (o.y < -110 || v.y < -700) onSwipe('up')
+        else if (o.x > 110 || v.x > 700) onSwipe('right')
+        else if (o.x < -110 || v.x < -700) onSwipe('left')
+      }}>
+      <motion.span className="swipe__tag swipe__tag--like" style={{ opacity: like }}>Хочу</motion.span>
+      <motion.span className="swipe__tag swipe__tag--nope" style={{ opacity: nope }}>Пропущу</motion.span>
+      <motion.span className="swipe__tag swipe__tag--very" style={{ opacity: very }}>Очень!</motion.span>
+      {children}
+    </motion.div>
+  )
 }

@@ -19,7 +19,7 @@ export type RoundState = 'time' | 'vote' | 'confirm' | 'planned' | 'done' | 'exp
 
 export type Round = {
   id: number; state: RoundState; version: number; opened_at: number; expires_at: number
-  days: string[]; today?: string; horizon?: string; my_slots: string[]; partner_slots?: string[]; sent: boolean; partner_sent: boolean
+  days: string[]; today?: string; horizon?: string; my_slots: string[]; partner_slots?: string[]; my_busy?: string[]; partner_busy?: string[]; sent: boolean; partner_sent: boolean
   voted: boolean; partner_voted: boolean; my_vote?: number; partner_vote?: number
   confirmed: boolean; partner_confirmed: boolean; again: string; budget: number
   windows?: { from: number; to: number }[]; triple: Idea[]; chosen?: Idea
@@ -32,7 +32,7 @@ export type RouteStop = { id: number; idea: Idea; starts_at: number; ends_at: nu
 
 export type Home = {
   me: Person; partner?: Person; paired: boolean
-  counts: { ideas: number; chores: number; both_want: number; unmarked: number }
+  counts: { ideas: number; chores: number; both_want: number; unmarked: number; fresh?: number }
   to_mark: Idea[]; round?: Round; next?: Round
   urgent?: { idea_id: number; title: string; note?: string; when?: string; fixed: boolean }[]
   going?: Round[]
@@ -40,7 +40,7 @@ export type Home = {
 
 export type Card = { type: 'idea' | 'meeting'; idea_id?: number; round_id?: number; title: string; meta?: string; image?: string; category?: string; why?: string; when?: string }
 export type ActionBtn = { id: string; label: string; kind: string }
-export type Reply = { text: string; cards?: Card[]; actions?: ActionBtn[]; intent?: { i: string }; ms?: number; next?: string[] }
+export type Reply = { text: string; cards?: Card[]; actions?: ActionBtn[]; intent?: { i: string }; ms?: number; next?: string[]; pick?: { id: number; title: string; n: number } }
 export type ChatMsg = { id: number; role: 'user' | 'assistant'; at: number; reply: Reply }
 
 export type Settings = {

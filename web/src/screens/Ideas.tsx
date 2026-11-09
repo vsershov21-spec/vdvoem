@@ -1,11 +1,11 @@
 import { plural } from '../lib/format'
 import { useCallback, useMemo, useState } from 'react'
-import type { Home, Idea } from '../lib/types'
+import type { Home, Idea, Person } from '../lib/types'
 import { useLoad, useOn, emit } from '../lib/data'
 import { go } from '../lib/router'
 import { post, humanError } from '../lib/api'
 import { Empty, IdeaTile, Skel, SubHeader, toast, Btn } from '../ui/kit'
-import { Folder, type TONES } from '../ui/Folder'
+import { type TONES } from '../ui/Folder'
 import { haptic } from '../lib/tg'
 import { Afisha } from './Afisha'
 import { Icon } from '../ui/icons'
@@ -66,15 +66,14 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
   const chips = FILTERS.filter(f => counts[f.id] > 0 || f.id === flt)
   const active = FILTERS.find(f => f.id === flt)
   const filtered = active ? leisure.filter(i => active.test(i, now)) : []
-  const shown = FOLDERS.map(f => ({ f, list: ideas.filter(i => f.test(i, now)) })).filter(x => x.f.always || x.list.length > 0)
   const pick = (id: string) => { haptic.select(); setFlt(f => f === id ? '' : id) }
   return (
     <>
-      <header className="hdr"><h1 className="display">Копилка</h1><span className="spacer" /><span className="pill">{`${leisure.length} ${plural(leisure.length, 'идея', 'идеи', 'идей')}`}</span></header>
+      <header className="hdr"><h1 className="display">Куда пойти</h1><span className="spacer" /><span className="pill">{`${leisure.length} ${plural(leisure.length, 'идея', 'идеи', 'идей')}`}</span></header>
       <label className="searchbar"><Icon n="search" s={19} /><input placeholder="Найти в копилке" value={q} onChange={e => setQ(e.target.value)} />{q && <button className="iconbtn" style={{ width: 28, height: 28, boxShadow: 'none' }} onClick={() => setQ('')} aria-label="Очистить"><Icon n="x" s={14} /></button>}</label>
       {!q.trim() && leisure.length > 0 && (
         <div className="wkchips fchips" role="tablist" aria-label="Показать">
-          <button className="wkchip" role="tab" aria-selected={!flt} data-on={!flt || undefined} onClick={() => { haptic.select(); setFlt('') }}>Папки</button>
+          <button className="wkchip" role="tab" aria-selected={!flt} data-on={!flt || undefined} onClick={() => { haptic.select(); setFlt('') }}>Всё</button>
           <button className="wkchip" onClick={() => go('ideas/scout')}>🔭 Афиша</button>
           {chips.map(f => <button key={f.id} className="wkchip" role="tab" aria-selected={flt === f.id} data-on={flt === f.id || undefined} onClick={() => pick(f.id)}>
             {f.id === 'both' && <Icon n="heart" s={13} w={2.4} />}{f.label}<b>{counts[f.id]}</b></button>)}
@@ -90,10 +89,12 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
           <div className="grid" key={active.id}>{filtered.map((i, k) => <IdeaTile key={i.id} idea={i} me={home.me} d={k} onOpen={() => go('idea/' + i.id)} />)}</div>
       ) : (<>
         <Going list={home.going || []} />
-        {!!home.going?.length && <div className="sec"><h2 className="title"><span className="orange-ind" />Идеи</h2></div>}
-        <div className="folders">
-          {shown.map(({ f, list }, k) => <Folder key={f.id} d={k} label={f.label} count={list.length} ideas={list.slice(0, 3)} tone={f.tone} icon={f.icon} onOpen={() => go('ideas/' + f.id)} />)}
-        </div>
+        <Rail title="♥ Хотите оба" items={ideas.filter(i => FILTERS[0].test(i, now)).slice(0, 10)} me={home.me} more={counts.both > 0 ? () => pick('both') : undefined} testid="rail-both" />
+        <NewRail me={home.me} />
+        {(counts.unmarked || 0) > 3 && <button className="triage-cta rise" onClick={() => go('triage')}><Icon n="folder" s={20} /><span><b>Разобрать неотмеченное · {counts.unmarked}</b><small>По одной карточке — минут на пять</small></span><Icon n="chev" s={16} w={2.4} /></button>}
+        <div className="sec"><h2 className="title"><span className="orange-ind" />Ваши идеи · {leisure.length}</h2><button className="link" onClick={() => go('ideas/chores')}>Дела</button></div>
+        <div className="wkchips fchips">{FOLDERS.filter(f => !f.chores).map(f => { const n = ideas.filter(i => f.test(i, now)).length; return n ? <button key={f.id} className="wkchip" onClick={() => go('ideas/' + f.id)}>{f.label}<b>{n}</b></button> : null })}</div>
+        <div className="grid">{[...leisure].sort(byUse).map((i, k) => <IdeaTile key={i.id} idea={i} me={home.me} d={k} onOpen={() => go('idea/' + i.id)} />)}</div>
         {!!arch.data?.ideas.length && <button className="archrow" onClick={() => go('ideas/archive')}><Icon n="trash" s={17} />Архив<span className="spacer" /><span className="muted">{arch.data.ideas.length}</span><Icon n="chev" s={15} w={2.2} /></button>}
       </>)}
     </>
@@ -123,4 +124,30 @@ function Chores({ list, me }: { list: Idea[]; me: string }) {
       <div style={{ padding: 12 }}><Btn kind="soft" block sm icon="plus" onClick={() => go('assistant')}>Спросить, что сделать на неделе</Btn></div>
     </div>
   )
+}
+
+// the bank, most useful first: what has a date soon, then what you both want, then what one of you wants
+function byUse(a: Idea, b: Idea) {
+  const now = Date.now() / 1000, soon = (i: Idea) => i.starts_at && i.starts_at > now && i.starts_at - now < 21 * 86400 ? i.starts_at : 9e12
+  const w = (x?: string) => x === 'very' ? 2 : x === 'want' ? 1 : 0, score = (i: Idea) => w(i.my_wish) + w(i.partner_wish)
+  return soon(a) - soon(b) || score(b) - score(a) || b.created_at - a.created_at
+}
+
+function Rail({ title, items, me, more, testid }: { title: string; items: Idea[]; me: Person; more?: () => void; testid?: string }) {
+  if (!items.length) return null
+  return (<>
+    <div className="sec"><h2 className="title">{title}</h2>{more && <button className="link" onClick={more}>Все</button>}</div>
+    <div className="rail" data-testid={testid}>{items.map((i, k) => <div key={i.id} style={{ width: 200 }}><IdeaTile idea={i} me={me} d={k} onOpen={() => go('idea/' + i.id)} /></div>)}</div>
+  </>)
+}
+
+// what the scout and the channels found and neither of you has marked — the best for you two first
+function NewRail({ me }: { me: Person }) {
+  const res = useLoad<{ ideas: Idea[]; counts: Record<string, number> }>('/afisha?horizon=all&source=all&sort=match&fresh=1')
+  const items = (res.data?.ideas || []).slice(0, 10)
+  if (!items.length) return null
+  return (<>
+    <div className="sec"><h2 className="title">🆕 Новое для вас · {res.data?.counts.fresh ?? items.length}</h2><button className="link" onClick={() => go('ideas/scout')}>Вся афиша</button></div>
+    <div className="rail" data-testid="rail-new">{items.map((i, k) => <div key={i.id} style={{ width: 200 }}><IdeaTile idea={i} me={me} d={k} onOpen={() => go('idea/' + i.id)} /></div>)}</div>
+  </>)
 }

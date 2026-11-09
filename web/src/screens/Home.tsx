@@ -38,6 +38,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
           <Btn kind="surface" block icon="spark" onClick={() => onSurprise('best')}>Подскажи</Btn>
         </div>
       )}
+      {home.paired && <Now home={home} />}
       {(home.going?.length || 0) > 1 && <Going list={home.going!} />}
       <Dashboard s={stats.data} home={home} />
       <ToMark ideas={home.to_mark || []} total={home.counts.unmarked} onAdd={onAdd} />
@@ -111,6 +112,29 @@ function RoundCard({ r, home }: { r: Round; home: HomeT }) {
       </div>
     </div>
   )
+}
+
+// «Что сделать сейчас»: every open loop as one row with one tap — answers, tickets, marks, news from the scout
+function Now({ home }: { home: HomeT }) {
+  const pn = home.partner?.name || 'Партнёр'
+  const rows: { k: string; icon: string; title: string; sub: string; go: string; hot?: boolean }[] = []
+  const r = home.round
+  if (r?.state === 'time' && r.partner_sent && !r.sent) rows.push({ k: 'time', icon: 'clock', title: `${pn} предложил(а) время`, sub: 'Выбери подходящее или предложи своё', go: 'round/' + r.id, hot: true })
+  if (r?.state === 'time' && !r.partner_sent && !r.sent) rows.push({ k: 'time0', icon: 'clock', title: 'Отметь, когда тебе удобно', sub: r.chosen ? r.chosen.title : 'Выбираем, куда пойти', go: 'round/' + r.id, hot: true })
+  if (r?.state === 'vote' && !r.voted) rows.push({ k: 'vote', icon: 'heart', title: 'Выбери из трёх вариантов', sub: 'Голос партнёра откроется после твоего', go: 'round/' + r.id, hot: true })
+  if (r?.state === 'confirm' && !r.confirmed) rows.push({ k: 'conf', icon: 'check', title: 'Подтверди встречу', sub: r.chosen?.title || '', go: 'round/' + r.id, hot: true })
+  for (const g of home.going || []) if (g.state === 'planned' && g.book && !g.tickets) rows.push({ k: 'tk' + g.id, icon: 'wallet', title: `${g.book.label}: ${g.chosen?.title || ''}`, sub: g.when || '', go: 'round/' + g.id })
+  if (home.counts.unmarked > 0) rows.push({ k: 'mark', icon: 'folder', title: `Отметь ${home.counts.unmarked} ${plural(home.counts.unmarked, 'идею', 'идеи', 'идей')}`, sub: 'По одной карточке — сначала то, что скоро', go: 'triage' })
+  if ((home.counts.fresh || 0) > 0) rows.push({ k: 'fresh', icon: 'spark', title: `🆕 ${home.counts.fresh} новых от скаута и каналов`, sub: 'Сверху — то, что понравится вам обоим', go: 'ideas/scout' })
+  if (!rows.length) return null
+  return (<>
+    <div className="sec"><h2 className="title"><span className="orange-ind" />Сейчас</h2></div>
+    <div className="list rise" data-testid="now">
+      {rows.slice(0, 5).map(x => <button key={x.k} className="li" onClick={() => go(x.go)}>
+        <span className="li__ico" style={x.hot ? { background: 'color-mix(in srgb, var(--accent) 16%, transparent)', color: 'var(--accent)' } : undefined}><Icon n={x.icon} s={18} /></span>
+        <span className="li__main"><b>{x.title}</b>{x.sub && <span>{x.sub}</span>}</span><Icon n="chev" s={15} w={2.2} /></button>)}
+    </div>
+  </>)
 }
 
 function Who({ p, done, color }: { p: string; done: boolean; color: string }) {

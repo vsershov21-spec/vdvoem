@@ -759,3 +759,53 @@ func TestUrgent(t *testing.T) {
 		t.Fatalf("%q", f.last(2))
 	}
 }
+
+// «подборка»: the assistant keeps everything it found as a list; the list goes to the partner in one tap
+func TestPickAndBusy(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	var picks []app.ScoutPick
+	for k := 0; k < 9; k++ {
+		picks = append(picks, app.ScoutPick{Title: fmt.Sprintf("Концерт номер %d", k+1), Category: "culture", Starts: ck.t.AddDate(0, 0, 2+k%4).Format("2006-01-02") + "T19:00", PriceRub: int64(1000 + 300*k), Score: 7})
+	}
+	if _, err := a.ScoutPicks(ctx, v.Space.ID, picks); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := as.Ask(ctx, v, "что есть на неделе?")
+	if rep.Pick == nil || rep.Pick.N < 5 || len(rep.Cards) >= rep.Pick.N {
+		t.Fatalf("a search with more than fits the chat keeps a list: %+v", rep.Pick)
+	}
+	p, err := a.S.Pick(ctx, v.Space.ID, rep.Pick.ID)
+	if err != nil || len(p.IDs) != rep.Pick.N {
+		t.Fatal(err)
+	}
+	if err := a.SendPick(ctx, v, p.ID); err != nil || !strings.Contains(f.last(2), "прислал(а) подборку") {
+		t.Fatalf("send: %v %q", err, f.last(2))
+	}
+	if _, err := a.S.Pick(ctx, n.Space.ID+99, p.ID); err == nil {
+		t.Fatal("another space cannot read the list")
+	}
+	// busy time from Вова's own calendar: work on weekdays 9–18
+	day := ck.t.In(v.Loc())
+	ics := "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;TZID=Europe/Moscow:" + day.Format("20060102") + "T090000\r\nDTEND;TZID=Europe/Moscow:" + day.Format("20060102") +
+		"T180000\r\nRRULE:FREQ=DAILY;COUNT=30\r\nSUMMARY:Работа\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, ics) }))
+	defer srv.Close()
+	a.Fetch = srv.Client()
+	if _, err := a.ConnectBusy(ctx, v, "http://not-https.example/x.ics"); err == nil {
+		t.Fatal("only https links")
+	}
+	if n, err := a.ConnectBusy(ctx, v, srv.URL+"/basic.ics"); err != nil || n == 0 {
+		t.Fatalf("connect: %d %v", n, err)
+	}
+	busy := a.BusySlots(ctx, v.Me.ID, v.Loc(), 7)
+	tomorrow := day.AddDate(0, 0, 1).Format("2006-01-02")
+	if !busy[tomorrow+":0"] || !busy[tomorrow+":1"] || busy[tomorrow+":2"] {
+		t.Fatalf("work hours busy, evenings free: %v", busy)
+	}
+	if a.BusySlots(ctx, n.Me.ID, n.Loc(), 7) != nil {
+		t.Fatal("Настя has not connected hers")
+	}
+}

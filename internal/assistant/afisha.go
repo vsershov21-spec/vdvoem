@@ -32,6 +32,7 @@ type afishaQ struct {
 	Sem       map[int64]float64 `json:"-"` // similarity by meaning to the request (nil — off)
 	All       bool              `json:"-"` // the whole list (cards: the first few)
 	Whose     string            `json:"-"` // ours | new | ""
+	From, To  string            `json:"-"` // a period of days (YYYY-MM-DD)
 }
 
 func (r *run) afisha(ctx context.Context, q afishaQ) any {
@@ -111,6 +112,34 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	if len(hits) == 0 && len(q.Moods) > 0 && len(late) > 0 && len(q.Moods) > 1 {
 		hits = late // two moods asked and nothing fits both: show the best of the rest
 	}
+	if q.WholeBank && q.Whose == "" && !q.All {
+		// the bank's ideas carry marks and so rank higher; take turns, so what the scout and the channels found
+		// (and you have not seen) is always in the first answer too
+		var ours, news []hit
+		for _, h := range hits {
+			if Ours(h.i) {
+				ours = append(ours, h)
+			} else {
+				news = append(news, h)
+			}
+		}
+		if len(ours) > 0 && len(news) > 0 {
+			mixed := make([]hit, 0, len(hits))
+			a, b := ours, news
+			if score(news[0]) > score(ours[0]) {
+				a, b = news, ours
+			}
+			for len(a) > 0 || len(b) > 0 {
+				if len(a) > 0 {
+					mixed, a = append(mixed, a[0]), a[1:]
+				}
+				if len(b) > 0 {
+					mixed, b = append(mixed, b[0]), b[1:]
+				}
+			}
+			hits = mixed
+		}
+	}
 	out := []map[string]any{}
 	for k, h := range hits {
 		if k == q.Limit {
@@ -131,7 +160,13 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		}
 		r.addCard(ideaCard(h.i, note))
 	}
-	res := map[string]any{"events": out, "found": len(hits), "total": len(hits)}
+	ids := make([]int64, 0, len(hits))
+	for _, h := range hits {
+		if len(ids) < 300 {
+			ids = append(ids, h.i.ID)
+		}
+	}
+	res := map[string]any{"events": out, "found": len(hits), "total": len(hits), "ids": ids}
 	if len(hits) == 0 {
 		res["note"] = "ничего не подошло под эти условия — можно ослабить фильтры или добавить цель скауту (add_goal)"
 	}
@@ -147,6 +182,9 @@ func stemQ(w string) string {
 }
 
 func fitsDay(i store.Idea, q afishaQ, now time.Time, loc *time.Location) bool {
+	if q.From != "" && !inPeriod(i, q.From, q.To, loc) {
+		return false
+	}
 	if q.Date == "" && !q.Weekend && q.Part == "" {
 		return true
 	}
@@ -174,6 +212,19 @@ func fitsDay(i store.Idea, q afishaQ, now time.Time, loc *time.Location) bool {
 		return false
 	}
 	return true
+}
+
+// inPeriod: an event on one of the days, or a place / an exhibition open then
+func inPeriod(i store.Idea, from, to string, loc *time.Location) bool {
+	if i.StartsAt == nil {
+		return i.EndsAt == nil || i.EndsAt.In(loc).Format("2006-01-02") >= from
+	}
+	s := i.StartsAt.In(loc).Format("2006-01-02")
+	long := i.EndsAt != nil && i.EndsAt.Sub(*i.StartsAt) > 30*time.Hour
+	if long {
+		return s <= to && i.EndsAt.In(loc).Format("2006-01-02") >= from
+	}
+	return s >= from && s <= to
 }
 
 // ---------- rules: the same tool from plain Russian ----------

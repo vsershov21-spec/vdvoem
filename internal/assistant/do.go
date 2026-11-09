@@ -136,7 +136,7 @@ func (r *run) choresText(ctx context.Context) Reply {
 
 func (in Intent) afisha() afishaQ {
 	return afishaQ{Date: in.Date, Weekend: in.Wknd, Part: in.Part, MaxRub: in.Max, Include: in.Cats, Exclude: in.Not, NotWords: in.NotW,
-		Query: in.Q, Horizon: in.Hz, WholeBank: !in.Scout, Moods: in.Moods, Limit: 4, All: in.All, Whose: in.Whose}
+		Query: in.Q, Horizon: in.Hz, WholeBank: !in.Scout, Moods: in.Moods, Limit: 4, All: in.All, Whose: in.Whose, From: in.From, To: in.To}
 }
 
 var moodWords = map[string]string{"chill": "отдохнуть", "active": "подвигаться", "romantic": "романтика", "culture": "культурно", "fun": "повеселиться",
@@ -150,7 +150,15 @@ var partNames = map[string]string{"morning": "утром", "day": "днём", "e
 func (r *run) cond(in Intent) string {
 	var p []string
 	loc := r.c.Loc()
-	if in.Date != "" {
+	if in.From != "" {
+		f, _ := time.ParseInLocation("2006-01-02", in.From, loc)
+		t, _ := time.ParseInLocation("2006-01-02", in.To, loc)
+		if f.Month() == t.Month() {
+			p = append(p, fmt.Sprintf("%d–%d %s", f.Day(), t.Day(), monthForms[t.Month()-1][1]))
+		} else {
+			p = append(p, fmt.Sprintf("%d %s – %d %s", f.Day(), monthForms[f.Month()-1][1], t.Day(), monthForms[t.Month()-1][1]))
+		}
+	} else if in.Date != "" {
 		if d, err := time.ParseInLocation("2006-01-02", in.Date, loc); err == nil {
 			p = append(p, dayWord(d, r.as.now().In(loc)))
 		}
@@ -225,6 +233,19 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 			r.catalogButtons(ctx, in, 2)
 		}
 		found, _ := res["found"].(int)
+		r.found = found
+		if ids, _ := res["ids"].([]int64); len(ids) > 1 {
+			title := upperFirst(cond)
+			if title == "" {
+				title = upperFirst(short(strings.TrimSpace(text), 48))
+			}
+			if title == "" {
+				title = "Подборка"
+			}
+			if id, err := r.as.App.S.AddPick(ctx, store.Pick{SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Title: title, IDs: ids}, r.as.now()); err == nil {
+				r.pick = &PickRef{ID: id, Title: title, N: len(ids)}
+			}
+		}
 		if in.All {
 			r.propose(ctx, "open", map[string]any{"path": "ideas/scout"}, "Вся афиша")
 			return Reply{Text: r.list(events, found, in, cond)}
@@ -314,10 +335,12 @@ func contains(l []string, v string) bool {
 
 func (r *run) suggestText(ctx context.Context, in Intent) Reply {
 	switch {
-	case in.All:
-		r.from = "all"
+	case in.Whose == "ours":
+		r.from = ""
 	case in.Scout || in.Whose == "new":
 		r.from = "afisha"
+	default: // «удиви» picks from everything — the bank and what the scout found
+		r.from = "all"
 	}
 	cat := ""
 	if len(in.Cats) == 1 {
@@ -517,6 +540,9 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 	default:
 		fmt.Fprintf(&b, "Нашёл %s.", plural(found, "вариант", "варианта", "вариантов"))
 	}
+	if found > len(events) {
+		fmt.Fprintf(&b, " Вот лучшие %d — все %d в подборке ниже: там можно отметить и отправить %s.", len(events), found, app.NameDat(r.c.PartnerName()))
+	}
 	top := events[0]
 	b.WriteString(" Лучше всего вам двоим — «" + fmt.Sprint(top["title"]) + "»")
 	if o, _ := top["ours"].(bool); !o {
@@ -556,7 +582,9 @@ func (r *run) talk(events []map[string]any, found int, in Intent, cond string) s
 		}
 		b.WriteString("\nЕщё: " + strings.Join(more, ", ") + ".")
 	}
-	b.WriteString("\nМожно уточнить: «подешевле», «а в воскресенье?», «без театра».")
+	if found <= len(events) {
+		b.WriteString("\nМожно уточнить: «подешевле», «а в воскресенье?», «без театра».")
+	}
 	return b.String()
 }
 

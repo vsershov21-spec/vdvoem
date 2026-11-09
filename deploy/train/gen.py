@@ -295,7 +295,64 @@ def g_dialog(today, test=False):
     return {"messages": first["messages"] + [{"role": "user", "content": noisy(phrase)},
                                              {"role": "assistant", "content": json.dumps(it, ensure_ascii=False, separators=(",", ":"))}]}
 
-GENS = [(g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
+# periods in words → from/to (as the app's rules count them: the past part of a period is cut off)
+MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+MON_PREP = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"]
+
+def typo(w):  # a voice message or a fast thumb: one letter off
+    if len(w) < 5 or R.random() > 0.25:
+        return w
+    k = R.randrange(1, len(w) - 1)
+    return w[:k] + R.choice("аеиоуя") + w[k + 1:]
+
+def month_span(today, m, part):
+    import calendar
+    y = today.year + (1 if m < today.month else 0)
+    last = calendar.monthrange(y, m)[1]
+    a, b = {"start": (1, 10), "mid": (10, 20), "end": (20, last), "all": (1, last)}[part]
+    f, t = dt.date(y, m, a), dt.date(y, m, b)
+    return max(f, today), t
+
+def g_period(today, test=False):
+    leads = ["что есть", "куда сходить", "какие есть мероприятия", "что интересного", "подскажи, что есть", "что будет"] if not test else \
+        ["есть варианты", "чем заняться", "что можно посмотреть", "куда выбраться"]
+    lead = R.choice(leads)
+    k = R.random()
+    if k < 0.2:
+        mon = today - dt.timedelta(days=today.weekday()) + dt.timedelta(days=7)
+        f, t, words = mon, mon + dt.timedelta(days=6), R.choice(["на следующей неделе", "через неделю"])
+    elif k < 0.3:
+        import calendar
+        f, t = today, dt.date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+        words = R.choice(["до конца месяца", "в этом месяце"])
+    else:
+        m = R.randrange(1, 13)
+        part = R.choice(["start", "mid", "end", "all", "all"])
+        if part == "all":
+            words = "в " + typo(MON_PREP[m - 1])
+        else:
+            words = {"start": "в начале", "mid": "в середине", "end": "в конце"}[part] + " " + typo(MON_GEN[m - 1])
+        f, t = month_span(today, m, part)
+        if t < f:
+            return g_period(today, test)
+    it = {"i": "find", "from": f.isoformat(), "to": t.isoformat()}
+    text = R.choice(["{l} {w}?", "{w} {l}?", "{l} {w}, куда мы можем сходить вдвоём"]).format(l=lead, w=words)
+    return ex(text, it, today)
+
+def g_whole(today, test=False):
+    k = R.random()
+    if k < 0.4:
+        t, it = R.choice(["подборку всего что есть", "покажи вообще всё", "всё что есть в москве", "полный список", "что вообще идёт"] if not test else
+                         ["выдай всё списком", "давай весь список"]), {"i": "find", "all": True}
+    elif k < 0.7:
+        t, it = R.choice(["только новое", "что мы ещё не видели", "чего нет в копилке", "свежее от скаута, чего мы не знаем"] if not test else
+                         ["покажи то, о чём мы не слышали"]), {"i": "find", "whose": "new"}
+    else:
+        t, it = R.choice(["только наше", "что у нас в копилке", "наши идеи", "из того, что мы сами добавили"] if not test else
+                         ["что мы хотели раньше"]), {"i": "find", "whose": "ours"}
+    return ex(t, it, today)
+
+GENS = [(g_period, 8), (g_whole, 4), (g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
         (g_add, 3), (g_budget, 2), (g_mode, 2), (g_dialog, 14)]
 
 def build(n, test=False):

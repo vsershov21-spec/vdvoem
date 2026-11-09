@@ -383,6 +383,9 @@ func (b *Bot) reply(ctx context.Context, chat int64, rep assistant.Reply) {
 		}
 	}
 	var rows [][]tg.Button
+	if rep.Pick != nil {
+		rows = append(rows, tg.Row(tg.App(fmt.Sprintf("📋 Вся подборка · %d", rep.Pick.N), strings.TrimRight(b.App.PublicURL, "/")+fmt.Sprintf("/app/pick/%d", rep.Pick.ID))))
+	}
 	for _, a := range rep.Actions {
 		rows = append(rows, tg.Row(tg.CB(a.Label, "aa:"+a.ID)))
 	}

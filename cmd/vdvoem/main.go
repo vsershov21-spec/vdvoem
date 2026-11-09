@@ -148,6 +148,9 @@ func main() {
 		helper.SetIntentModel(m)
 		log.Info("intent model", "model", m)
 	}
+	if n := a.FillPictures(ctx); n > 0 {
+		log.Info("pictures to fetch", "n", n)
+	}
 	if n := a.FillGenres(ctx); n > 0 {
 		log.Info("genres for old ideas", "n", n)
 	}

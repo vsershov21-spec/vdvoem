@@ -65,7 +65,7 @@ for (const dark of [false, true]) {
       if (t !== 'ai') { const ib = await p.getByTestId('island').boundingBox(); if (ib) expect.soft(Math.abs(ib.y - island!.y), `${name}: island moved`).toBeLessThanOrEqual(1) }
     }
     await tab(p, 'bank')
-    await p.locator('.folder').first().click(); await p.locator('.folder').first().click().catch(() => {})
+    await p.locator('.fchips').last().getByRole('button').first().click()
     await audit(p, 'folder' + s)
     await p.goto(`/app/idea/${ids[1]}`); await audit(p, 'idea' + s)
     await p.goto('/app/'); await settle(p)

@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"vdvoem/internal/ai"
 	"vdvoem/internal/app"
@@ -58,6 +59,14 @@ type Reply struct {
 	Src     string   `json:"src,omitempty"`    // rules | model | rules-fallback
 	Ms      int64    `json:"ms,omitempty"`
 	Next    []string `json:"next,omitempty"` // what to ask next in one tap («А подешевле?», «Расскажи про первое»)
+	Pick    *PickRef `json:"pick,omitempty"` // everything found, as a list to open
+}
+
+// PickRef: a «подборка» behind an answer — the chat shows the best few, the list holds them all
+type PickRef struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	N     int    `json:"n"`
 }
 
 type Assistant struct {
@@ -113,7 +122,7 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	in, src, alt := as.understand(ctx, text, pt, as.now().In(c.Loc()))
 	rep := run.do(ctx, in, text)
 	rep.Intent, rep.Src, rep.Ms = &in, src, time.Since(start).Milliseconds()
-	as.noteRephrase(ctx, c, in)
+	as.noteRephrase(ctx, c, in, text)
 	var exID int64
 	if in.I != "chat" || alt.I != "" { // a labelled example for the model: accepted once a button from it is pressed
 		b, _ := json.Marshal(in)
@@ -131,7 +140,14 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	}
 	as.App.Log.Info("assistant", "intent", in.I, "src", src, "alt", alt.I, "ms", rep.Ms)
 	rep.Cards, rep.Actions = run.cards, run.buttons
+	rep.Pick = run.pick
 	rep.Next = nextFor(in, rep.Cards)
+	if in.I == "find" && !in.All && run.found > len(rep.Cards) && run.pick == nil {
+		rep.Next = append([]string{fmt.Sprintf("Покажи все %d", run.found)}, rep.Next...)
+		if len(rep.Next) > 4 {
+			rep.Next = rep.Next[:4]
+		}
+	}
 	if rep.Text == "" {
 		rep.Text = "Готово."
 	}
@@ -141,7 +157,9 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 
 // noteRephrase: the same person asked again within a minute and a half without pressing anything, and the new
 // request reads differently — the previous one was most likely misunderstood.
-func (as *Assistant) noteRephrase(ctx context.Context, c app.Couple, in Intent) {
+// A next question in a chain («расскажи про первое», then «сколько стоит?», then «а дела по дому?») is not a
+// rephrase: only the same wish in other words is — some word of it comes back.
+func (as *Assistant) noteRephrase(ctx context.Context, c app.Couple, in Intent, text string) {
 	e, err := as.App.S.LastExample(ctx, c.Me.ID)
 	if err != nil || e.Accepted || e.Outcome != "" || as.now().Sub(e.At) > 90*time.Second {
 		return
@@ -150,7 +168,27 @@ func (as *Assistant) noteRephrase(ctx context.Context, c app.Couple, in Intent) 
 	if json.Unmarshal([]byte(strings.TrimPrefix(e.Calls, "intent:")), &was) != nil || was.I == in.I || in.refined {
 		return
 	}
+	if !sharesWord(e.Input, text) {
+		return
+	}
 	_ = as.App.S.SetOutcome(ctx, e.ID, "rephrased", "")
+}
+
+var stopWords = map[string]bool{"что": true, "как": true, "есть": true, "нас": true, "нам": true, "мне": true, "это": true, "куда": true, "где": true, "или": true, "для": true, "все": true, "всё": true}
+
+func sharesWord(a, b string) bool {
+	stems := map[string]bool{}
+	for _, w := range strings.FieldsFunc(strings.ToLower(a), func(r rune) bool { return !unicode.IsLetter(r) }) {
+		if r := []rune(w); len(r) >= 4 && !stopWords[w] {
+			stems[string(r[:4])] = true
+		}
+	}
+	for _, w := range strings.FieldsFunc(strings.ToLower(b), func(r rune) bool { return !unicode.IsLetter(r) }) {
+		if r := []rune(w); len(r) >= 4 && !stopWords[w] && stems[string(r[:4])] {
+			return true
+		}
+	}
+	return false
 }
 
 func lowerFirst(s string) string {
@@ -279,6 +317,8 @@ type run struct {
 	exampleID int64
 	pending   []string // action ids proposed in this run (tagged with the example once it is saved)
 	from      string   // where a pick comes from: "" — the bank, afisha — the scout and channels, all
+	found     int      // how many fit a search (more than shown → «Покажи все»)
+	pick      *PickRef
 }
 
 func (r *run) reset() { r.cards, r.buttons, r.seen = nil, nil, nil }
@@ -1019,7 +1059,7 @@ func (as *Assistant) clarify(ctx context.Context, c app.Couple, payload []byte) 
 	}
 	in := p.Intent
 	rep.Intent, rep.Src, rep.Ms = &in, "user", time.Since(start).Milliseconds()
-	rep.Cards, rep.Actions, rep.Next = run.cards, run.buttons, nextFor(in, run.cards)
+	rep.Cards, rep.Actions, rep.Next, rep.Pick = run.cards, run.buttons, nextFor(in, run.cards), run.pick
 	if rep.Text == "" {
 		rep.Text = "Готово."
 	}

@@ -23,6 +23,8 @@ func (a *API) peopleRoutes(h func(string, handler)) {
 	h("DELETE /api/goals/{id}", a.delGoal)
 	h("GET /api/afisha", a.afisha)
 	h("GET /api/triage", a.triage)
+	h("GET /api/picks/{id}", a.pick)
+	h("POST /api/picks/{id}/send", a.sendPick)
 }
 
 func (a *API) profile(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -259,4 +261,35 @@ func (a *API) triage(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 		out = append(out, x.v)
 	}
 	return map[string]any{"ideas": out, "total": len(out)}, nil
+}
+
+// pick: a «подборка» from the assistant — every idea in it, as they are now (marks, match), best first
+func (a *API) pick(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	p, err := a.App.S.Pick(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	t := a.App.Tastes(r.Context(), c)
+	now := a.App.Now()
+	out := []ideaView{}
+	for _, iid := range p.IDs {
+		i, err := a.App.S.Idea(r.Context(), c.Space.ID, iid)
+		if err != nil || i.Status == domain.IdeaArchived || i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
+			continue
+		}
+		out = append(out, withMatch(viewIdea(c, i), t, i, c.PartnerName()))
+	}
+	return map[string]any{"id": p.ID, "title": p.Title, "ideas": out, "by_me": p.MemberID == c.Me.ID, "created_at": p.CreatedAt.Unix()}, nil
+}
+
+func (a *API) sendPick(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]bool{"ok": true}, a.App.SendPick(r.Context(), c, id)
 }

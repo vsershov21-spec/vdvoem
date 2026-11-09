@@ -43,6 +43,22 @@ func (a *API) feedRoutes(mux *http.ServeMux, h func(string, handler)) {
 		_, _ = w.Write(b)
 	})
 	h("GET /api/calendar/feed", a.feedLink(false))
+	h("POST /api/calendar/busy", func(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+		var in struct {
+			URL string `json:"url"`
+		}
+		if err := body(r, &in); err != nil {
+			return nil, err
+		}
+		n, err := a.App.ConnectBusy(r.Context(), c, in.URL)
+		if errors.Is(err, app.ErrBadCalendar) {
+			return nil, httpErr{400, "bad_calendar"}
+		}
+		return map[string]any{"ok": err == nil, "busy": n}, err
+	})
+	h("DELETE /api/calendar/busy", func(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+		return map[string]bool{"ok": true}, a.App.DisconnectBusy(r.Context(), c)
+	})
 	h("POST /api/calendar/feed/reset", a.feedLink(true))
 }
 
@@ -54,6 +70,7 @@ func (a *API) feedLink(reset bool) func(w http.ResponseWriter, r *http.Request, 
 		}
 		https := strings.TrimRight(a.App.PublicURL, "/") + "/cal/" + t + ".ics"
 		return map[string]any{"url": https, "webcal": "webcal://" + strings.TrimPrefix(strings.TrimPrefix(https, "https://"), "http://"),
-			"subscribed": a.App.Subscribed(r.Context(), c.Me.ID)}, nil
+			"subscribed": a.App.Subscribed(r.Context(), c.Me.ID), "busy": a.App.BusyConnected(r.Context(), c.Me.ID),
+			"partner_busy": c.Partner != nil && a.App.BusyConnected(r.Context(), c.Partner.ID)}, nil
 	}
 }

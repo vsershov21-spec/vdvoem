@@ -34,6 +34,8 @@ type Intent struct {
 	Scout   bool     `json:"scout,omitempty"` // only what the scout found
 	All     bool     `json:"all,omitempty"`   // «вообще всё, что есть»: the whole list, not the best few
 	Whose   string   `json:"whose,omitempty"` // ours — only the couple's own ideas; new — only what they have not seen
+	From    string   `json:"from,omitempty"`  // a period: «в конце ноября» → from…to (YYYY-MM-DD)
+	To      string   `json:"to,omitempty"`
 	conf    float64  // rules' confidence
 	refined bool     // a follow-up («а подешевле?») merged into the previous request
 }
@@ -58,6 +60,10 @@ var intentSchema = map[string]any{
 		"mode":  map[string]any{"type": "string", "enum": []string{"best", "random", "mix", "off"}},
 		"rub":   map[string]any{"type": "integer"},
 		"scout": map[string]any{"type": "boolean"},
+		"all":   map[string]any{"type": "boolean"},
+		"whose": map[string]any{"type": "string", "enum": []string{"ours", "new"}},
+		"from":  map[string]any{"type": "string"},
+		"to":    map[string]any{"type": "string"},
 	},
 	"required": []string{"i"},
 }
@@ -69,7 +75,7 @@ var (
 	aboutRe     = regexp.MustCompile(`(?i)(?:расскажи (?:про|о|об|поподробнее (?:про|о))|что за спектакль|что за концерт|что за событие|что это за|что такое|о ч[её]м (?:спектакль|постановка|концерт)?|кто играет в|кто играет|кто в составе|какой жанр у|подойд[её]т ли нам|нам подойд[её]т|стоит ли идти на|стоит ли сходить на|понравится ли нам|понравится ли (?:насте|ей|ему))\s*(.*)`)
 	bookRe      = regexp.MustCompile(`(?i)(?:забронируй|бронируй|запиши нас на|запиши в календарь|добавь в календарь|поставь в календарь|идём на|идем на|пойдём на|пойдем на|давай пойдём на|давай пойдем на|берём билеты на|берем билеты на|бер[её]м|позови (?:её|ее|его) на|пойти с (?:ней|ним) на)\s*(.*)`)
 	budgetSetRe = regexp.MustCompile(`(?i)бюджет\D{0,12}(\d[\d\s]{2,6})`)
-	followRe    = regexp.MustCompile(`(?i)^(?:(?:а|и|ну|тогда|лучше|только|ещё|еще)(?:\s|,|$)|подешевле|дешевле|подороже|без |не |кроме)`)
+	followRe    = regexp.MustCompile(`(?i)^(?:(?:а|и|ну|тогда|лучше|только|ещё|еще)(?:\s|,|$)|подешевле|дешевле|подороже|без |не |кроме|покажи вс|показать вс|все варианты)`)
 	timeQ       = regexp.MustCompile(`(?i)^(?:эт(?:ой|у) недел|выходн|сегодня|завтра|неделе)`)
 )
 
@@ -217,8 +223,16 @@ func mergeFollowUp(prev, cur Intent, text string) Intent {
 	if cur.Hz != "" {
 		out.Hz = cur.Hz
 	}
+	if cur.From != "" {
+		out.From, out.To = cur.From, cur.To
+	}
+	if showAllRe.MatchString(strings.ToLower(text)) {
+		out.All = true
+	}
 	return out
 }
+
+var showAllRe = regexp.MustCompile(`все варианты|покажи вс|показать вс|весь список|полностью|списком`)
 
 // ---------- the model: only for what the rules are not sure about ----------
 
@@ -228,7 +242,7 @@ var LLMBudget = 6500 * time.Millisecond
 func intentSystem(now time.Time) string {
 	return `Ты разбираешь запросы пары к приложению «Вдвоём» и отвечаешь ТОЛЬКО JSON по схеме. Сегодня ` + now.Format("2006-01-02") + ` (` + ruWeekday(now) + `).
 i: find — что поделать/куда сходить/что есть (афиша скаута, копилка), с фильтрами; suggest — выбрать одну идею из копилки (mode random — «удиви»); price — сколько стоит что-то (q — что именно); book — записать конкретное событие в календарь/пойти на него (q); about — рассказать о конкретном событии: что это, жанр, кто играет, подойдёт ли нам (q); remember — человек сообщает свой вкус (text — фраза); goal — следить за чем-то в будущем (text); overview — наши планы; past — где были; chores — дела по дому; add_idea — добавить идею (text); budget — поставить бюджет (rub); suggest_mode — как бот присылает идеи (mode); plan — начать выбор вместе; chat — приветствие и прочее.
-Фильтры find: date (YYYY-MM-DD), wknd (ближайшие выходные), part (morning/day/evening), max (₽ на двоих), cats/not (food culture walk sport other), notw (слова-исключения), moods (chill — отдохнуть, расслабиться; active; romantic; culture; fun; food; outdoor; home; free; new; night), hz (week — ближайшее, later — анонсы на месяцы вперёд), scout (только находки скаута/афиша).
+Фильтры find: date (YYYY-MM-DD), wknd (ближайшие выходные), part (morning/day/evening), max (₽ на двоих), cats/not (food culture walk sport other), notw (слова-исключения), moods (chill — отдохнуть, расслабиться; active; romantic; culture; fun; food; outdoor; home; free; new; night), hz (week — ближайшее, later — анонсы на месяцы вперёд), scout (только находки скаута/афиша), from/to (период: «в конце ноября», «на следующей неделе» — YYYY-MM-DD), all (вообще всё списком), whose (ours — только наши идеи, new — только то, чего мы не видели).
 Пиши только нужные поля. Ничего не придумывай.`
 }
 
@@ -361,7 +375,8 @@ func (as *Assistant) Understand(ctx context.Context, text string, pt Turn, now t
 // disagree, the answer follows one and offers the other as a button, so a wrong guess costs one tap, not a retype.
 func (as *Assistant) understand(ctx context.Context, text string, pt Turn, now time.Time) (Intent, string, Intent) {
 	in, src, alt := as.understand1(ctx, text, pt, now)
-	return widen(in, text), src, alt
+	in = widen(in, text)
+	return withPeriod(in, text, now), src, alt
 }
 
 var (
@@ -372,6 +387,30 @@ var (
 	randomRe = regexp.MustCompile(`удиви|рандом|случайн|наугад|наобум`)
 	weekRe   = regexp.MustCompile(`недел|выходн|сегодня|завтра|суббот|воскрес|пятниц|ближайш`)
 )
+
+// withPeriod: days named in words always count, whatever read the request; «куда сходить» without a pick
+// mode is a search over everything, not one idea from the bank
+func withPeriod(in Intent, text string, now time.Time) Intent {
+	if in.I == "suggest" && in.Mode != "random" && in.Whose != "ours" {
+		in = Intent{I: "find", Date: in.Date, Wknd: in.Wknd, Part: in.Part, Max: in.Max, Cats: in.Cats, Not: in.Not, NotW: in.NotW, Moods: in.Moods, Scout: in.Scout, All: in.All, Whose: in.Whose, From: in.From, To: in.To}
+	}
+	if in.I != "find" && in.I != "suggest" && in.I != "chat" {
+		return in
+	}
+	f, t := periodFrom(text, now)
+	if f == "" {
+		return in
+	}
+	if in.I == "chat" {
+		in = Intent{I: "find"}
+	}
+	in.From, in.To = f, t
+	if in.Date != "" && (in.Date < f || in.Date > t) {
+		in.Date = ""
+	}
+	in.Wknd, in.Hz = false, ""
+	return in
+}
 
 // widen: «что нарыл агент» means everything the scout and the channels found, not only the next days;
 // «подборку всего» means the whole list. Words decide this, whatever read the request.
@@ -408,7 +447,7 @@ func widen(in Intent, text string) Intent {
 	}
 	in.Scout = in.Scout || scout && !all && in.Whose != "ours"
 	in.All = in.All || all
-	if all { // «подборку всего» starts afresh: only the conditions said now stay
+	if all && !showAllRe.MatchString(t) { // «подборку всего» starts afresh: only the conditions said now stay
 		fresh := rulesIntent(text, time.Now())
 		in.Date, in.Wknd, in.Part, in.Moods, in.Cats, in.Max = fresh.Date, fresh.Wknd, fresh.Part, fresh.Moods, fresh.Cats, fresh.Max
 		in.Q, in.Not, in.NotW = "", nil, nil
