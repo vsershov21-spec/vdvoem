@@ -38,7 +38,7 @@ test('E23 «Где именно»: общая идея → ссылка отве
   await vp.getByTestId('place-option').filter({ hasText: 'Каток в Парке Горького' }).getByRole('button', { name: 'Берём этот' }).click()
   await expect(vp.locator('.ticket').getByText('Каток в Парке Горького')).toBeVisible()
   await shot(vp, 'E23-ticket-place')
-  await waitMsg(n, /Вова выбрал\(а\) место для «Каток»: <b>Каток в Парке Горького/, 10000, before)
+  await waitMsg(n, /Вова выбрал место для «Каток»: <b>Каток в Парке Горького/, 10000, before)
   const upd = await waitMsg(n, /Место обновлено/, 10000, before)
   const link = JSON.stringify(upd.reply_markup).match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
   const ics = await (await fetch(link)).text()
