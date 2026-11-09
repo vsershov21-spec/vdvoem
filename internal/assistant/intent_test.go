@@ -263,3 +263,22 @@ func TestAltFor(t *testing.T) {
 		t.Errorf("same reading offered again")
 	}
 }
+
+// Every kind of leisure in the gold set is found without the model: the map is the floor the model stands on.
+func TestKindCases(t *testing.T) {
+	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	for _, tc := range kindCases {
+		var want Intent
+		if err := json.Unmarshal([]byte(tc.Want), &want); err != nil {
+			t.Fatalf("%q: %v", tc.Q, err)
+		}
+		if s := sanitize(want); !sameSet(s.G, want.G) {
+			t.Errorf("%q: label kinds %v are not on the map", tc.Q, want.G)
+		}
+		got := withKinds(rulesIntent(tc.Q, now), tc.Q)
+		if !sameSet(got.G, want.G) || got.I != "find" {
+			b, _ := json.Marshal(got)
+			t.Errorf("%q → %s, want %s", tc.Q, b, tc.Want)
+		}
+	}
+}

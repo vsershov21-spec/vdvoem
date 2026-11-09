@@ -10,6 +10,7 @@ import (
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/domain"
+	"vdvoem/internal/leisure"
 	"vdvoem/internal/store"
 )
 
@@ -33,6 +34,7 @@ type afishaQ struct {
 	All       bool              `json:"-"` // the whole list (cards: the first few)
 	Whose     string            `json:"-"` // ours | new | ""
 	From, To  string            `json:"-"` // a period of days (YYYY-MM-DD)
+	G         []string          `json:"-"` // kinds of leisure (джаз, баня…): an event fits if it is any of them
 }
 
 func (r *run) afisha(ctx context.Context, q afishaQ) any {
@@ -64,6 +66,9 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 			continue
 		}
 		if q.Whose == "ours" && !Ours(i) || q.Whose == "new" && Ours(i) {
+			continue
+		}
+		if len(q.G) > 0 && !fitsKinds(i, q.G) {
 			continue
 		}
 		hz := i.Horizon
@@ -212,6 +217,22 @@ func fitsDay(i store.Idea, q afishaQ, now time.Time, loc *time.Location) bool {
 		return false
 	}
 	return true
+}
+
+// fitsKinds: the event is one of the kinds asked for — by its genres or by its own words
+func fitsKinds(i store.Idea, g []string) bool {
+	text := i.Title + " " + i.Why + " " + i.Info.About + " " + strings.Join(i.Info.Genres, " ")
+	for _, k := range g {
+		for _, x := range i.Info.Genres {
+			if x == k {
+				return true
+			}
+		}
+		if leisure.Fits(k, text) {
+			return true
+		}
+	}
+	return false
 }
 
 // inPeriod: an event on one of the days, or a place / an exhibition open then

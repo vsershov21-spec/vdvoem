@@ -145,6 +145,40 @@ var intentCases = []intentCase{
 	{"спасибо!", `{"i":"chat"}`},
 }
 
+// kinds of leisure: the words people use for what they want to do (the app's map, internal/leisure)
+var kindCases = []intentCase{
+	{"хотим на джаз в субботу", `{"i":"find","date":"SAT","g":["джаз"],"cats":["culture"]}`},
+	{"есть стендап на этой неделе?", `{"i":"find","g":["стендап"],"cats":["culture"]}`},
+	{"давай сходим на иммерсивный спектакль", `{"i":"find","g":["иммерсивный"],"cats":["culture"]}`},
+	{"хочу на мастер-класс по керамике вдвоём", `{"i":"find","g":["керамика"],"cats":["other"]}`},
+	{"найди квест на выходные", `{"i":"find","wknd":true,"g":["квест"],"cats":["other"]}`},
+	{"попариться бы в бане", `{"i":"find","g":["баня"],"cats":["other"]}`},
+	{"где сейчас хорошие выставки современного искусства", `{"i":"find","g":["современное искусство"],"cats":["culture"]}`},
+	{"хотим в планетарий", `{"i":"find","g":["планетарий"],"cats":["culture"]}`},
+	{"органный концерт при свечах есть?", `{"i":"find","g":["орган","концерт при свечах"],"cats":["culture"]}`},
+	{"давай на балет, Щелкунчик например", `{"i":"find","g":["балет"],"cats":["culture"]}`},
+	{"сходим на рок-концерт?", `{"i":"find","g":["рок"],"cats":["culture"]}`},
+	{"что-нибудь на скалодроме вечером", `{"i":"find","part":"evening","g":["скалодром"],"cats":["sport"]}`},
+	{"хотим на хоккей", `{"i":"find","g":["хоккей"],"cats":["sport"]}`},
+	{"покататься на сапах летом", `{"i":"find","g":["сап"],"cats":["sport"]}`},
+	{"давай съездим в Суздаль на выходные", `{"i":"find","wknd":true,"g":["поездка за город"],"cats":["walk"]}`},
+	{"какие экскурсии по крышам есть", `{"i":"find","g":["крыши"],"cats":["walk"]}`},
+	{"гастрофестиваль какой-нибудь", `{"i":"find","g":["гастрофестиваль"],"cats":["food"]}`},
+	{"хочу на ужин в темноте", `{"i":"find","g":["ужин в темноте"],"cats":["food"]}`},
+	{"хотим на квиз в пятницу", `{"i":"find","date":"FRI","g":["квиз"],"cats":["other"]}`},
+	{"караоке вечером", `{"i":"find","part":"evening","g":["караоке"],"cats":["other"]}`},
+	{"может на боулинг?", `{"i":"find","g":["боулинг"],"cats":["sport"]}`},
+	{"хотим в спа на двоих", `{"i":"find","g":["спа"],"cats":["other"]}`},
+	{"артхаусное кино где-нибудь", `{"i":"find","g":["артхаус"],"cats":["culture"]}`},
+	{"лекция про космос", `{"i":"find","g":["лекция"],"cats":["culture"]}`},
+	{"опера в Большом", `{"i":"find","g":["опера"],"cats":["culture"]}`},
+	{"мюзикл какой-нибудь посмотреть", `{"i":"find","g":["мюзикл"],"cats":["culture"]}`},
+	{"давай на йогу вместе", `{"i":"find","g":["йога"],"cats":["sport"]}`},
+	{"виртуальная реальность, vr-клуб", `{"i":"find","g":["vr"],"cats":["other"]}`},
+	{"парк аттракционов", `{"i":"find","g":["аттракционы"],"cats":["walk"]}`},
+	{"готовить вместе пасту на мастер-классе", `{"i":"find","g":["кулинарный мастер-класс"],"cats":["food"]}`},
+}
+
 // held out: written after the rules were tuned on intentCases — shows how they (and the model) generalise
 var intentHoldout = []intentCase{
 	{"мы вымотались, хочется чего-то лёгкого", `{"i":"find","moods":["chill"]}`},
@@ -274,6 +308,9 @@ func matches(got Intent, want Intent, now time.Time) bool {
 		return false
 	}
 	if len(want.Moods) > 0 && !sub(want.Moods[:1], got.Moods) { // the main mood must be caught
+		return false
+	}
+	if !sub(want.G, got.G) {
 		return false
 	}
 	if want.Q != "" && !strings.Contains(strings.ToLower(got.Q+" "+got.Text), want.Q) {
@@ -411,7 +448,7 @@ func ExportIntents(ctx context.Context, st *store.Store, w io.Writer) (int, erro
 		fmt.Fprintln(w, string(b))
 		n++
 	}
-	for _, tc := range intentCases {
+	for _, tc := range append(append([]intentCase{}, intentCases...), kindCases...) {
 		a := tc.Want
 		for _, code := range []string{"TOD", "TOM", "SAT", "SUN", "FRI"} {
 			a = strings.ReplaceAll(a, `"`+code+`"`, `"`+caseDate(code, now)+`"`)

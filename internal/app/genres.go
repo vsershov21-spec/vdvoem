@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"vdvoem/internal/domain"
+	"vdvoem/internal/leisure"
 	"vdvoem/internal/store"
 )
 
@@ -65,6 +66,12 @@ func GenresOf(text string) []string {
 	}
 	if len(out) > 4 {
 		out = out[:4]
+	}
+	// the shared map of kinds (джаз, керамика, баня…): the same tags the assistant searches by
+	for _, k := range leisure.Detect(text) {
+		if !contains(out, k) && len(out) < 6 {
+			out = append(out, k)
+		}
 	}
 	return out
 }
