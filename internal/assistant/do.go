@@ -136,7 +136,7 @@ func (r *run) choresText(ctx context.Context) Reply {
 
 func (in Intent) afisha() afishaQ {
 	return afishaQ{Date: in.Date, Weekend: in.Wknd, Part: in.Part, MaxRub: in.Max, Include: in.Cats, Exclude: in.Not, NotWords: in.NotW,
-		Query: in.Q, Horizon: in.Hz, WholeBank: !in.Scout, Moods: in.Moods, Limit: 4, All: in.All, Whose: in.Whose, From: in.From, To: in.To}
+		Query: in.Q, Horizon: in.Hz, WholeBank: !in.Scout, Moods: in.Moods, Limit: 4, All: in.All, Whose: in.Whose, From: in.From, To: in.To, G: in.G}
 }
 
 var moodWords = map[string]string{"chill": "отдохнуть", "active": "подвигаться", "romantic": "романтика", "culture": "культурно", "fun": "повеселиться",
@@ -150,6 +150,9 @@ var partNames = map[string]string{"morning": "утром", "day": "днём", "e
 func (r *run) cond(in Intent) string {
 	var p []string
 	loc := r.c.Loc()
+	if len(in.G) > 0 {
+		p = append(p, strings.Join(in.G, ", "))
+	}
 	if in.From != "" {
 		f, _ := time.ParseInLocation("2006-01-02", in.From, loc)
 		t, _ := time.ParseInLocation("2006-01-02", in.To, loc)
@@ -223,6 +226,14 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		res = r.afisha(ctx, q).(map[string]any)
 		events, _ = res["events"].([]map[string]any)
 	}
+	near := ""
+	if len(events) == 0 && len(q.G) > 0 {
+		// nothing of exactly this kind: the closest of the same sort (category, mood, days) — said plainly
+		near = strings.Join(q.G, ", ")
+		q.G = nil
+		res = r.afisha(ctx, q).(map[string]any)
+		events, _ = res["events"].([]map[string]any)
+	}
 	if len(events) > 0 {
 		if !r.bookButton(ctx, events) {
 			if id, _ := events[0]["id"].(int64); id != 0 {
@@ -250,7 +261,11 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 			r.propose(ctx, "open", map[string]any{"path": "ideas/scout"}, "Вся афиша")
 			return Reply{Text: r.list(events, found, in, cond)}
 		}
-		return Reply{Text: r.talk(events, found, in, cond)}
+		t := r.talk(events, found, in, cond)
+		if near != "" {
+			t = "Именно «" + near + "» пока не нашёл — вот близкое. Напиши «следи за …», и я сообщу, когда появится.\n" + t
+		}
+		return Reply{Text: t}
 	}
 	// nothing in the data: ideas of the kind, as buttons to add — and a question to the scout
 	n := r.catalogButtons(ctx, in, 3)

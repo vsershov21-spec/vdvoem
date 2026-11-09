@@ -11,6 +11,7 @@ import (
 
 	"vdvoem/internal/ai"
 	"vdvoem/internal/app"
+	"vdvoem/internal/leisure"
 )
 
 // Intent — what a request means, as data. Understanding is the only thing a model does here: the server
@@ -34,6 +35,7 @@ type Intent struct {
 	Scout   bool     `json:"scout,omitempty"` // only what the scout found
 	All     bool     `json:"all,omitempty"`   // «вообще всё, что есть»: the whole list, not the best few
 	Whose   string   `json:"whose,omitempty"` // ours — only the couple's own ideas; new — only what they have not seen
+	G       []string `json:"g,omitempty"`     // kinds of leisure asked for: «джаз», «иммерсивный», «керамика» (internal/leisure)
 	From    string   `json:"from,omitempty"`  // a period: «в конце ноября» → from…to (YYYY-MM-DD)
 	To      string   `json:"to,omitempty"`
 	conf    float64  // rules' confidence
@@ -60,6 +62,7 @@ var intentSchema = map[string]any{
 		"mode":  map[string]any{"type": "string", "enum": []string{"best", "random", "mix", "off"}},
 		"rub":   map[string]any{"type": "integer"},
 		"scout": map[string]any{"type": "boolean"},
+		"g":     map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": leisure.Tags()}},
 		"all":   map[string]any{"type": "boolean"},
 		"whose": map[string]any{"type": "string", "enum": []string{"ours", "new"}},
 		"from":  map[string]any{"type": "string"},
@@ -242,7 +245,7 @@ var LLMBudget = 6500 * time.Millisecond
 func intentSystem(now time.Time) string {
 	return `Ты разбираешь запросы пары к приложению «Вдвоём» и отвечаешь ТОЛЬКО JSON по схеме. Сегодня ` + now.Format("2006-01-02") + ` (` + ruWeekday(now) + `).
 i: find — что поделать/куда сходить/что есть (афиша скаута, копилка), с фильтрами; suggest — выбрать одну идею из копилки (mode random — «удиви»); price — сколько стоит что-то (q — что именно); book — записать конкретное событие в календарь/пойти на него (q); about — рассказать о конкретном событии: что это, жанр, кто играет, подойдёт ли нам (q); remember — человек сообщает свой вкус (text — фраза); goal — следить за чем-то в будущем (text); overview — наши планы; past — где были; chores — дела по дому; add_idea — добавить идею (text); budget — поставить бюджет (rub); suggest_mode — как бот присылает идеи (mode); plan — начать выбор вместе; chat — приветствие и прочее.
-Фильтры find: date (YYYY-MM-DD), wknd (ближайшие выходные), part (morning/day/evening), max (₽ на двоих), cats/not (food culture walk sport other), notw (слова-исключения), moods (chill — отдохнуть, расслабиться; active; romantic; culture; fun; food; outdoor; home; free; new; night), hz (week — ближайшее, later — анонсы на месяцы вперёд), scout (только находки скаута/афиша), from/to (период: «в конце ноября», «на следующей неделе» — YYYY-MM-DD), all (вообще всё списком), whose (ours — только наши идеи, new — только то, чего мы не видели).
+Фильтры find: date (YYYY-MM-DD), wknd (ближайшие выходные), part (morning/day/evening), max (₽ на двоих), cats/not (food culture walk sport other), notw (слова-исключения), moods (chill — отдохнуть, расслабиться; active; romantic; culture; fun; food; outdoor; home; free; new; night), hz (week — ближайшее, later — анонсы на месяцы вперёд), scout (только находки скаута/афиша), g (вид досуга из словаря: джаз, иммерсивный, керамика, квест, баня…), from/to (период: «в конце ноября», «на следующей неделе» — YYYY-MM-DD), all (вообще всё списком), whose (ours — только наши идеи, new — только то, чего мы не видели).
 Пиши только нужные поля. Ничего не придумывай.`
 }
 
@@ -341,6 +344,13 @@ func sanitize(in Intent) Intent {
 		return out
 	}
 	in.Cats, in.Not = cat(in.Cats), cat(in.Not)
+	var g []string
+	for _, x := range in.G {
+		if leisure.Known(x) && len(g) < 4 {
+			g = append(g, x)
+		}
+	}
+	in.G = g
 	var moods []string
 	for _, m := range in.Moods {
 		for _, k := range app.Moods {
@@ -376,6 +386,7 @@ func (as *Assistant) Understand(ctx context.Context, text string, pt Turn, now t
 func (as *Assistant) understand(ctx context.Context, text string, pt Turn, now time.Time) (Intent, string, Intent) {
 	in, src, alt := as.understand1(ctx, text, pt, now)
 	in = widen(in, text)
+	in = withKinds(in, text)
 	return withPeriod(in, text, now), src, alt
 }
 
@@ -387,6 +398,52 @@ var (
 	randomRe = regexp.MustCompile(`удиви|рандом|случайн|наугад|наобум`)
 	weekRe   = regexp.MustCompile(`недел|выходн|сегодня|завтра|суббот|воскрес|пятниц|ближайш`)
 )
+
+// withKinds: a kind of leisure named in words («на джаз», «в баню», «мастер-класс по керамике») is searched for,
+// whatever read the request; the model may add kinds it inferred («с саксофоном» → джаз)
+func withKinds(in Intent, text string) Intent {
+	g := leisure.Detect(text)
+	if len(g) == 0 {
+		return in
+	}
+	if in.I == "chat" || in.I == "chores" || in.I == "suggest" && in.Mode != "random" { // «готовить вместе пасту» is a date, not a chore
+		in = Intent{I: "find", Date: in.Date, Wknd: in.Wknd, Part: in.Part, Max: in.Max, Moods: in.Moods, Not: in.Not, NotW: in.NotW, From: in.From, To: in.To}
+	}
+	if in.I != "find" && !(in.I == "suggest" && in.Mode == "random") && in.I != "goal" {
+		return in
+	}
+	if in.I == "goal" {
+		return in
+	}
+	seen := map[string]bool{}
+	for _, x := range in.G {
+		seen[x] = true
+	}
+	for _, x := range g {
+		if !seen[x] && len(in.G) < 4 {
+			in.G = append(in.G, x)
+		}
+	}
+	if len(in.Cats) == 0 {
+		cs := map[string]bool{}
+		for _, x := range in.G {
+			if c := leisure.Cat(x); c != "" && !cs[c] {
+				cs[c] = true
+				in.Cats = append(in.Cats, c)
+			}
+		}
+	}
+	// the kind says it better than a substring would
+	if in.Q != "" {
+		for _, x := range in.G {
+			if leisure.Fits(x, in.Q) {
+				in.Q = ""
+				break
+			}
+		}
+	}
+	return in
+}
 
 // withPeriod: days named in words always count, whatever read the request; «куда сходить» without a pick
 // mode is a search over everything, not one idea from the bank

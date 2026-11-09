@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"vdvoem/internal/leisure"
 )
 
 // deploy/train/system.txt is the system prompt the dataset is built with: it must be the app's own.
@@ -36,7 +37,7 @@ func TestDatasetLabels(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ok, n := 0, 0
+		ok, n, kinds, kindsOK := 0, 0, 0, 0
 		for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 			var e struct {
 				Messages []struct{ Role, Content string } `json:"messages"`
@@ -64,7 +65,59 @@ func TestDatasetLabels(t *testing.T) {
 			if matches(rulesIntent(e.Messages[1].Content, now), in, now) {
 				ok++
 			}
+			if len(in.G) > 0 { // the kinds named in words must be found by the app's own map, whatever the model says
+				kinds++
+				got := withKinds(rulesIntent(e.Messages[1].Content, now), e.Messages[1].Content)
+				if sameSet(got.G, in.G) {
+					kindsOK++
+				} else if misspelt(e.Messages[1].Content, in.G) {
+					kinds-- // a typo inside the very word is the model's job, not the map's
+				} else if kinds-kindsOK <= 8 {
+					t.Logf("kinds: %q → %v, label %v", e.Messages[1].Content, got.G, in.G)
+				}
+			}
 		}
-		t.Logf("%s: %d examples, rules alone right on %d (%.0f%%)", split, n, ok, float64(ok)*100/float64(n))
+		t.Logf("%s: %d examples, rules alone right on %d (%.0f%%); kinds found by the map %d/%d", split, n, ok, float64(ok)*100/float64(n), kindsOK, kinds)
+		if kinds > 0 && kindsOK*100 < kinds*95 {
+			t.Errorf("%s: the map finds only %d of %d labelled kinds", split, kindsOK, kinds)
+		}
 	}
+}
+
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := map[string]bool{}
+	for _, x := range a {
+		m[x] = true
+	}
+	for _, x := range b {
+		if !m[x] {
+			return false
+		}
+	}
+	return true
+}
+
+// misspelt: none of a labelled kind's own phrasings is in the text as written (the generator put a typo into it)
+func misspelt(text string, g []string) bool {
+	t := strings.ReplaceAll(strings.ToLower(text), "ё", "е")
+	for _, tag := range g {
+		found := false
+		for _, k := range leisure.Kinds {
+			if k.Tag != tag {
+				continue
+			}
+			for _, s := range k.Say {
+				if strings.Contains(t, strings.ReplaceAll(strings.ToLower(s), "ё", "е")) {
+					found = true
+				}
+			}
+		}
+		if !found {
+			return true
+		}
+	}
+	return false
 }

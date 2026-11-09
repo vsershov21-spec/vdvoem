@@ -352,7 +352,63 @@ def g_whole(today, test=False):
                          ["что мы хотели раньше"]), {"i": "find", "whose": "ours"}
     return ex(t, it, today)
 
-GENS = [(g_period, 8), (g_whole, 4), (g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
+# every kind of leisure (internal/leisure/kinds.json — the same map the app searches with): theatre genres, music,
+# exhibitions, walks, food, workshops, games, sport, wellness, events — asked for the way people ask
+import os as _os
+_KJ = json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "../../internal/leisure/kinds.json")))
+KINDS, NARROWER = _KJ["kinds"], _KJ.get("narrower", {})
+KIND_LEADS = ["хотим {x}", "хочу {x}", "давай {x}", "найди {x}", "есть {x}?", "покажи {x}", "посоветуй {x}", "подбери {x}", "а есть {x}?",
+              "где сейчас {x}?", "интересует {x}", "{x} есть?", "ищу {x}", "хочется {x}", "можно {x}?", "подкинь {x}", "{x}"]
+TEST_KIND_LEADS = ["вот бы {x}", "мечтаем про {x}", "присмотри {x}", "глянь {x}", "{x} — что есть?", "организуй {x}"]
+FILLERS = ["", "", "", "", "слушай, ", "ну ", "короче, ", "а ", "привет! ", "эээ ", "кстати, ", "так, ", "блин, хочу развеяться — "]
+TAILS = ["", "", "", "", " 🙂", " 🙏", "!!", " плиз", " пожалуйста", ", очень хочется", " вдвоём", ", чтобы обоим зашло"]
+
+def g_kind(today, test=False):
+    ks = [R.choice(KINDS)]
+    if R.random() < 0.12:
+        k2 = R.choice(KINDS)
+        if k2["tag"] != ks[0]["tag"]:
+            ks.append(k2)
+    says = []
+    for k in ks:
+        pool = k["say"][1:] if test and len(k["say"]) > 1 else k["say"]
+        says.append(typo(R.choice(pool)) if R.random() < 0.15 else R.choice(pool))
+    x = " или ".join(says)
+    tags = [k["tag"] for k in ks]
+    tags = [t for t in tags if not any(n in tags for n in NARROWER.get(t, []))]  # «выставка или мультимедийная выставка» → the narrower one, as the app does
+    ks = [k for k in ks if k["tag"] in tags]
+    it = {"i": "find", "g": tags}
+    cats = []
+    for k in ks:
+        if k["cat"] not in cats:
+            cats.append(k["cat"])
+    it["cats"] = cats
+    parts = [x]
+    if R.random() < 0.45:
+        d, kind, arg = R.choice(DAYS)
+        parts.append(d)
+        if kind == "rel":
+            it["date"] = (today + dt.timedelta(days=arg)).isoformat()
+        elif kind == "wd":
+            it["date"] = nearest(today, arg).isoformat()
+        else:
+            it["wknd"] = True
+    if R.random() < 0.25:
+        p, part = R.choice(PARTS)
+        parts.append(p); it["part"] = part
+    if R.random() < 0.2:
+        n = R.choice([1500, 2000, 3000, 4000, 5000, 7000, 10000])
+        parts.append(R.choice(["до {n}", "не дороже {n}", "в пределах {n} ₽"]).format(n=n)); it["max"] = n
+    if R.random() < 0.15:
+        mood = R.choice(["chill", "romantic", "fun", "active", "new"])
+        parts.append(R.choice(MOODS[mood])); it["moods"] = [mood]
+    text = R.choice(TEST_KIND_LEADS if test else KIND_LEADS).format(x=" ".join(parts))
+    text = R.choice(FILLERS) + text + R.choice(TAILS)
+    if R.random() < 0.3:
+        text = text.lower().replace("?", "").replace("!", "")
+    return ex(text, it, today)
+
+GENS = [(g_kind, 30), (g_period, 8), (g_whole, 4), (g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
         (g_add, 3), (g_budget, 2), (g_mode, 2), (g_dialog, 14)]
 
 def build(n, test=False):
@@ -372,11 +428,11 @@ def build(n, test=False):
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "out"
     os.makedirs(out, exist_ok=True)
-    train, valid = build(2600), None
+    train, valid = build(6300), None
     valid, train = train[:300], train[300:]
     global SHOWS, EVENTS, PREFS
     SHOWS, EVENTS = TEST_SHOWS, TEST_EVENTS  # test uses names the model never saw in training
-    test = build(250, test=True)
+    test = build(400, test=True)
     for name, data in [("train", train), ("valid", valid), ("test", test)]:
         with open(os.path.join(out, name + ".jsonl"), "w", encoding="utf-8") as f:
             for e in data:
