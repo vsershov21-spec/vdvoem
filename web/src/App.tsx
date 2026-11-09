@@ -1,3 +1,4 @@
+import { BridgeLoader } from './ui/Mark'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRoute, go, navDir, back } from './lib/router'
 import { scheme, onTheme, setBack, statusBar } from './lib/tg'
@@ -110,7 +111,7 @@ function Main() {
       {/* the island lives outside the screen: it stays put (and keeps its state) while screens change under it */}
       {!hideIsland && <Island home={home.data} actions={actions} />}
       <main key={key} className={'screen' + (hideIsland ? ' screen--sub' : '') + (anim.current.warm ? ' screen--warm' : '')} data-dir={anim.current.dir}>
-        <Suspense fallback={<div style={{ minHeight: '60vh' }} />}>{screen}</Suspense>
+        <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><BridgeLoader /></div>}>{screen}</Suspense>
       </main>
       {!hideIsland && <PillNav current={tab ? top : '-'} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />}
       <AddSheet open={adding} onClose={() => setAdding(false)} onAdded={() => { emit('ideas'); emit('home') }} />

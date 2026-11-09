@@ -661,3 +661,12 @@ body.kb-open .sugg--dock{bottom:calc(var(--kb,0px) + 74px)}
 .busy-key{display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:middle;background:repeating-linear-gradient(135deg,var(--ink-muted) 0 2px,transparent 2px 4px);opacity:.6}
 .pbusy-key{display:inline-block;width:7px;height:7px;border-radius:2px;background:var(--ink-muted);opacity:.55;vertical-align:middle}
 .howto{font:500 13.5px/19px var(--font-sans);color:var(--ink-muted)}.howto summary{cursor:pointer;font-weight:650;color:var(--ink)}.howto p{margin:8px 0 0}
+
+/* the bridge loader */
+.bloader svg{width:64px;height:43px;overflow:visible}
+.bloader path{fill:none;stroke-width:9;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:bl 1.8s cubic-bezier(.65,0,.35,1) infinite}
+.bloader__l{stroke:var(--accent)}
+.bloader__r{stroke:#3d6ef5;animation-delay:.12s!important}
+:root[data-theme="dark"] .bloader__r{stroke:#6b95ff}
+@keyframes bl{0%{stroke-dashoffset:1}45%,60%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:-1;opacity:.2}}
+@media (prefers-reduced-motion:reduce){.bloader path{animation:none;stroke-dashoffset:0}}

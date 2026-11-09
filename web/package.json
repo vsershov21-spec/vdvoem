@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prebuild": "node scripts/tg-sdk.mjs"
   },
   "dependencies": {
     "@fontsource/onest": "5.1.1",
