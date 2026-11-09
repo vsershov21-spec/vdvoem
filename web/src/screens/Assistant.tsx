@@ -9,7 +9,7 @@ import { Icon } from '../ui/icons'
 import { Cover, toast } from '../ui/kit'
 import { Particles } from '../ui/Particles'
 
-const SUGG = ['Куда сходить в субботу вечером?', 'Хотим почилить', 'Удиви нас', 'Что нашёл скаут?', 'Что у нас запланировано?', 'Анонсы на пару месяцев', 'Что-нибудь до 3000 ₽']
+const SUGG = ['Куда сходить в субботу вечером?', 'Удиви нас', 'Что нашёл скаут?', 'Что у нас запланировано?']
 // after a search when the server sent no follow-ups (older answers): refine it in one tap
 const FOLLOW = ['А подешевле?', 'А в воскресенье?', 'А спокойнее?', 'А без театра?']
 const canRecord = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
