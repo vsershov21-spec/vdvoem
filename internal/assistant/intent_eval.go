@@ -148,7 +148,7 @@ var intentCases = []intentCase{
 // kinds of leisure: the words people use for what they want to do (the app's map, internal/leisure)
 var kindCases = []intentCase{
 	{"хотим на джаз в субботу", `{"i":"find","date":"SAT","g":["джаз"],"cats":["culture"]}`},
-	{"есть стендап на этой неделе?", `{"i":"find","g":["стендап"],"cats":["culture"]}`},
+	{"есть стендап на этой неделе?", `{"i":"find","g":["стендап"],"cats":["other"]}`},
 	{"давай сходим на иммерсивный спектакль", `{"i":"find","g":["иммерсивный"],"cats":["culture"]}`},
 	{"хочу на мастер-класс по керамике вдвоём", `{"i":"find","g":["керамика"],"cats":["other"]}`},
 	{"найди квест на выходные", `{"i":"find","wknd":true,"g":["квест"],"cats":["other"]}`},
@@ -167,7 +167,7 @@ var kindCases = []intentCase{
 	{"хочу на ужин в темноте", `{"i":"find","g":["ужин в темноте"],"cats":["food"]}`},
 	{"хотим на квиз в пятницу", `{"i":"find","date":"FRI","g":["квиз"],"cats":["other"]}`},
 	{"караоке вечером", `{"i":"find","part":"evening","g":["караоке"],"cats":["other"]}`},
-	{"может на боулинг?", `{"i":"find","g":["боулинг"],"cats":["sport"]}`},
+	{"может на боулинг?", `{"i":"find","g":["боулинг"],"cats":["other"]}`},
 	{"хотим в спа на двоих", `{"i":"find","g":["спа"],"cats":["other"]}`},
 	{"артхаусное кино где-нибудь", `{"i":"find","g":["артхаус"],"cats":["culture"]}`},
 	{"лекция про космос", `{"i":"find","g":["лекция"],"cats":["culture"]}`},
@@ -175,7 +175,7 @@ var kindCases = []intentCase{
 	{"мюзикл какой-нибудь посмотреть", `{"i":"find","g":["мюзикл"],"cats":["culture"]}`},
 	{"давай на йогу вместе", `{"i":"find","g":["йога"],"cats":["sport"]}`},
 	{"виртуальная реальность, vr-клуб", `{"i":"find","g":["vr"],"cats":["other"]}`},
-	{"парк аттракционов", `{"i":"find","g":["аттракционы"],"cats":["walk"]}`},
+	{"парк аттракционов", `{"i":"find","g":["аттракционы"],"cats":["other"]}`},
 	{"готовить вместе пасту на мастер-классе", `{"i":"find","g":["кулинарный мастер-класс"],"cats":["food"]}`},
 }
 
@@ -438,15 +438,28 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 func ExportIntents(ctx context.Context, st *store.Store, w io.Writer) (int, error) {
 	now := time.Now().In(time.FixedZone("MSK", 3*3600))
 	sys := intentSystem(now)
-	n := 0
-	write := func(q, a string, at ...time.Time) {
+	type row struct{ q, a, s string }
+	var rows []row
+	at := map[string]int{} // the same words asked again: the later reading wins (a correction, a fixed label)
+	write := func(q, a string, when ...time.Time) {
 		s := sys
-		if len(at) > 0 { // a live request: its dates were relative to the day it was asked
-			s = intentSystem(at[0].In(now.Location()))
+		if len(when) > 0 { // a live request: its dates were relative to the day it was asked
+			s = intentSystem(when[0].In(now.Location()))
 		}
-		b, _ := json.Marshal(map[string]any{"messages": []map[string]string{{"role": "system", "content": s}, {"role": "user", "content": q}, {"role": "assistant", "content": a}}})
-		fmt.Fprintln(w, string(b))
-		n++
+		var in Intent
+		if json.Unmarshal([]byte(a), &in) == nil && in.I == "find" { // a gold label names the kinds the way the app reads them
+			if g := withKinds(in, q); len(g.G) != len(in.G) {
+				b, _ := json.Marshal(g)
+				a = string(b)
+			}
+		}
+		k := strings.ToLower(strings.TrimSpace(q))
+		if x, ok := at[k]; ok {
+			rows[x] = row{q, a, s}
+			return
+		}
+		at[k] = len(rows)
+		rows = append(rows, row{q, a, s})
 	}
 	for _, tc := range append(append([]intentCase{}, intentCases...), kindCases...) {
 		a := tc.Want
@@ -458,7 +471,7 @@ func ExportIntents(ctx context.Context, st *store.Store, w io.Writer) (int, erro
 	if st != nil {
 		ex, err := st.Examples(ctx, true)
 		if err != nil {
-			return n, err
+			return 0, err
 		}
 		for _, e := range ex {
 			if strings.HasPrefix(e.Calls, "intent:") {
@@ -466,5 +479,9 @@ func ExportIntents(ctx context.Context, st *store.Store, w io.Writer) (int, erro
 			}
 		}
 	}
-	return n, nil
+	for _, r := range rows {
+		b, _ := json.Marshal(map[string]any{"messages": []map[string]string{{"role": "system", "content": r.s}, {"role": "user", "content": r.q}, {"role": "assistant", "content": r.a}}})
+		fmt.Fprintln(w, string(b))
+	}
+	return len(rows), nil
 }

@@ -100,6 +100,7 @@ def noisy(s):
     return s
 
 def ex(text, intent, today):
+    intent = with_kinds(dict(intent), text)
     intent = {k: v for k, v in intent.items() if v not in (None, "", [], False, 0)}
     return {"messages": [{"role": "system", "content": system(today)}, {"role": "user", "content": noisy(text)},
                          {"role": "assistant", "content": json.dumps(intent, ensure_ascii=False, separators=(",", ":"))}]}
@@ -357,6 +358,64 @@ def g_whole(today, test=False):
 import os as _os
 _KJ = json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "../../internal/leisure/kinds.json")))
 KINDS, NARROWER = _KJ["kinds"], _KJ.get("narrower", {})
+# the app's own reading (internal/leisure Detect + assistant withKinds), so a label never disagrees with it:
+# «на каток», «в караоке» in any request is a kind, and the model learns to say so every time
+_NO = {"без", "кроме", "не", "никаких", "никакого", "никакой", "нет"}
+_VERB = {"хочу", "хотим", "люблю", "любим", "надо", "нужно", "нужен", "нужна", "предлагай"}
+
+def _norm(s):
+    s = s.lower().replace("ё", "е")
+    return " " + "".join(c if c.isalnum() or c in "-+" else " " for c in s) + " "
+
+def _wanted(t):
+    w = t.split()
+    out = [x for i, x in enumerate(w) if not (i > 0 and w[i - 1] in _NO and x not in _NO or i > 1 and w[i - 2] == "не" and w[i - 1] in _VERB)]
+    return " " + " ".join(out) + " "
+
+def _at(t, stem):
+    stem = stem.lower().replace("ё", "е")
+    ws = stem.split()
+    if len(ws) > 1 and not stem.endswith(" "):
+        tw = t.split()
+        return any(all(tw[i + j].startswith(x) for j, x in enumerate(ws)) for i in range(len(tw) - len(ws) + 1))
+    i = 0
+    while True:
+        k = t.find(stem, i)
+        if k < 0:
+            return False
+        if k == 0 or not t[k - 1].isalpha():
+            return True
+        i = k + 1
+
+def detect(text):
+    t = _wanted(_norm(text))
+    out = [k["tag"] for k in KINDS if any(_at(t, s) for s in k["stems"])]
+    drop = {b for b, ns in NARROWER.items() if any(n in out for n in ns)}
+    return [x for x in out if x not in drop]
+
+_CAT = {k["tag"]: k["cat"] for k in KINDS}
+
+def with_kinds(it, text):
+    g = detect(text)
+    if not g or not (it.get("i") == "find" or it.get("i") == "suggest" and it.get("mode") == "random"):
+        return it
+    have = list(it.get("g") or [])
+    for x in g:
+        if x not in have and len(have) < 4:
+            have.append(x)
+    it["g"] = have
+    if not it.get("cats"):
+        cs = []
+        for x in have:
+            if _CAT.get(x) and _CAT[x] not in cs:
+                cs.append(_CAT[x])
+        it["cats"] = cs
+    if it.get("q"):
+        qn = _norm(it["q"])
+        if any(_at(qn, x) or any(_at(qn, s) for s in next(k for k in KINDS if k["tag"] == x)["stems"]) for x in have):
+            it["q"] = ""
+    return it
+
 KIND_LEADS = ["хотим {x}", "хочу {x}", "давай {x}", "найди {x}", "есть {x}?", "покажи {x}", "посоветуй {x}", "подбери {x}", "а есть {x}?",
               "где сейчас {x}?", "интересует {x}", "{x} есть?", "ищу {x}", "хочется {x}", "можно {x}?", "подкинь {x}", "{x}"]
 TEST_KIND_LEADS = ["вот бы {x}", "мечтаем про {x}", "присмотри {x}", "глянь {x}", "{x} — что есть?", "организуй {x}"]
