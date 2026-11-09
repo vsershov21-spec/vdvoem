@@ -4,7 +4,7 @@ import type { Idea, Person, Wish } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, patch, del, humanError } from '../lib/api'
 import { back } from '../lib/router'
-import { CATS, money, dur, isFixed } from '../lib/format'
+import { CATS, money, dur, isFixed, past } from '../lib/format'
 import { openLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Sheet, Skel, SubHeader, WishPicker, toast, Segmented } from '../ui/kit'
@@ -27,7 +27,8 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
   const archive = async () => { await del('/ideas/' + i.id); emit('ideas'); emit('home'); toast('Убрал в архив'); back('ideas') }
   const restore = async () => { const r = await patch<{ idea: Idea }>('/ideas/' + i.id, { status: 'active' }); set(d => ({ ...d, ...r })); emit('ideas'); toast('Вернул в копилку') }
   const fixed = isFixed(i)
-  const partner = i.partner_wish ? wishWord[i.partner_wish] : i.partner_marked ? 'отметил(а) — увидишь после своей отметки' : 'ещё не отметил(а)'
+  const pn = pp?.name
+  const partner = i.partner_wish ? wishWord[i.partner_wish] : i.partner_marked ? past(pn, 'отметил') + ' — увидишь после своей отметки' : 'ещё не ' + past(pn, 'отметил')
   return (
     <>
       <SubHeader right={<button className="iconbtn" onClick={() => setEdit(true)} aria-label="Изменить"><Icon n="edit" s={20} /></button>} />
@@ -55,7 +56,7 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
       {i.status === 'active' && i.kind === 'leisure' && <>
         <div className="sec"><h2 className="headline">Твоя оценка</h2></div>
         <WishPicker value={i.my_wish} onChange={wish} />
-        <p className="caption muted" style={{ margin: '10px 4px 0' }}>Партнёр {partner}.</p>
+        <p className="caption muted" style={{ margin: '10px 4px 0' }}>{pn || 'Партнёр'} {partner}.</p>
         <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>{fixed ? 'Идём! Позвать и в календарь' : 'Идём сюда — найти время'}</Btn></div>
         {pp && !data.urgent && <div style={{ marginTop: 10 }}><AskUrgent ideaId={i.id} partner={pp.name} onDone={reload} /></div>}
       </>}

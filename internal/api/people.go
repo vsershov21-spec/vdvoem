@@ -221,6 +221,14 @@ func containsStr(l []string, v string) bool {
 	return false
 }
 
+// toMark: an idea waiting for my mark — the one rule behind the badge, «Отметь N идей» and «Разбор · 1 из N»
+func toMark(c app.Couple, i store.Idea, now time.Time, going map[int64]bool) bool {
+	if i.Kind != domain.KindLeisure || going[i.ID] || i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
+		return false
+	}
+	return viewIdea(c, i).MyWish == ""
+}
+
 // triage: everything I have not marked yet — the bank and the afisha — soonest first (a date about to pass
 // matters most), then what suits us both best. «Разобрать всё» goes through it card by card.
 func (a *API) triage(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -237,13 +245,10 @@ func (a *API) triage(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 	}
 	var rows []row
 	for _, i := range ideas {
-		if i.Kind != domain.KindLeisure || i.EndsAt != nil && i.EndsAt.Before(now) || i.EndsAt == nil && i.StartsAt != nil && i.StartsAt.Before(now) {
+		if !toMark(c, i, now, going) {
 			continue
 		}
 		v := withMatch(viewIdea(c, i), t, i, c.PartnerName())
-		if v.MyWish != "" || going[i.ID] {
-			continue
-		}
 		soon := int64(1 << 62)
 		if i.StartsAt != nil && i.StartsAt.Sub(now) < 21*24*time.Hour {
 			soon = i.StartsAt.Unix()

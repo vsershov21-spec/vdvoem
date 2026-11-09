@@ -460,20 +460,25 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 			continue
 		}
 		leisure++
-		if v.MyWish == "" && !going[i.ID] {
-			nUnmarked++
-			if len(unmarked) < 10 {
-				unmarked = append(unmarked, v)
-			}
+		if toMark(c, i, a.App.Now(), going) && len(unmarked) < 10 {
+			unmarked = append(unmarked, v)
 		}
 		if (i.WishA == domain.WishWant || i.WishA == domain.WishVery) && (i.WishB == domain.WishWant || i.WishB == domain.WishVery) {
 			both++
 		}
 	}
 	fresh := 0
+	for _, i := range ideas {
+		if toMark(c, i, a.App.Now(), going) {
+			nUnmarked++
+		}
+	}
 	if drafts, err := a.App.S.Ideas(ctx, c.Space.ID, domain.IdeaDraft); err == nil {
 		now := a.App.Now()
 		for _, i := range drafts {
+			if toMark(c, i, now, going) {
+				nUnmarked++
+			}
 			if app.Afisha(i) && i.WishA == domain.WishNone && i.WishB == domain.WishNone && !(i.StartsAt != nil && i.StartsAt.Before(now) && (i.EndsAt == nil || i.EndsAt.Before(now))) {
 				fresh++
 			}

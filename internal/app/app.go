@@ -487,18 +487,41 @@ func durText(m int) string {
 	return fmt.Sprintf("%d мин", m)
 }
 
+// ideaBatch: several ideas in a row (a list pasted, a channel forwarded) — the first gets its card, the rest
+// one summary a couple of minutes later, never a dozen identical messages
+const ideaBatch = 2 * time.Minute
+
 func (a *App) sendIdeaCard(ctx context.Context, chatID int64, i store.Idea, similar int64) {
-	text := fmt.Sprintf("Сохранил в копилку. Проверь, всё ли верно:\n\n<b>%s</b>\n%s", esc(i.Title), esc(IdeaMeta(i)))
+	if similar == 0 {
+		var first *store.Idea
+		if all, err := a.S.Ideas(ctx, i.SpaceID, domain.IdeaActive, domain.IdeaDraft); err == nil {
+			for k := range all {
+				x := all[k]
+				if x.ID != i.ID && x.AuthorID == i.AuthorID && x.CreatedAt.After(a.now().Add(-ideaBatch)) && earlier(x, i) && (first == nil || earlier(x, *first)) {
+					first = &all[k]
+				}
+			}
+		}
+		if first != nil {
+			_ = a.S.Enqueue(ctx, "idea_batch", first.CreatedAt.Add(ideaBatch+30*time.Second), map[string]any{"chat": chatID, "space": i.SpaceID, "author": i.AuthorID, "first": first.ID, "since": first.CreatedAt.Unix()},
+				fmt.Sprintf("idea_batch:%d:%d", chatID, first.ID))
+			return
+		}
+	}
+	text := fmt.Sprintf("Сохранил в копилку:\n\n<b>%s</b>\n%s", esc(i.Title), esc(IdeaMeta(i)))
 	rows := [][]tg.Button{
 		tg.Row(tg.CB("Хочу", fmt.Sprintf("w:%d:want", i.ID)), tg.CB("Очень хочу", fmt.Sprintf("w:%d:very", i.ID))),
 		tg.Row(tg.CB("Пропущу", fmt.Sprintf("w:%d:skip", i.ID)), tg.App("Исправить", a.appURL(fmt.Sprintf("idea/%d", i.ID)))),
+	}
+	if i.Kind == domain.KindChore { // a chore is done, not wanted
+		rows = [][]tg.Button{tg.Row(tg.CB("✓ Сделано", fmt.Sprintf("cd:%d", i.ID)), tg.App("Исправить", a.appURL(fmt.Sprintf("idea/%d", i.ID))))}
 	}
 	if Generic(i) {
 		city := "Москва"
 		if sp, err := a.S.Space(ctx, i.SpaceID); err == nil && sp.City != "" {
 			city = sp.City
 		}
-		text += "\n\n📍 Это пока общая идея — уточни место: <b>ответь на это сообщение ссылкой</b> (Яндекс Карты, 2ГИС, сайт) или найди на карте."
+		text += "\n\n📍 Где именно? Ответь ссылкой (Яндекс Карты, 2ГИС, сайт) — или потом, когда соберётесь."
 		place := []tg.Button{tg.Link("Найти на картах", MapsLink(i.Title, city))}
 		if a.AI.Enabled() {
 			place = append(place, tg.CB("✨ Подобрать места", fmt.Sprintf("sp:%d", i.ID)))
@@ -516,6 +539,37 @@ func (a *App) sendIdeaCard(ctx context.Context, chatID int64, i store.Idea, simi
 	} else {
 		a.Log.Warn("send failed", "err", err)
 	}
+}
+
+func earlier(x, y store.Idea) bool {
+	return x.CreatedAt.Before(y.CreatedAt) || x.CreatedAt.Equal(y.CreatedAt) && x.ID < y.ID
+}
+
+func (a *App) sendIdeaBatch(ctx context.Context, chat, space, author, first int64, since time.Time) error {
+	all, err := a.S.Ideas(ctx, space, domain.IdeaActive, domain.IdeaDraft)
+	if err != nil {
+		return err
+	}
+	var lines []string
+	n := 0
+	for _, x := range all {
+		if x.ID == first || x.AuthorID != author || x.CreatedAt.Before(since) || !x.Parsed {
+			continue
+		}
+		n++
+		if len(lines) < 12 {
+			lines = append(lines, "• "+esc(x.Title))
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+	if n > len(lines) {
+		lines = append(lines, fmt.Sprintf("…и ещё %d", n-len(lines)))
+	}
+	text := fmt.Sprintf("И ещё %d %s в копилке:\n%s", n, plural(n, "идея", "идеи", "идей"), strings.Join(lines, "\n"))
+	_, err = a.TG.Send(ctx, chat, text, tg.SendOpts{Markup: tg.Keyboard(tg.Row(tg.App("Отметить по одной", a.appURL("triage"))))})
+	return err
 }
 
 // ---------- rounds ----------
@@ -663,6 +717,9 @@ func (a *App) SubmitSlots(ctx context.Context, c Couple, roundID int64, keys []s
 	}
 	if err := a.save(ctx, r, ver); err != nil {
 		return r, err
+	}
+	if both && r.State == domain.StateConfirm { // the idea was set and the time now matches: that is the «да» of both
+		return a.agree(ctx, c, r), nil
 	}
 	if both {
 		a.announceVote(ctx, c, r)
@@ -824,8 +881,8 @@ func (a *App) announceVote(ctx context.Context, c Couple, r domain.Round) {
 		}
 		return
 	}
-	if r.State == domain.StateConfirm {
-		a.announceConfirm(ctx, c, r)
+	if r.State == domain.StateConfirm { // the idea was chosen before and the time now matches
+		a.agree(ctx, c, r)
 		return
 	}
 	if len(r.Triple) == 0 {
@@ -912,11 +969,11 @@ func (a *App) Vote(ctx context.Context, c Couple, roundID, ideaID int64) (domain
 	}
 	switch {
 	case matched:
-		a.announceConfirm(ctx, c, r)
+		return a.agree(ctx, c, r), nil
 	case r.VotedBoth():
 		a.announceMismatch(ctx, c, r)
 	case c.Partner != nil:
-		a.sendQuiet(ctx, c.Partner.ChatID, fmt.Sprintf("%s проголосовал(а). Твой голос — и узнаете, совпали ли.", esc(c.Me.Name)),
+		a.sendQuiet(ctx, c.Partner.ChatID, fmt.Sprintf("%s %s. Твой голос — и узнаете, совпали ли.", esc(c.Me.Name), Past(c.Me.Name, "проголосовал")),
 			tg.Keyboard(tg.Row(tg.App("Открыть колоду", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
 	}
 	return r, nil
@@ -1015,10 +1072,31 @@ func (a *App) announceConfirm(ctx context.Context, c Couple, r domain.Round) {
 	}
 }
 
+// agree: both chose the same idea and the time matches — that is the decision; the meeting is planned at once
+// (one tap cancels it). No second «подтверди» after «совпало».
+func (a *App) agree(ctx context.Context, c Couple, r domain.Round) domain.Round {
+	ver := r.Version
+	_, _ = r.Confirm("a", a.now())
+	planned, err := r.Confirm("b", a.now())
+	if err != nil || !planned {
+		a.announceConfirm(ctx, c, r)
+		return r
+	}
+	if err := a.save(ctx, r, ver); err != nil {
+		a.Log.Warn("agree", "err", err)
+		return r
+	}
+	a.planned(ctx, c, r, 0)
+	return r
+}
+
 func (a *App) Confirm(ctx context.Context, c Couple, roundID int64) (domain.Round, error) {
 	r, err := a.round(ctx, c, roundID)
 	if err != nil {
 		return r, err
+	}
+	if r.State == domain.StatePlanned { // already agreed (a match plans by itself): nothing to confirm
+		return r, nil
 	}
 	ver := r.Version
 	planned, err := r.Confirm(c.Me.Color, a.now())
@@ -1031,7 +1109,7 @@ func (a *App) Confirm(ctx context.Context, c Couple, roundID int64) (domain.Roun
 	if planned {
 		a.planned(ctx, c, r, 0)
 	} else if c.Partner != nil {
-		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s подтвердил(а). Ждём тебя — без твоего «да» встреча не запланируется.", esc(c.Me.Name)),
+		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s %s. Ждём тебя — без твоего «да» встреча не запланируется.", esc(c.Me.Name), Past(c.Me.Name, "подтвердил")),
 			tg.Keyboard(tg.Row(tg.CB("Подтвердить", fmt.Sprintf("c:%d", r.ID)), tg.CB("Другое время", fmt.Sprintf("ot:%d", r.ID)))))
 	}
 	return r, nil
@@ -1089,7 +1167,7 @@ func (a *App) planned(ctx context.Context, c Couple, r domain.Round, seq int) {
 			tail = "\n\nНажми «В календарь» — событие откроется уже заполненным. Напомню за 2 часа."
 		}
 		if a.bookButton(i) != nil {
-			tail += "\nНе забудьте билеты: «" + bookWord(i) + "» — и отметь «Билеты есть», чтобы " + NameDat(otherName(c, m)) + " не купил(а) вторые."
+			tail += "\n🎟 Не забудь про билеты: «" + bookWord(i) + "». Когда возьмёшь — нажми «Билеты есть», чтобы не купить дважды."
 		}
 		a.send(ctx, m.ChatID, fmt.Sprintf("<b>Мы идём! 🎉</b> %s\n\n%s%s", esc(i.Title), rows, tail), tg.Keyboard(keys...))
 	}
@@ -1143,13 +1221,13 @@ func (a *App) Cancel(ctx context.Context, c Couple, roundID int64) (domain.Round
 		return r, err
 	}
 	for _, m := range a.both(c) {
-		who := "Ты отменил(а)"
+		who := "Выбор отменён"
 		if m.ID != c.Me.ID {
-			who = esc(c.Me.Name) + " отменил(а)"
+			who = esc(c.Me.Name) + " " + Past(c.Me.Name, "отменил")
 		}
 		a.send(ctx, m.ChatID, who+" выбор. Ничего страшного — идеи остаются в копилке.", nil)
 		if was == domain.StatePlanned && !a.Subscribed(ctx, m.ID) {
-			a.sendQuiet(ctx, m.ChatID, "Если добавлял(а) встречу в календарь — удали её там. Чтобы такое происходило само, подключи календарь в разделе «Календарь».", nil)
+			a.sendQuiet(ctx, m.ChatID, "Если встреча уже в календаре — удали её там. Чтобы такое происходило само, подключи календарь в разделе «Календарь».", nil)
 		}
 	}
 	return r, nil
@@ -1228,7 +1306,7 @@ func (a *App) Photo(ctx context.Context, c Couple, fileID string) (bool, error) 
 				return false, err
 			}
 			if c.Partner != nil {
-				_ = a.TG.SendPhoto(ctx, c.Partner.ChatID, fileID, esc(c.Me.Name)+" добавил(а) фото со встречи.")
+				_ = a.TG.SendPhoto(ctx, c.Partner.ChatID, fileID, esc(c.Me.Name)+" "+Past(c.Me.Name, "добавил")+" фото со встречи.")
 			}
 			return true, nil
 		}
@@ -1420,6 +1498,14 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 			return nil
 		}
 		return a.runScoutNote(ctx, p.Idea, p.Kind, p.Days)
+	case "idea_batch":
+		var p struct {
+			Chat, Space, Author, First, Since int64
+		}
+		if err := jsonUnmarshal(j.Payload, &p); err != nil {
+			return nil
+		}
+		return a.sendIdeaBatch(ctx, p.Chat, p.Space, p.Author, p.First, time.Unix(p.Since, 0))
 	case "partner_new":
 		var p struct {
 			Member int64 `json:"member"`

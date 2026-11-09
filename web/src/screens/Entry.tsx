@@ -178,6 +178,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
           <motion.div className="intro__word" initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={dissolve ? { opacity: 0, y: -10 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ delay: dissolve ? 0 : 1.2, duration: 0.7 }}>
             <b>вдвоём</b><span>{shape === 'bridge' ? 'каждый строит свою половину — встречаемся посередине' : 'двое, одно время, общее «да»'}</span>
+            <span className="intro__what">общие идеи, куда сходить · выбираем вместе · ничего не забываем</span>
           </motion.div>
           {!dissolve && <span className="intro__skip">нажми, чтобы пропустить</span>}
         </div>

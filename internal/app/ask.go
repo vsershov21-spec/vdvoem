@@ -49,6 +49,35 @@ func (a *App) FindByName(ctx context.Context, c Couple, q string) (store.Idea, b
 	return all[0].i, true
 }
 
+// SameName: every idea that answers to the name equally well — two «Мастера и Маргариты» are a question, not a pick
+func (a *App) SameName(ctx context.Context, c Couple, q string) []store.Idea {
+	words := nameWords(q)
+	if len(words) == 0 {
+		return nil
+	}
+	ideas, _ := a.S.Ideas(ctx, c.Space.ID, domain.IdeaActive, domain.IdeaDraft)
+	var out []store.Idea
+	for _, i := range ideas {
+		have := nameWords(i.Title)
+		hit := 0
+		for _, w := range words {
+			for _, h := range have {
+				if strings.HasPrefix(h, w) || strings.HasPrefix(w, h) {
+					hit++
+					break
+				}
+			}
+		}
+		if hit == len(words) {
+			out = append(out, i)
+		}
+	}
+	if len(out) > 4 {
+		out = out[:4]
+	}
+	return out
+}
+
 func nameWords(s string) []string {
 	var out []string
 	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {

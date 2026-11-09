@@ -8,13 +8,20 @@ import { Heart } from './Heart'
 import { back as backNav } from '../lib/router'
 
 // ---------- Cover: photo with fade-in, or category gradient with a big glyph ----------
+// covers without a picture: the same category, but each its own angle and glyph turn — two plays never look alike
+function vary(t: string): Record<string, string> {
+  let x = 0
+  for (let k = 0; k < t.length; k++) x = (x * 31 + t.charCodeAt(k)) >>> 0
+  return { '--ang': `${100 + x % 120}deg`, '--rot': `${(x >> 7) % 50 - 25}deg`, '--sc': `${0.85 + ((x >> 13) % 40) / 100}` }
+}
+
 export function Cover({ idea, h, children, big }: { idea: Pick<Idea, 'image' | 'category' | 'title'>; h?: number; children?: ReactNode; big?: boolean }) {
   const [ok, setOk] = useState(false)
   const [broken, setBroken] = useState(false)
   const cat = CATS[idea.category] || CATS.other
   const img = idea.image && !broken
   return (
-    <div className="cover" data-tone={img ? undefined : cat.tone} style={h ? { height: h } : undefined}>
+    <div className="cover" data-tone={img ? undefined : cat.tone} style={{ ...(h ? { height: h } : {}), ...(img ? {} : vary(idea.title)) }}>
       {img && <img src={idea.image} alt="" loading="lazy" referrerPolicy="no-referrer" data-loading={ok ? undefined : ''} onLoad={() => setOk(true)} onError={() => setBroken(true)} />}
       {!img && <><div className="cover__dots" /><Icon n={idea.category} s={big ? 170 : 132} w={1.2} className="cover__glyph" /></>}
       <div className="cover__in">{children}</div>

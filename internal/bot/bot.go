@@ -257,7 +257,7 @@ const helpText = `<b>Как это работает</b>
 1. Кидайте в бота ссылки и идеи — куда сходить или что сделать. Я разберу и сложу в общую копилку.
 2. Каждый отмечает: хочу, очень хочу или пропущу. Голос партнёра вы не видите, пока не отметите сами.
 3. Когда пора выбрать (/go или сам по расписанию), каждый отмечает удобное время. Я нахожу пересечение и предлагаю три варианта.
-4. Совпало — подтвердите оба, и я пришлю событие в календарь. Без двух «да» ничего не планируется.
+4. Совпали время и идея — встреча сразу в плане у обоих, событие придёт в календарь. Передумали — отмена в одно касание.
 
 Пересылайте сюда посты из каналов с афишей (даже закрытых) — я достану события, даты и цены в «Афишу».
 Боитесь, что дата уйдёт? На карточке нажмите «🔥 Важно» — я буду напоминать партнёру, пока он не ответит.
@@ -283,6 +283,26 @@ func (b *Bot) free(ctx context.Context, c app.Couple, chat int64, text string) {
 	}
 	if parse.FirstURL(text) == "" && (looksLikeQuestion(text) || assistant.LooksLikeRequest(text, b.App.Now())) {
 		b.ask(ctx, c, chat, text)
+		return
+	}
+	if what, ok := app.UrgentText(text); ok && parse.FirstURL(text) == "" && c.Partner != nil {
+		// «срочно хочу на …»: the urgency goes on the idea (an existing one if there is), the words are not its title
+		i, found := b.App.FindByName(ctx, c, what)
+		if !found {
+			res, err := b.App.AddIdea(ctx, c, what)
+			if err != nil {
+				b.say(ctx, chat, "Не получилось сохранить — попробуй ещё раз.", nil)
+				return
+			}
+			i = res.Idea
+			if res.Existing != nil {
+				i = *res.Existing
+			}
+		}
+		if _, err := b.App.MarkUrgent(ctx, c, i.ID, text); err != nil {
+			b.Log.Warn("urgent", "err", err)
+		}
+		b.say(ctx, chat, fmt.Sprintf("🔥 Отметил как важное: <b>%s</b>. Буду напоминать %s, пока не ответит.", html.EscapeString(i.Title), app.NameDat(c.PartnerName())), b.openApp(fmt.Sprintf("idea/%d", i.ID)))
 		return
 	}
 	res, err := b.App.AddIdea(ctx, c, text)
@@ -486,6 +506,12 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		if err == nil && q.Message != nil {
 			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>Твоя отметка: "+strings.ToLower(toast)+"</i>", nil)
 		}
+	case "cd": // a chore done right from its card
+		_, err = b.App.ChoreDone(ctx, c, id(1))
+		toast = "Сделано ✓"
+		if err == nil && q.Message != nil {
+			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>✓ Сделано</i>", nil)
+		}
 	case "mg":
 		err = b.App.Merge(ctx, c, id(1), id(2))
 		toast = "Объединил"
@@ -502,7 +528,7 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		_, err = b.App.AcceptSlot(ctx, c, id(1), arg(2)+":"+arg(3))
 		toast = "Подходит ✓"
 		if err == nil && q.Message != nil {
-			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>Ты выбрал(а) это время</i>", nil)
+			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>✓ Время выбрано</i>", nil)
 		}
 	case "tk": // «билеты есть»
 		err = b.App.GotTickets(ctx, c, id(1))

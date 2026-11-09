@@ -49,6 +49,14 @@ export function ncase(name: string, c: 'gen' | 'acc' | 'ins' | 'dat'): string {
   return n
 }
 
+// a past-tense verb agreed with the name: «Настя отметила», «Вова отметил»; names that are both keep «(а)»
+export function past(name: string | undefined, verb: string): string {
+  const n = (name || '').trim().toLowerCase()
+  if (n.length < 2 || ['саша', 'женя', 'валя', 'сеня', 'шура', 'слава'].includes(n)) return verb + '(а)'
+  if (['никита', 'илья', 'кузьма', 'фома', 'лука', 'миша', 'гоша', 'дима', 'вова', 'коля', 'толя', 'петя', 'ваня', 'серёжа', 'сережа', 'лёша', 'леша', 'гриша', 'костя', 'юра', 'боря', 'витя', 'федя', 'стёпа', 'степа', 'вася', 'тёма', 'тема', 'лёва', 'лева', 'паша', 'даня', 'саня', 'рома', 'гена', 'жора', 'сева', 'яша'].includes(n)) return verb
+  return /[ая]$/.test(n) ? verb + 'а' : verb
+}
+
 // an event with its own date and time (a play, a concert): «Идём!» books it without picking time
 export function isFixed(i: { starts_at?: number; ends_at?: number }): boolean {
   if (!i.starts_at || i.starts_at * 1000 < Date.now()) return false

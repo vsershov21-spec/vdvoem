@@ -36,7 +36,8 @@
 .intro__word{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 15%);text-align:center;display:flex;flex-direction:column;gap:8px}
 .intro__word b{font:800 44px/1 var(--font-sans);letter-spacing:-1.6px;background:linear-gradient(90deg,#ff9a6b,#fff 50%,#86a8ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .intro__word span{font:500 15px/1.3 var(--font-sans);color:rgba(255,255,255,.62)}
-.intro__skip{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 20px);font:500 12px/1 var(--font-sans);color:rgba(255,255,255,.3);letter-spacing:.3px}
+.intro__skip{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 20px);font:500 13px/1 var(--font-sans);color:rgba(255,255,255,.5);letter-spacing:.3px}
+.intro__word .intro__what{display:block;margin-top:10px;font:500 13px/1.35 var(--font-sans);color:rgba(255,255,255,.75);max-width:280px}
 
 /* glass login (donor .glass) */
 .glass{background:rgba(255,255,255,.05);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);box-shadow:0 8px 32px rgba(0,0,0,.3)}

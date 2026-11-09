@@ -1,5 +1,4 @@
 // Pill tab bar (navigation_tabs_v4 / navigation1) and Dynamic Island (navigation3), adapted to «Вдвоём».
-import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Icon } from './icons'
 import { haptic } from '../lib/tg'
@@ -78,43 +77,21 @@ export function statusOf(h: Home | null): Status {
   return { dot: 'var(--success)', title: 'Вдвоём', sub: 'всё спокойно' }
 }
 
-export function Island({ home, actions }: { home: Home | null; actions: { id: string; label: string; icon: string; run: () => void; badge?: number }[] }) {
-  const [open, setOpen] = useState(false)
+// The island is a status line: where we are and whose move it is. One tap opens that place — the actions
+// live on the screens and in the tab bar, not in a second menu.
+export function Island({ home }: { home: Home | null }) {
   const s = statusOf(home)
   return (
     <div className="island-wrap">
-      {open && <div className="island-scrim" onClick={() => setOpen(false)} />}
-      <motion.div layout transition={{ type: 'spring', stiffness: 380, damping: 28, mass: 0.8 }} className={'island' + (open ? ' is-open' : '')}
-        onClick={() => { if (!open) { haptic.soft(); setOpen(true) } }} role="region" aria-label="Статус и быстрые действия" data-testid="island">
-        <AnimatePresence mode="wait" initial={false}>
-          {!open ? (
-            <motion.div key="c" className="island__compact" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ duration: 0.16 }}>
-              <span className="island__mark" aria-hidden="true"><i /><i /></span>
-              <b className="island__title">{s.title}</b>
-              <span className={'island__dot' + (s.live ? ' is-live' : '')} style={{ ['--c' as any]: s.dot }} />
-              <span className="island__sub">{s.sub}</span>
-            </motion.div>
-          ) : (
-            <motion.div key="e" className="island__open" initial={{ opacity: 0, y: 8, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
-              transition={{ duration: 0.22, delay: 0.05 }} onClick={e => e.stopPropagation()}>
-              <div className="island__head">
-                <span className="island__mark island__mark--lg" aria-hidden="true"><i /><i /></span>
-                <div className="island__meta"><b>{home?.me.name}{home?.partner ? ' и ' + home.partner.name : ''}</b><span>{s.title !== 'Вдвоём' ? s.title + ' · ' : ''}{s.sub}</span></div>
-                <button className="island__close" aria-label="Свернуть" onClick={() => setOpen(false)}><Icon n="chev" s={16} w={2.4} style={{ transform: 'rotate(-90deg)' }} /></button>
-              </div>
-              <div className="island__acts">
-                {actions.map(a => (
-                  <motion.button key={a.id} className="island__act" whileTap={{ scale: 0.94 }} onClick={() => { haptic.tap(); setOpen(false); a.run() }}>
-                    <span className="island__act-ico"><Icon n={a.icon} s={20} w={2} />{!!a.badge && <i>{a.badge}</i>}</span>
-                    <span>{a.label}</span>
-                  </motion.button>
-                ))}
-              </div>
-              {s.go && <button className="island__go" onClick={() => { setOpen(false); go(s.go!) }}>Открыть <Icon n="chev" s={14} w={2.4} /></button>}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+      <motion.button layout transition={{ type: 'spring', stiffness: 380, damping: 28, mass: 0.8 }} className="island"
+        onClick={() => { if (s.go) { haptic.soft(); go(s.go) } }} aria-label={'Статус: ' + s.title + ', ' + s.sub} data-testid="island">
+        <span className="island__compact">
+          <span className="island__mark" aria-hidden="true"><i /><i /></span>
+          <b className="island__title">{s.title}</b>
+          <span className={'island__dot' + (s.live ? ' is-live' : '')} style={{ ['--c' as any]: s.dot }} />
+          <span className="island__sub">{s.sub}</span>
+        </span>
+      </motion.button>
     </div>
   )
 }

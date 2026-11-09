@@ -46,13 +46,11 @@ test('E10 выбор: время → колода → совпало → под�
   await expect(np.getByText('Твой голос принят')).toBeVisible()
   await expect(vp.getByText('Выбираем')).toBeVisible({ timeout: 12000 })
   await vp.locator('.dcard', { hasText: fav }).getByRole('button', { name: 'Голосую за это' }).click()
+  // the same idea at the common time is the decision: planned at once, no second «подтверди»
   await expect(vp.getByText('Совпало!')).toBeVisible()
   await shot(vp, 'E10-match')
-  await vp.getByRole('button', { name: 'Подтверждаю' }).click()
-  await expect(vp.getByText(/ждём Настю/)).toBeVisible()
-  await waitMsg(n, /подтвердил\(а\)/)
-  await press(n, 'Подтвердить')
   const planned = await waitMsg(v, /Мы идём/)
+  await waitMsg(n, /Мы идём/)
   // «в календарь» opens the event itself (an https .ics — iPhone shows «Добавить»), not a file to share
   const btns = JSON.stringify(planned.reply_markup)
   const link = btns.match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
@@ -141,13 +139,13 @@ test('E13 другое время сохраняет идею, отмена на
   await waitMsg(n, /просит другое время/)
   await mark(vp, [planned.days[1] + ':2'])
   const r = (await api(n, 'POST', `/rounds/${planned.id}/slots`, { slots: [planned.days[1] + ':2'] })).round
-  expect(r.state).toBe('confirm')
+  expect(r.state).toBe('planned') // the idea stays, the new common time plans it
   expect(r.chosen.title).toBe(chosen)
   await api(v, 'POST', `/rounds/${planned.id}/confirm`); await api(n, 'POST', `/rounds/${planned.id}/confirm`)
   await vp.reload()
   const before = await lastId(n)
   await vp.getByRole('button', { name: 'Отменить' }).click()
-  await waitMsg(n, /отменил\(а\) выбор/, 10000, before)
+  await waitMsg(n, /отменил.? выбор/, 10000, before)
   await waitMsg(n, /удали её там/, 10000, before)
 })
 

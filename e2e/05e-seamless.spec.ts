@@ -99,7 +99,7 @@ test('E33 чат: подсказки при печати, следующий ш�
   // in the bot a request is answered, a bare name is still an idea
   const before = await lastId(v)
   await say(v, 'хотим что-нибудь на выходных')
-  await waitMsg(v, /Лучше всего|Щелкунчик|ничего/i, 15000, before)
+  await waitMsg(v, /Лучший|Щелкунчик|ничего/i, 15000, before)
   expect((await api(v, 'GET', '/ideas')).ideas.some((i: any) => /хотим что-нибудь/i.test(i.title))).toBe(false)
 })
 

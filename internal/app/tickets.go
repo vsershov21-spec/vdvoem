@@ -99,7 +99,7 @@ func (a *App) GotTickets(ctx context.Context, c Couple, roundID int64) error {
 		if i.Category == "food" {
 			what = "стол"
 		}
-		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("🎟 %s взял(а) %s на <b>%s</b>. Покупать не нужно.", esc(c.Me.Name), what, esc(i.Title)), nil)
+		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("🎟 %s %s %s на <b>%s</b>. Покупать не нужно.", esc(c.Me.Name), Past(c.Me.Name, "взял"), what, esc(i.Title)), nil)
 	}
 	a.Live.From(ctx, c.Space.ID)
 	return nil
@@ -123,8 +123,8 @@ func (a *App) SendPick(ctx context.Context, c Couple, pickID int64) error {
 			top = append(top, "• "+esc(i.Title))
 		}
 	}
-	a.send(ctx, c.Partner.ChatID, fmt.Sprintf("📋 %s прислал(а) подборку: <b>%s</b> — %d %s.\n%s\n\nОтметь, что нравится, — совпадения появятся у вас обоих.",
-		esc(c.Me.Name), esc(p.Title), len(p.IDs), plural(len(p.IDs), "вариант", "варианта", "вариантов"), strings.Join(top, "\n")),
+	a.send(ctx, c.Partner.ChatID, fmt.Sprintf("📋 %s %s подборку: <b>%s</b> — %d %s.\n%s\n\nОтметь, что нравится, — совпадения появятся у вас обоих.",
+		esc(c.Me.Name), Past(c.Me.Name, "прислал"), esc(p.Title), len(p.IDs), plural(len(p.IDs), "вариант", "варианта", "вариантов"), strings.Join(top, "\n")),
 		tg.Keyboard(tg.Row(tg.App("Открыть подборку", a.appURL(fmt.Sprintf("pick/%d", p.ID))))))
 	return nil
 }

@@ -14,24 +14,24 @@ test('E17 «Удиви нас» в приложении: «Давай!» отк�
   await p.getByRole('button', { name: 'Давай!' }).click()
   await expect(p.getByText('Решили')).toBeVisible()
   await expect(p.getByText('Когда удобно')).toBeVisible()
-  // the Dynamic Island now shows the live round and its quick actions
+  // the island shows the live round; a tap opens it
   await p.goto('/app/')
   await expect(p.getByTestId('island')).toContainText('шаг 1/3')
-  await p.getByTestId('island').click()
-  await expect(p.getByRole('button', { name: 'Добавить идею' }).first()).toBeVisible()
   await shot(p, 'E17-island')
+  await p.getByTestId('island').click()
+  await expect(p).toHaveURL(/round\//)
   // another idea while the choice is open: no dead end — it replaces the idea, marked time is kept
   const cur = (await api(v, 'GET', '/rounds/current')).round
   await api(v, 'POST', `/rounds/${cur.id}/slots`, { slots: [cur.days[1] + ':2'] })
-  await api(n, 'POST', `/rounds/${cur.id}/slots`, { slots: [cur.days[1] + ':2'] })
   const other = (await api(v, 'GET', '/ideas')).ideas.find((i: any) => i.id !== (cur.chosen?.id))
   p.once('dialog', d => d.accept())
   await p.goto('/app/idea/' + other.id)
   await p.getByRole('button', { name: /Идём сюда/ }).click()
-  await expect(p.getByText('Совпало!')).toBeVisible()
+  await expect(p.getByText('Решили')).toBeVisible()
   const swapped = (await api(v, 'GET', `/rounds/${cur.id}`)).round
   expect(swapped.chosen.id).toBe(other.id)
-  expect(swapped.state).toBe('confirm')
+  expect(swapped.state).toBe('time')
+  expect(swapped.sent).toBe(true) // the time already marked is kept
 })
 
 test('E18 помощник: ответы, карточки, кнопки срабатывают один раз и только нажатием', async ({ browser }) => {

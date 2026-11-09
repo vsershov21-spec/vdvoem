@@ -4,7 +4,7 @@ import type { Home, Idea, Round } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, humanError, ApiError } from '../lib/api'
 import { go } from '../lib/router'
-import { dayLabel, hm, money, dur, relLeft, when, parseDay, ncase } from '../lib/format'
+import { dayLabel, hm, money, dur, relLeft, when, parseDay, ncase, past as agreed } from '../lib/format'
 import { haptic, download } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Empty, Marks, Sheet, Skel, SubHeader, burst, toast } from '../ui/kit'
@@ -137,7 +137,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
     <div className="col">
       {r.chosen && <ChosenStrip i={r.chosen} />}
       {r.partner_sent && <Proposals title={`${partner} предлагает — подходит?`} />}
-      <p className="callout muted rise" style={{ margin: 0 }}>{r.partner_sent ? <>Или отметь своё — <span className="their-dot" /> это время {ncase(partner, 'gen')}. Совпадёт хоть одно — договорились, потом оба подтвердите.</> : <>Предложи, когда можешь — на любой день. {partner} увидит и выберет подходящее.</>}</p>
+      <p className="callout muted rise" style={{ margin: 0 }}>{r.partner_sent ? <>Или отметь своё — <span className="their-dot" /> это время {ncase(partner, 'gen')}. Совпадёт хоть одно — договорились.</> : <>Тапни, когда тебе удобно. {partner} увидит и выберет.</>}</p>
       <div className="wknav rise" style={{ ['--d' as any]: 1 }}>
         <button className="wknav__arrow" aria-label="Предыдущая неделя" disabled={+week <= +t0} onClick={() => goWeek(addDays(week, -7))}><Icon n="back" s={16} w={2.4} /></button>
         <button className="wknav__mid" onClick={() => setPicker(true)} aria-label="Выбрать неделю в календаре"><Icon n="cal" s={17} />{weekTitle(week)}{perWeek[ymd(week)] ? <small>· {perWeek[ymd(week)]}</small> : null}</button>
@@ -156,17 +156,18 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         {days.map(d => { const L = dayLabel(d); const off = d < today || d > last; return [
           <div key={d} role="button" aria-label={`${L.long} целиком`} onClick={() => setMany(PARTS.map(([p]) => `${d}:${p}`))} className={'slots__day' + (sug.has(d) ? ' is-sug' : '') + (off ? ' is-off' : '') + (d === focus ? ' is-focus' : '')}><b>{L.wd}</b><span>{L.num} {L.mon}</span></div>,
           ...PARTS.map(([p]) => { const k = `${d}:${p}`; const dis = past(d, p); return (
-            <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} data-their={theirs.has(k) || undefined} data-common={(theirs.has(k) && sel.has(k)) || undefined} data-busy={myBusy.has(k) || undefined} data-pbusy={pBusy.has(k) || undefined} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}${myBusy.has(k) ? ', занято в твоём календаре' : ''}${pBusy.has(k) ? `, ${partner} занят(а)` : ''}`} style={{ ['--c' as any]: 'var(--person-a)' }}
+            <button key={k} data-k={k} className="cell" disabled={dis} aria-pressed={sel.has(k)} data-their={theirs.has(k) || undefined} data-common={(theirs.has(k) && sel.has(k)) || undefined} data-busy={myBusy.has(k) || undefined} data-pbusy={pBusy.has(k) || undefined} aria-label={`${L.long} ${L.num} ${L.mon} ${PARTS[p][1]}${myBusy.has(k) ? ', занято в твоём календаре' : ''}${pBusy.has(k) ? `, у ${ncase(partner, "gen")} занято` : ''}`} style={{ ['--c' as any]: 'var(--person-a)' }}
               onPointerDown={e => { if (dis) return; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); paint.current = !sel.has(k); toggle(k, paint.current) }}
               onPointerEnter={() => { if (paint.current !== null && !dis) toggle(k, paint.current) }}>
               <Icon n="check" s={20} w={2.6} />
             </button>) }),
         ] })}
       </motion.div>
-      {(myBusy.size > 0 || pBusy.size > 0) ? <p className="caption" style={{ margin: 0 }}><span className="busy-key" /> занято по твоему календарю{pBusy.size > 0 && <> · <span className="pbusy-key" /> {partner} занят(а)</>}</p>
+      {(myBusy.size > 0 || pBusy.size > 0) ? <p className="caption" style={{ margin: 0 }}><span className="busy-key" /> занято по твоему календарю{pBusy.size > 0 && <> · <span className="pbusy-key" /> у {ncase(partner, 'gen')} занято</>}</p>
         : <button className="wkchip" style={{ alignSelf: 'flex-start' }} onClick={() => go('calendar')}><Icon n="cal" s={14} />Подключи свой календарь — занятое отметится само</button>}
-      <p className="caption muted" style={{ margin: 0 }}>Утро 9–13 · день 13–18 · вечер 18–23. Можно вести пальцем; нажми на день — отметится целиком, на «Вечер» — все вечера недели. <span style={{ color: '#ff701e' }}>●</span> — предлагаю эти дни.</p>
-      <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Отметь хотя бы одно' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
+      <details className="howto"><summary>Утро 9–13 · день 13–18 · вечер 18–23</summary>
+        <p>Можно вести пальцем. Нажми на день — отметится целиком, на «Вечер» — все вечера. <span style={{ color: 'var(--accent)' }}>●</span> — дни, которые я предлагаю.</p></details>
+      <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Выбери хотя бы одно время' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
       <Sheet open={picker} onClose={() => setPicker(false)}>
         <WeekPicker today={today} last={last} perDay={perDay} week={week} onPick={d => { goWeek(monday(parseDay(d))); setFocus(d); setPicker(false); toast('Теперь отметь, когда удобно в этот день') }} />
       </Sheet>
@@ -208,9 +209,9 @@ function VoteStage({ r, act, partner, home }: { r: Round; act: Act; partner: str
         <div className="frame rise"><div className="frame__in" style={{ textAlign: 'center' }}>
           <div className="meet" style={{ margin: '8px auto 16px' }}><i /><i /></div>
           <h2 className="title">Твой голос принят</h2>
-          <p className="callout muted">Ты выбрал(а) «{mine?.title || 'ни один'}». Голос {ncase(partner, 'gen')} откроется, когда он(а) проголосует — так честнее.</p>
+          <p className="callout muted">Твой выбор — «{mine?.title || 'ни один'}». Голос {ncase(partner, 'gen')} откроется после ответа — так честнее.</p>
         </div></div>
-        <p className="caption muted" style={{ textAlign: 'center', margin: '4px 0 0' }}>Передумал(а)? Можно переголосовать, пока {partner} не ответил(а).</p>
+        <p className="caption muted" style={{ textAlign: 'center', margin: '4px 0 0' }}>Можно переголосовать, пока {partner} не {agreed(partner, 'ответил')}.</p>
         <Deck r={r} top={top} setTop={setTop} onVote={vote} me={home.me} small />
       </div>
     )
@@ -280,7 +281,7 @@ function ConfirmStage({ r, act, partner, home, onPlace, onRound }: { r: Round; a
     <div className="col">
       <div className="meet rise" style={{ margin: '4px auto 4px' }}><i /><i /></div>
       <h1 className="display rise" style={{ textAlign: 'center' }}>Совпало!</h1>
-      <p className="callout muted rise" style={{ textAlign: 'center', margin: 0 }}>Встреча запланируется, когда подтвердите оба. Молчание не считается согласием.</p>
+      <p className="callout muted rise" style={{ textAlign: 'center', margin: 0 }}>Выбор поменялся — встреча будет в плане, когда «да» скажете оба.</p>
       <Ticket r={r} />
       {r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
       <RouteBlock r={r} home={home} onRound={onRound} />
@@ -289,7 +290,7 @@ function ConfirmStage({ r, act, partner, home, onPlace, onRound }: { r: Round; a
         <span className="row" style={{ gap: 6 }}><span className="dot" style={{ ['--c' as any]: 'var(--success)', opacity: r.partner_confirmed ? 1 : .3 }} />{partner}: {r.partner_confirmed ? 'да' : 'ждём'}</span>
       </div>
       {!r.confirmed ? <Btn kind="accent" block shine icon="check" onClick={() => act('confirm').then(() => {}).catch(() => {})}>Подтверждаю</Btn>
-        : <div className="pill pill--ok" style={{ alignSelf: 'center', height: 36, padding: '0 14px' }}><Icon n="check" s={16} w={2.6} />Ты подтвердил(а) — ждём {ncase(partner, 'acc')}</div>}
+        : <div className="pill pill--ok" style={{ alignSelf: 'center', height: 36, padding: '0 14px' }}><Icon n="check" s={16} w={2.6} />Готово — ждём {ncase(partner, 'acc')}</div>}
       <Btn kind="soft" block icon="clock" onClick={() => act('other-time').then(() => {}).catch(() => {})}>Другое время</Btn>
       <Btn kind="ghost" block onClick={() => act('cancel').then(() => go('', true)).catch(() => {})}>Отменить выбор</Btn>
     </div>
@@ -323,6 +324,11 @@ function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; 
   const past = (r.starts_at || 0) * 1000 < Date.now()
   return (
     <div className="col">
+      {!past && <>
+        <div className="meet rise" style={{ margin: '4px auto 0', transform: 'scale(.7)' }}><i /><i /></div>
+        <h1 className="display rise" style={{ textAlign: 'center', margin: 0 }}>Совпало! Идём</h1>
+        <p className="callout muted rise" style={{ textAlign: 'center', margin: 0 }}>Встреча в плане у вас обоих. Передумали — «Перенести» или «Отменить» внизу.</p>
+      </>}
       <Ticket r={r} />
       {!past && r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
       {!past && <RouteBlock r={r} home={home} onRound={onRound} />}
@@ -333,8 +339,8 @@ function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; 
         <Btn kind="ghost" block onClick={() => act('done', { answer: 'no' }).then(() => {}).catch(() => {})}>Не получилось</Btn>
       </> : <>
         {r.book && <div className="frame rise" data-testid="tickets"><div className="frame__in col" style={{ gap: 10 }}>
-          {r.tickets ? <p className="callout" style={{ margin: 0 }}>✓ {r.tickets === 'me' ? 'Ты взял(а)' : `${home.partner?.name || 'Партнёр'} взял(а)`} {r.chosen?.category === 'food' ? 'стол' : 'билеты'} — всё готово.</p> : <>
-            <p className="callout" style={{ margin: 0 }}><b>{r.book.label}</b> — места разбирают, лучше сразу. Отметь, когда возьмёшь, чтобы {home.partner?.name || 'партнёр'} не купил(а) вторые.</p>
+          {r.tickets ? <p className="callout" style={{ margin: 0 }}>✓ {r.tickets === 'me' ? 'Ты ' + agreed(home.me?.name, 'взял') : `${home.partner?.name || 'Партнёр'} ${agreed(home.partner?.name, 'взял')}`} {r.chosen?.category === 'food' ? 'стол' : 'билеты'} — всё готово.</p> : <>
+            <p className="callout" style={{ margin: 0 }}><b>{r.book.label}</b> — места разбирают, лучше сразу. Отметь, когда возьмёшь, — чтобы не купить дважды.</p>
             <div className="row" style={{ gap: 8 }}><Btn kind="accent" block icon="link" onClick={() => openLink(r.book!.url)}>{r.book.label}</Btn>
               <Btn kind="soft" block icon="check" onClick={() => act('tickets').then(() => {}).catch(() => {})}>{r.chosen?.category === 'food' ? 'Стол есть' : 'Билеты есть'}</Btn></div>
           </>}

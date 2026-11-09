@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { Idea, Person } from '../lib/types'
 import { get, post, del, humanError, ApiError } from '../lib/api'
 import { openLink, haptic } from '../lib/tg'
-import { money } from '../lib/format'
+import { money, past } from '../lib/format'
 import { Icon } from './icons'
 import { Btn, toast } from './kit'
 
@@ -39,7 +39,6 @@ export function Places({ idea, me, partner, ai, onChange, compact }: { idea: Ide
   }
   const remove = async (id: number) => { try { apply((await del<{ idea: Idea }>(`/ideas/${i.id}/options/${id}`)).idea) } catch (e) { toast(humanError(e)) } }
   const opts = i.options || []
-  const who = (a: string) => a === 'ai' ? 'помощник' : a === me.color ? 'ты' : partner?.name || 'партнёр'
   return (
     <section className="places" data-testid="places">
       <div className="places__head">
@@ -53,7 +52,7 @@ export function Places({ idea, me, partner, ai, onChange, compact }: { idea: Ide
             <span className="popt__who" data-p={o.author}>{o.author === 'ai' ? <Icon n="spark" s={13} w={2.4} /> : ((o.author === me.color ? me.name : partner?.name) || '?').slice(0, 1).toUpperCase()}</span>
             <span className="popt__main">
               <b>{o.parsed ? o.title : <span className="popt__parsing"><span className="spin" />разбираю ссылку…</span>}</b>
-              <span>{[o.address, o.price ? '≈ ' + money(o.price) : '', o.note || 'добавил(а) ' + who(o.author)].filter(Boolean).join(' · ')}</span>
+              <span>{[o.address, o.price ? '≈ ' + money(o.price) : '', o.note || (o.author === 'ai' ? 'предложил помощник' : o.author === me.color ? 'ты ' + past(me.name, 'добавил') : (partner?.name || 'партнёр') + ' ' + past(partner?.name, 'добавил'))].filter(Boolean).join(' · ')}</span>
               <span className="popt__links">
                 <button onClick={() => openLink(o.maps)}>на карте</button>
                 {o.url && !o.url.includes('yandex.ru/maps/?text=') && <button onClick={() => openLink(o.url!)}>ссылка</button>}

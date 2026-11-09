@@ -45,7 +45,7 @@ export function CalendarScreen({ home }: { home: Home | null }) {
       <div className="monthstats rise">
         <div><b>{mm}</b><span>{plural(mm, 'встреча', 'встречи', 'встреч')} в месяце</span></div>
         <div><b>{hh}</b><span>{plural(hh, 'час', 'часа', 'часов')} вместе</span></div>
-        <div><b style={{ fontSize: 18 }}>{stats.data?.spent ? money(stats.data.spent) : '—'}</b><span>потрачено</span></div>
+        {!!stats.data?.spent && <div><b style={{ fontSize: 18 }}>{money(stats.data.spent)}</b><span>потрачено</span></div>}
       </div>
       {!data ? <Skel h={330} r={24} /> : <div className="rise" style={{ ['--d' as any]: 1 }}>
         <MonthGrid month={month} marks={marks} today={today} selected={sel} onSelect={d => setSel(s => s === d ? '' : d)} onMonth={n => { setSel(''); setMonth(m => new Date(m.getFullYear(), m.getMonth() + n, 1)) }} />
@@ -78,16 +78,11 @@ function PhoneCalendar() {
   const ios = /iPhone|iPad|Mac/.test(navigator.userAgent)
   const copy = async (t: string) => { try { await navigator.clipboard.writeText(t); haptic.ok(); toast('Ссылка скопирована') } catch { toast(t) } }
   return (<>
+    {/* one row for both directions: meetings go to the phone, busy hours come from it */}
     <button className="calsub rise" onClick={() => setOpen(true)} data-testid="calsub">
       <span className="calsub__ic">📅</span>
-      <span className="calsub__t"><b>{f?.subscribed ? 'Календарь на телефоне подключён' : 'Подключить календарь телефона'}</b>
-        <span>{f?.subscribed ? 'Встречи появляются и переносятся сами' : 'Один раз — и встречи будут там всегда'}</span></span>
-      <span className="calsub__go">›</span>
-    </button>
-    <button className="calsub rise" onClick={() => setBusyOpen(true)} data-testid="busy-open" style={{ marginTop: 8 }}>
-      <span className="calsub__ic">🗓</span>
-      <span className="calsub__t"><b>{f?.busy ? 'Твоя занятость подключена' : 'Показывать мою занятость'}</b>
-        <span>{f?.busy ? 'Занятые часы отмечаются сами' : 'Свяжи свой календарь — при выборе времени занятое отметится само'}{f?.partner_busy ? ' · у партнёра подключено' : ''}</span></span>
+      <span className="calsub__t"><b>{f?.subscribed && f?.busy ? 'Календарь телефона подключён' : f?.subscribed ? 'Встречи уже в телефоне' : 'Подключить календарь телефона'}</b>
+        <span>{f?.subscribed && f?.busy ? 'Встречи туда, занятость оттуда — всё само' : f?.subscribed ? 'Можно ещё показывать твою занятость' : 'Встречи появятся там сами, а занятое отметится при выборе'}{f?.partner_busy ? ' · у партнёра подключено' : ''}</span></span>
       <span className="calsub__go">›</span>
     </button>
     <BusySheet open={busyOpen} onClose={() => setBusyOpen(false)} connected={!!f?.busy} onDone={feed.refresh} />
@@ -101,6 +96,9 @@ function PhoneCalendar() {
         <Btn kind="surface" block icon="link" onClick={() => copy(f.url)}>Скопировать ссылку</Btn>
         <p className="caption muted" style={{ margin: '4px 0 0' }}>iPhone без кнопки: Настройки → Календарь → Учётные записи → Новая → Другое → Подписной календарь → вставить ссылку. Google: «Другие календари» → «Добавить по URL».</p>
         <button className="link" onClick={async () => { await post('/calendar/feed/reset', {}); await feed.refresh(); toast('Старая ссылка больше не работает') }}>Сменить ссылку</button>
+        <div style={{ height: 1, background: "var(--line)", margin: "6px 0" }} />
+        <Btn kind="soft" block icon="clock" onClick={() => { setOpen(false); setBusyOpen(true) }}>{f.busy ? 'Моя занятость подключена' : 'И показывать мою занятость'}</Btn>
+        <p className="caption muted" style={{ margin: 0 }}>При выборе времени занятые у тебя часы отметятся сами. Партнёр видит только «занято».</p>
       </div>}
     </Sheet>
   </>)
@@ -121,7 +119,7 @@ function BusySheet({ open, onClose, connected, onDone }: { open: boolean; onClos
     <Sheet open={open} onClose={onClose}>
       <h2 className="title" style={{ margin: '0 0 6px' }}>Моя занятость</h2>
       <p className="callout muted" style={{ margin: '0 0 12px' }}>Когда выбираете время, занятые у тебя часы отметятся сами, а «Мне подходит любое» их пропустит. {''}
-        Партнёр увидит только «занят(а)» — без названий и подробностей.</p>
+        Партнёр увидит только «занято» — без названий и подробностей.</p>
       <div className="col" style={{ gap: 10 }}>
         <div className="field"><label>Секретная ссылка на календарь (iCal)</label>
           <input className="input" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" value={url} onChange={e => setUrl(e.target.value)} /></div>

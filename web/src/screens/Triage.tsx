@@ -6,6 +6,7 @@ import { useLoad, emit } from '../lib/data'
 import { post, del, humanError } from '../lib/api'
 import { back, go } from '../lib/router'
 import { haptic } from '../lib/tg'
+import { past } from '../lib/format'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Empty, Skel, SubHeader, toast } from '../ui/kit'
 
@@ -54,7 +55,7 @@ export function Triage({ partner }: { partner?: Person }) {
         {i.info?.about && <p className="callout" style={{ margin: 0 }}>{i.info.about}</p>}
         {i.why && <p className="acard__why" style={{ margin: 0 }}>{i.why}</p>}
         {i.match?.note && <p className="caption acard__note" style={{ margin: 0 }}>Совпадение {i.match.both}% · {i.match.note}</p>}
-        {i.partner_marked && <p className="caption muted" style={{ margin: 0 }}>{partner?.name || 'Партнёр'} уже отметил(а) — увидишь после своей отметки</p>}
+        {i.partner_marked && <p className="caption muted" style={{ margin: 0 }}>{partner?.name || 'Партнёр'} уже {past(partner?.name, 'отметил')} — увидишь после своей отметки</p>}
       </div>
     </div>
     </Swipe>
