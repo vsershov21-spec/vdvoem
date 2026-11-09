@@ -253,9 +253,13 @@ func (a *App) RemoveExtra(ctx context.Context, c Couple, extraID int64) (domain.
 }
 
 func (a *App) resendICS(ctx context.Context, c Couple, r domain.Round) {
+	text := "Маршрут обновился — обнови событие в календаре."
+	if l := a.routeLine(ctx, c, r); l != "" {
+		text = "Маршрут обновился. " + l + "\nОбнови событие в календаре:"
+	}
 	for _, m := range a.both(c) {
 		if cal := a.calKeys(ctx, c, m, r); len(cal) > 0 {
-			a.sendQuiet(ctx, m.ChatID, "Маршрут обновился — обнови событие в календаре:", tg.Keyboard(cal))
+			a.sendQuiet(ctx, m.ChatID, text, tg.Keyboard(cal))
 		}
 	}
 }

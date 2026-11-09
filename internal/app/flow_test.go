@@ -364,7 +364,7 @@ func TestExtras(t *testing.T) {
 		t.Fatalf("calendar has both stops:\n%s", ics)
 	}
 	if !strings.Contains(f.last(1), "Потом:") {
-		t.Fatalf("planned message shows the route: %q", f.last(1))
+		t.Fatalf("the route update shows the stops: %q", f.last(1))
 	}
 	// text proposal creates the idea; the limit is two stops
 	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Прогулка по Арбату"); err != nil {
@@ -778,7 +778,7 @@ func TestPickAndBusy(t *testing.T) {
 	if err != nil || len(p.IDs) != rep.Pick.N {
 		t.Fatal(err)
 	}
-	if err := a.SendPick(ctx, v, p.ID); err != nil || !strings.Contains(f.last(2), "прислал(а) подборку") {
+	if err := a.SendPick(ctx, v, p.ID); err != nil || !strings.Contains(f.last(2), "Вова прислал подборку") {
 		t.Fatalf("send: %v %q", err, f.last(2))
 	}
 	if _, err := a.S.Pick(ctx, n.Space.ID+99, p.ID); err == nil {
