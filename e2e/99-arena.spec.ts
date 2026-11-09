@@ -8,7 +8,8 @@ import { people, pair, phone, open, api, addIdeas, planMeeting, say, chat, waitM
 test.use({ actionTimeout: 6000, navigationTimeout: 15000 })
 const LOG = '.run/arena.log', BOT = '.run/arena-bot.log'
 let n = 0
-const day = (d: number, hm = '19:00') => { const t = new Date(Date.now() + d * 86400_000); const [h, m] = hm.split(':'); t.setHours(+h, +m, 0, 0); return t.toISOString() }
+// the scout's own format: a Moscow wall-clock time, «2026-11-14T19:00»
+const day = (n: number, hm = '19:00') => { const d = new Date(Date.now() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}` }
 
 async function cap(p: Page, name: string, note = '') {
   await p.waitForTimeout(900)

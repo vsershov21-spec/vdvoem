@@ -49,14 +49,16 @@ func (a *App) FindByName(ctx context.Context, c Couple, q string) (store.Idea, b
 	return all[0].i, true
 }
 
-// SameName: every idea that answers to the name equally well — two «Мастера и Маргариты» are a question, not a pick
-func (a *App) SameName(ctx context.Context, c Couple, q string) []store.Idea {
-	words := nameWords(q)
+// SameName: the ideas the words point to best — one is the answer, two or more tied is a question to ask.
+// Scored over the whole phrase («расскажи про Мастера и Маргариту»), so «мастер» alone does not pull in
+// «Мастер-класс по керамике».
+func (a *App) SameName(ctx context.Context, c Couple, text string) []store.Idea {
+	words := nameWords(text)
 	if len(words) == 0 {
 		return nil
 	}
 	ideas, _ := a.S.Ideas(ctx, c.Space.ID, domain.IdeaActive, domain.IdeaDraft)
-	var out []store.Idea
+	best, top := 0, []store.Idea(nil)
 	for _, i := range ideas {
 		have := nameWords(i.Title)
 		hit := 0
@@ -68,14 +70,21 @@ func (a *App) SameName(ctx context.Context, c Couple, q string) []store.Idea {
 				}
 			}
 		}
-		if hit == len(words) {
-			out = append(out, i)
+		switch {
+		case hit == 0 || hit < best:
+		case hit > best:
+			best, top = hit, []store.Idea{i}
+		default:
+			top = append(top, i)
 		}
 	}
-	if len(out) > 4 {
-		out = out[:4]
+	if best*2 < len(words) && best < 2 { // too little in common to point anywhere
+		return nil
 	}
-	return out
+	if len(top) > 4 {
+		top = top[:4]
+	}
+	return top
 }
 
 func nameWords(s string) []string {
@@ -95,7 +104,11 @@ func nameWords(s string) []string {
 	return out
 }
 
-var stopName = map[string]bool{"билеты": true, "билет": true, "стоит": true, "сколько": true, "цена": true, "для": true, "двоих": true, "это": true, "наш": true, "нас": true}
+var stopName = map[string]bool{"билеты": true, "билет": true, "стоит": true, "сколько": true, "цена": true, "для": true, "двоих": true, "это": true, "наш": true, "нас": true,
+	// the words around a name in a question: «расскажи про …», «подойдёт ли нам …», «кто играет в …»
+	"про": true, "расскажи": true, "расскажите": true, "подойдёт": true, "подойдет": true, "нам": true, "вам": true, "кто": true, "играет": true,
+	"что": true, "такое": true, "чём": true, "чем": true, "хочу": true, "хотим": true, "давай": true, "идти": true, "сходить": true, "пойти": true,
+	"понравится": true, "мне": true, "мой": true, "наше": true, "наши": true, "есть": true, "ещё": true, "еще": true}
 
 // PriceAnswer: what we know about the price of a thing — from the bank, a fresh look at its page,
 // or, when the page does not say, the link to look yourself; a question goes to the scout either way.

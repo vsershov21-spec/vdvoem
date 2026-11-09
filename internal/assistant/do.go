@@ -78,7 +78,7 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 	case "book":
 		return r.book(ctx, in)
 	case "about":
-		return r.about(ctx, in)
+		return r.about(ctx, in, text)
 	case "suggest":
 		return r.suggestText(ctx, in)
 	case "find":
@@ -433,8 +433,9 @@ func (r *run) book(ctx context.Context, in Intent) Reply {
 
 // ---------- about: what it is and whether it suits us ----------
 
-func (r *run) about(ctx context.Context, in Intent) Reply {
-	if alts := r.as.App.SameName(ctx, r.c, in.Q); len(alts) > 1 {
+func (r *run) about(ctx context.Context, in Intent, text string) Reply {
+	alts := r.as.App.SameName(ctx, r.c, firstNonEmpty(text, in.Q))
+	if len(alts) > 1 {
 		// two ideas answer to the name: ask which one, never pick silently
 		for _, a := range alts {
 			r.proposeAlt(ctx, map[string]any{"intent": Intent{I: "about", Q: a.Title}, "text": "расскажи про " + a.Title}, short(a.Title, 34))
@@ -442,6 +443,9 @@ func (r *run) about(ctx context.Context, in Intent) Reply {
 		return Reply{Text: "У вас " + plural(len(alts), "идея", "идеи", "идей") + " с таким названием. Про какую?"}
 	}
 	i, ok := r.as.App.FindByName(ctx, r.c, in.Q)
+	if len(alts) == 1 { // the whole phrase points at one idea — better than the short query alone
+		i, ok = alts[0], true
+	}
 	if !ok {
 		_ = r.as.App.AskScout(ctx, r.c, "Расскажи про: "+in.Q, 0)
 		return Reply{Text: "Не нашёл «" + short(in.Q, 40) + "» в афише и копилке. Спросил скаута — расскажет в боте. Если есть ссылка или пост — пришли, разберу."}
