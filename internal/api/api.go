@@ -1277,6 +1277,9 @@ func (a *API) static(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(rel, "assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
+		if rel == "telegram-web-app.js" || strings.HasSuffix(rel, ".png") || strings.HasSuffix(rel, ".svg") {
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
 		if strings.HasSuffix(rel, ".webmanifest") {
 			w.Header().Set("Content-Type", "application/manifest+json")
 		}

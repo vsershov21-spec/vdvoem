@@ -21,7 +21,19 @@
       addEventListener('unhandledrejection', function (e) { __vdlog('reject', e.reason && (e.reason.message || e.reason)) })
       __vdlog('html', navigator.userAgent.slice(-60))
     </script>
-    <script src="https://telegram.org/js/telegram-web-app.js?56" defer></script>
+    <!-- Telegram's SDK from our own server (fast), telegram.org only if our copy is missing; then tell Telegram
+         at once that the page is ready, so its grey screen gives way to our loader while the app downloads -->
+    <script src="/app/telegram-web-app.js"></script>
+    <script>
+      if (!window.Telegram) document.write('<script src="https://telegram.org/js/telegram-web-app.js?56"><\/script>')
+    </script>
+    <script>
+      try {
+        var T = window.Telegram && Telegram.WebApp
+        if (T && T.initData) { T.ready(); T.expand(); var dark = T.colorScheme === 'dark'; T.setHeaderColor && T.setHeaderColor(dark ? '#0f0f11' : '#f4f4f4'); T.setBackgroundColor && T.setBackgroundColor(dark ? '#0f0f11' : '#f4f4f4'); if (dark) document.documentElement.setAttribute('data-boot-dark', '') }
+        __vdlog('tg', 'sdk=' + !!window.Telegram)
+      } catch (e) {}
+    </script>
     <script>
       // self-heal: if the app has not started in 9 s (a stale cached page asking for old files, a flaky network),
       // reload once or twice with a fresh URL; main.tsx cancels this as soon as it runs
@@ -35,7 +47,21 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- shown until the app starts: the two halves of the bridge draw themselves and meet -->
+      <style>
+        .boot{position:fixed;inset:0;display:grid;place-items:center;background:#f4f4f4}
+        .boot svg{width:96px;height:64px;overflow:visible}
+        .boot path{fill:none;stroke-width:9;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:bootdraw 1.1s cubic-bezier(.22,1,.36,1) .15s forwards,bootglow 1.6s ease-in-out 1.3s infinite}
+        .boot .r{animation-delay:.3s,1.45s}
+        @keyframes bootdraw{to{stroke-dashoffset:0}}
+        @keyframes bootglow{50%{opacity:.55}}
+        @media (prefers-color-scheme:dark){.boot{background:#0f0f11}.boot .r{stroke:#6b95ff}}
+        [data-boot-dark] .boot{background:#0f0f11}[data-boot-dark] .boot .r{stroke:#6b95ff}
+        @media (prefers-reduced-motion:reduce){.boot path{animation:none;stroke-dashoffset:0}}
+      </style>
+      <div class="boot" role="img" aria-label="Вдвоём загружается"><svg viewBox="0 0 84 56"><path class="l" pathLength="1" stroke="#ef6537" d="M8 46 Q 22 10 42 10"/><path class="r" pathLength="1" stroke="#3d6ef5" d="M76 46 Q 62 10 42 10"/></svg></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

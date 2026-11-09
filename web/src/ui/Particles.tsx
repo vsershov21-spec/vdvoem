@@ -2,16 +2,16 @@
 // Added: the «pair» shape (our mark: two discs, ember + blue, light where they overlap) and per-particle colour.
 import { useEffect, useRef } from 'react'
 
-export type Shape = 'sphere' | 'pair' | 'heart' | 'ring' | `text:${string}`
+export type Shape = 'sphere' | 'pair' | 'bridge' | 'heart' | 'ring' | `text:${string}`
 
 const SPEED = 0.28, BASE_TILT = 0.18, REPEL_RADIUS = 0.6, REPEL_FORCE = 4, SPRING = 0.04, DAMPING = 0.84
 const SCATTER = 0.7, FORM = 1.6, MAX_DELAY = 0.4
-const isFlat = (id: Shape) => id === 'heart' || id === 'pair' || id.startsWith('text:')
+const isFlat = (id: Shape) => id === 'heart' || id === 'pair' || id === 'bridge' || id.startsWith('text:')
 
 // colours: 0 white, 1 ember (person a), 2 blue (person b), 3 warm light
 const PALETTE = [[255, 255, 255], [239, 101, 55], [77, 125, 255], [255, 222, 150]]
 
-type Built = { pos: Float32Array; col?: Uint8Array }
+type Built = { pos: Float32Array; col?: Uint8Array; u?: Float32Array }
 
 function sphere(n: number): Built {
   const out = new Float32Array(n * 3)
@@ -61,6 +61,27 @@ function pair(n: number): Built {
   return { pos: out, col }
 }
 
+// the mark: two arcs that meet at the top — each person builds their half of the bridge.
+// u = 0 at the foot of an arc … 1 where the halves meet; light runs up both arcs and meets in the middle.
+function bridge(n: number): Built {
+  const out = new Float32Array(n * 3), col = new Uint8Array(n), u = new Float32Array(n)
+  // the logo's own curves (84×56 box): left M8 46 Q22 10 42 10, right mirrored; centred and scaled to ±1.2
+  const S = 1 / 28, cx = 42, cy = 30
+  const q = (t: number, a: number, b: number, c: number) => (1 - t) * (1 - t) * a + 2 * (1 - t) * t * b + t * t * c
+  for (let i = 0; i < n; i++) {
+    const side = i % 2 ? 1 : -1, t = Math.random()
+    const x0 = side < 0 ? 8 : 76, xc = side < 0 ? 22 : 62
+    const x = q(t, x0, xc, 42), y = q(t, 46, 10, 10)
+    // the normal of the curve, for the stroke's thickness (dense core, soft edge)
+    const dx = 2 * (1 - t) * (xc - x0) + 2 * t * (42 - xc), dy = 2 * (1 - t) * (10 - 46) + 2 * t * (10 - 10), l = Math.hypot(dx, dy) || 1
+    const w = (Math.random() < 0.75 ? (Math.random() - 0.5) * 6 : (Math.random() - 0.5) * 11)
+    out[i * 3] = ((x - dy / l * w) - cx) * S * 0.8; out[i * 3 + 1] = ((y + dx / l * w) - cy) * S * 0.8 + 0.05; out[i * 3 + 2] = (Math.random() * 2 - 1) * 0.05
+    u[i] = t
+    col[i] = t > 0.94 && Math.random() < 0.5 ? 3 : side < 0 ? 1 : 2
+  }
+  return { pos: out, col, u }
+}
+
 function text(n: number, s: string): Built {
   const font = '800 200px Onest, "Helvetica Neue", system-ui, sans-serif'
   const c = document.createElement('canvas'), g = c.getContext('2d', { willReadFrequently: true })!
@@ -86,6 +107,7 @@ function build(id: Shape, n: number): Built {
   if (id === 'ring') return ring(n)
   if (id === 'heart') return heart(n)
   if (id === 'pair') return pair(n)
+  if (id === 'bridge') return bridge(n)
   if (id.startsWith('text:')) return text(n, id.slice(5))
   return sphere(n)
 }
@@ -112,6 +134,7 @@ export function Particles({ shape, count = 5200, scale = 0.24, from, colored = t
     let end = pos
     const col = new Uint8Array(N), colTo = first.col ? Uint8Array.from(first.col) : new Uint8Array(N)
     col.set(colTo)
+    let along: Float32Array | undefined = first.u
     const bright = new Float32Array(N), delay = new Float32Array(N)
     for (let i = 0; i < N; i++) bright[i] = 0.35 + Math.random() * 0.65
     let morphT = -1, flatT = isFlat(from || shape) ? 1 : 0, flat = flatT, fade = 1, fadeTo = 1
@@ -119,7 +142,7 @@ export function Particles({ shape, count = 5200, scale = 0.24, from, colored = t
     morph.current = (id: Shape) => {
       cur.current = id
       start.set(pos)
-      const b = build(id, N); end = b.pos
+      const b = build(id, N); end = b.pos; along = b.u
       colTo.set(b.col || new Uint8Array(N))
       for (let i = 0; i < N; i++) {
         const k = i * 3, push = 1.5 + Math.random() * 0.6, th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 2 - 1), kick = 0.35 + Math.random() * 0.35
@@ -190,7 +213,9 @@ export function Particles({ shape, count = 5200, scale = 0.24, from, colored = t
         const c = colored ? col[i] : 0
         if (c !== curCol) { const q = PALETTE[c]; ctx.fillStyle = `rgb(${q[0]},${q[1]},${q[2]})`; curCol = c }
         const size = (1 + depth * 1.3) * dpr
-        ctx.globalAlpha = bright[i] * (0.22 + 0.78 * depth) * fade
+        // on the bridge, waves of light climb both arcs and meet at the top
+        const wave = along && morphT < 0 && !reduce ? 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(along[i] * 9 - now * 0.0045)) : 1
+        ctx.globalAlpha = bright[i] * (0.22 + 0.78 * depth) * fade * wave
         ctx.fillRect(hx + offset[o] - size / 2, hy + offset[o + 1] - size / 2, size, size)
       }
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'

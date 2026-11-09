@@ -115,14 +115,13 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     const short = seenToday() || matchMedia('(prefers-reduced-motion: reduce)').matches
     markSeen()
     shortRef.current = short
-    later(100, () => setShape('pair'))
+    later(100, () => setShape('bridge'))
     later(9000, finish) // safety net on very slow devices
   }
   const shortRef = useRef(false)
-  // the sequence follows the particles: pair formed → hold → heart → hold → dissolve into the app
+  // the sequence follows the particles: a cloud → the bridge (two arcs meet) → light runs up → dissolve into the app
   const formed = (s: Shape) => {
-    if (s === 'pair') later(shortRef.current ? 500 : 900, () => shortRef.current ? finish() : setShape('heart'))
-    if (s === 'heart') later(900, finish)
+    if (s === 'bridge') later(shortRef.current ? 700 : 1600, finish) // hold while the light runs up the arcs and meets
   }
   const ended = useRef(false)
   const finish = () => {
@@ -178,7 +177,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
           <div className="intro__canvas"><Particles from="sphere" shape={shape} dissolve={dissolve} scale={0.3} speed={1.6} onFormed={formed} /></div>
           <motion.div className="intro__word" initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={dissolve ? { opacity: 0, y: -10 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ delay: dissolve ? 0 : 1.2, duration: 0.7 }}>
-            <b>вдвоём</b><span>{shape === 'heart' ? 'решаем, куда сходить — вместе' : 'двое, одно время, общее «да»'}</span>
+            <b>вдвоём</b><span>{shape === 'bridge' ? 'каждый строит свою половину — встречаемся посередине' : 'двое, одно время, общее «да»'}</span>
           </motion.div>
           {!dissolve && <span className="intro__skip">нажми, чтобы пропустить</span>}
         </div>
