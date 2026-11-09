@@ -13,7 +13,7 @@ test('E23 «Где именно»: общая идея → ссылка отве
   await reply(v, card.message_id, EMU + '/_emu/place/katok')
   await waitMsg(v, /Принял ссылку/)
   await waitMsg(v, /Добавил вариант места к «Каток»: <b>Каток в Парке Горького<\/b>\nул\. Крымский Вал, 9/)
-  await waitMsg(n, /Вова добавил\(а\) вариант места к «Каток»/)
+  await waitMsg(n, /Вова добавил вариант места к «Каток»/)
   // the assistant suggests concrete places, each with a map search and «проверь»
   const b1 = await lastId(v)
   await press(v, 'Подобрать места')
@@ -28,7 +28,7 @@ test('E23 «Где именно»: общая идея → ссылка отве
   await expect(np.getByTestId('place-option')).toHaveCount(5)
   await expect(np.getByTestId('place-option').filter({ hasText: 'Каток в Измайлово' })).toContainText('добавил(а) ты')
   await shot(np, 'E23-options')
-  await waitMsg(v, /Настя добавил\(а\) вариант места к «Каток»: <b>Каток в Измайлово/)
+  await waitMsg(v, /Настя добавила вариант места к «Каток»: <b>Каток в Измайлово/)
   // after the match: pick the place on the ticket → the calendar event carries the address
   const planned = await planMeeting(v, n)
   expect(planned.chosen.title).toBe('Каток')
