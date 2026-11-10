@@ -52,7 +52,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 		g := a.auth(f)
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			t := time.Now()
-			g(w, r)
+			g(&timedWriter{ResponseWriter: w, t: t}, r)
 			d := time.Since(t)
 			perf.route(pattern, d)
 			if a.App != nil && (d > 300*time.Millisecond || t.UnixNano()%4 == 0) { // every slow one, a quarter of the rest
@@ -1552,4 +1552,26 @@ func clipErr(err error) string {
 		s = s[:300]
 	}
 	return s
+}
+
+// timedWriter stamps the server's own time on the response (X-Server-Ms), so a phone that waited long can tell
+// whether the time went to the network or to the server
+type timedWriter struct {
+	http.ResponseWriter
+	t    time.Time
+	done bool
+}
+
+func (w *timedWriter) stamp() {
+	if !w.done {
+		w.done = true
+		w.Header().Set("X-Server-Ms", strconv.FormatInt(time.Since(w.t).Milliseconds(), 10))
+	}
+}
+func (w *timedWriter) WriteHeader(c int)           { w.stamp(); w.ResponseWriter.WriteHeader(c) }
+func (w *timedWriter) Write(b []byte) (int, error) { w.stamp(); return w.ResponseWriter.Write(b) }
+func (w *timedWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
