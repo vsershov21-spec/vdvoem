@@ -31,3 +31,16 @@ func TestFollowUpsKeepTheRequest(t *testing.T) {
 		t.Errorf("a no: %+v", n)
 	}
 }
+
+func TestFoodWords(t *testing.T) {
+	now := time.Date(2026, 11, 10, 20, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	for _, s := range []string{"Расскажи что интересного по еде", "что-нибудь вкусное на выходных", "где покушать в субботу"} {
+		in := withKinds(rulesIntent(s, now), s)
+		if in.I != "find" || !slices.Contains(in.Cats, "food") {
+			t.Errorf("%q → %+v", s, in)
+		}
+	}
+	if in := rulesIntent("прогулка в парке Победы", now); slices.Contains(in.Cats, "food") {
+		t.Errorf("Победы is not food: %+v", in)
+	}
+}

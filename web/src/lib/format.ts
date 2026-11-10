@@ -54,7 +54,9 @@ export function past(name: string | undefined, verb: string): string {
   const n = (name || '').trim().toLowerCase()
   if (n.length < 2 || ['саша', 'женя', 'валя', 'сеня', 'шура', 'слава'].includes(n)) return verb + '(а)'
   if (['никита', 'илья', 'кузьма', 'фома', 'лука', 'миша', 'гоша', 'дима', 'вова', 'коля', 'толя', 'петя', 'ваня', 'серёжа', 'сережа', 'лёша', 'леша', 'гриша', 'костя', 'юра', 'боря', 'витя', 'федя', 'стёпа', 'степа', 'вася', 'тёма', 'тема', 'лёва', 'лева', 'паша', 'даня', 'саня', 'рома', 'гена', 'жора', 'сева', 'яша'].includes(n)) return verb
-  return /[ая]$/.test(n) ? verb + 'а' : verb
+  if (['sasha', 'zhenya', 'valya', 'slava'].includes(n)) return verb + '(а)'
+  if (['nikita', 'ilya', 'ilia', 'misha', 'dima', 'vova', 'kolya', 'tolya', 'petya', 'vanya', 'lesha', 'grisha', 'kostya', 'yura', 'borya', 'vitya', 'fedya', 'vasya', 'pasha', 'danya', 'roma', 'gena', 'sanya', 'luka', 'foma', 'kuzma'].includes(n)) return verb
+  return /[ая]$|a$/.test(n) ? verb + 'а' : verb
 }
 
 // an event with its own date and time (a play, a concert): «Идём!» books it without picking time
