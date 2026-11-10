@@ -253,10 +253,15 @@ func inPeriod(i store.Idea, from, to string, loc *time.Location) bool {
 // ---------- rules: the same tool from plain Russian ----------
 
 var (
-	priceRe = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум)\s*(\d[\d\s]{2,6})`)
+	priceRe = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум|в пределах)\s*(\d[\d\s]{2,6})`)
 	kRe     = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум|за)\s*(\d{1,3}(?:[.,]\d)?)\s*(?:тыс|тысяч|к(?:$|[^\p{L}])|k\b)`)
 	notRe   = regexp.MustCompile(`(?:без|кроме|не хочу|только не)\s+([а-яё]+)`)
+	// «не дороже трёх тысяч», «в пределах пяти тысяч»
+	wordKRe = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум|в пределах|за)\s+(одной|одна|двух|две|тр[её]х|три|четыр[её]х|четыре|пяти|пять|шести|семи|восьми|десяти|тысячи)\s*(?:тыс|тысяч)?`)
 )
+
+var wordK = map[string]int64{"одной": 1, "одна": 1, "тысячи": 1, "двух": 2, "две": 2, "трёх": 3, "трех": 3, "три": 3, "четырёх": 4, "четырех": 4, "четыре": 4,
+	"пяти": 5, "пять": 5, "шести": 6, "семи": 7, "восьми": 8, "десяти": 10}
 
 var catWords = map[string]string{"поесть": "food", "ресторан": "food", "кафе": "food", "ужин": "food", "еда": "food", "бар": "food",
 	"театр": "culture", "спектак": "culture", "музей": "culture", "кино": "culture", "выставк": "culture", "концерт": "culture", "опер": "culture", "балет": "culture",
@@ -284,6 +289,8 @@ func afishaFromText(t string, now time.Time) afishaQ {
 		q.MaxRub = int64(n * 1000)
 	} else if m := priceRe.FindStringSubmatch(t); m != nil {
 		q.MaxRub, _ = strconv.ParseInt(strings.ReplaceAll(m[1], " ", ""), 10, 64)
+	} else if m := wordKRe.FindStringSubmatch(t); m != nil && strings.Contains(t, "тысяч") {
+		q.MaxRub = wordK[m[1]] * 1000
 	} else if has(t, "недорог", "дешев", "бюджетн") {
 		q.MaxRub = 2000
 	}

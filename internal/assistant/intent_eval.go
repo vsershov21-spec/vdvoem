@@ -432,7 +432,8 @@ func EvalIntents(ctx context.Context, c *ai.Client, w io.Writer) float64 {
 	if len(lat) > 0 {
 		p90 = float64(lat[len(lat)*9/10]) / 1000
 	}
-	b, _ := json.Marshal(map[string]any{"model": c.Model, "held": held, "p90": p90, "gold": float64(pipe.ok) / float64(n)})
+	dlg := EvalDialogs(ctx, as, w, now)
+	b, _ := json.Marshal(map[string]any{"model": c.Model, "held": held, "p90": p90, "gold": float64(pipe.ok) / float64(n), "dialog": dlg})
 	fmt.Fprintf(w, "SUMMARY %s\n", b)
 	return held
 }
