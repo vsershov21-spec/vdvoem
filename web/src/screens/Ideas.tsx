@@ -47,7 +47,9 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
   // two views of one place: our ideas and the afisha (what the scout and the channels found) — a switch, not a route
   const [view, setView] = useState<'ours' | 'afisha'>(folder === 'scout' ? 'afisha' : 'ours')
   const now = Date.now()
-  const ideas = all.data?.ideas || []
+  // «Наши идеи» — only what we put here ourselves: added by one of us, or something from the afisha one of us
+  // marked «хочу». The rest of what the scout and the channels found lives in the afisha, not in the bank.
+  const ideas = useMemo(() => (all.data?.ideas || []).filter(ours), [all.data])
   const leisure = ideas.filter(i => i.kind === 'leisure')
   const found = useMemo(() => q.trim() ? ideas.filter(i => (i.title + ' ' + (i.address || '') + ' ' + (i.note || '')).toLowerCase().includes(q.trim().toLowerCase())) : [], [q, ideas])
 
@@ -105,6 +107,8 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
     </>
   )
 }
+
+const ours = (i: Idea) => i.ours !== false
 
 function Chores({ list, me }: { list: Idea[]; me: string }) {
   const [done, setDone] = useState<Record<number, boolean>>({})
