@@ -50,12 +50,14 @@ type Button struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Kind  string `json:"kind"`
+	Path  string `json:"path,omitempty"` // kind "open": the screen the button opens — the app goes there, nothing to run
 }
 
 type Reply struct {
 	Text    string   `json:"text"`
 	Cards   []Card   `json:"cards,omitempty"`
 	Actions []Button `json:"actions,omitempty"`
+	Open    string   `json:"open,omitempty"` // the screen to open (an «open» button pressed)
 	Intent  *Intent  `json:"intent,omitempty"` // how the request was understood — for follow-ups («а подешевле?»)
 	Src     string   `json:"src,omitempty"`    // rules | model | rules-fallback
 	Ms      int64    `json:"ms,omitempty"`
@@ -604,7 +606,11 @@ func (r *run) propose(ctx context.Context, kind string, payload map[string]any, 
 	if err := r.as.App.S.SaveAction(ctx, act, r.as.now()); err != nil {
 		return map[string]string{"error": "cannot save"}
 	}
-	r.buttons = append(r.buttons, Button{ID: act.ID, Label: label, Kind: kind})
+	bt := Button{ID: act.ID, Label: label, Kind: kind}
+	if kind == "open" {
+		bt.Path, _ = payload["path"].(string)
+	}
+	r.buttons = append(r.buttons, bt)
 	r.pending = append(r.pending, act.ID)
 	return map[string]string{"status": "button shown to the user; nothing changed yet"}
 }
@@ -1173,6 +1179,13 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			return rep, err
 		}
 		rep.Text = "Готово: " + strings.ToLower(modeLabel[domain.SuggestMode(p.Mode)]) + "."
+	case "open": // a button from before buttons knew their screen: say where to go
+		var o struct {
+			Path string `json:"path"`
+		}
+		_ = json.Unmarshal(a.Payload, &o)
+		rep.Text, rep.Open = "Открываю", o.Path
+		return rep, nil
 	default:
 		rep.Text = "Не знаю такое действие."
 	}

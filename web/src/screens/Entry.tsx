@@ -115,6 +115,8 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     const short = seenToday() || matchMedia('(prefers-reduced-motion: reduce)').matches
     markSeen()
     shortRef.current = short
+    // the show is once a day; every other open goes straight in (the data is already on its way)
+    if (short) { finish(); return }
     later(100, () => setShape('bridge'))
     later(9000, finish) // safety net on very slow devices
   }
@@ -128,7 +130,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     if (ended.current) return
     ended.current = true
     setDissolve(true); setPhase('out')
-    later(650, onEnter)
+    later(shortRef.current ? 320 : 650, onEnter)
   }
   const [bioType, setBioType] = useState('')
   const [lockErr, setLockErr] = useState('')

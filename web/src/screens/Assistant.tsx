@@ -77,10 +77,12 @@ export function Assistant({ home }: { home: Home | null }) {
   // came back while an answer is on its way: show «печатает…» until it lands
   useEffect(() => { if (inflight) { setBusy(true); inflight.catch(() => {}).finally(() => setBusy(false)) } }, [])
   const press = async (a: ActionBtn) => {
+    if (a.kind === 'open' && a.path) { haptic.soft(); go(a.path); return } // just a way to a screen
     if (done[a.id] || busy) return
     if (a.kind === 'clarify') setBusy(true) // the other reading answers as a new message
     try {
       const r = await post<{ reply: Reply }>('/assistant/act', { id: a.id })
+      if (r.reply.open !== undefined) { go(r.reply.open); return }
       setDone(d => ({ ...d, [a.id]: r.reply.text })); haptic.ok()
       if (a.kind === 'clarify') say(r.reply)
       else { emit('home'); emit('ideas'); toast(r.reply.text) }
