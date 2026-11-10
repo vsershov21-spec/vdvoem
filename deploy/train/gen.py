@@ -298,6 +298,57 @@ def g_dialog(today, test=False):
     return {"messages": first["messages"] + [{"role": "user", "content": noisy(phrase)},
                                              {"role": "assistant", "content": json.dumps(it, ensure_ascii=False, separators=(",", ":"))}]}
 
+# ---------- longer dialogues: the point of the conversation survives refinements ----------
+# «хочу в бар в субботу» → «а с караоке?» → «нет, лучше кофейня» → «до 3000 на двоих»: each answer is the whole
+# request so far (the app shows the model the previous turn exactly like this), so the model learns to carry it.
+REFINE = [  # (phrase, op) — op: ("add", tag) adds a kind, ("swap", tag) replaces it, ("max", ₽), ("mood", m), ("all",)
+    ("а с караоке?", ("add", "караоке")), ("а где ещё и потанцевать можно?", ("add", "вечеринка")), ("и чтобы с дегустацией", ("add", "дегустация")),
+    ("а с настолками есть?", ("add", "настолки")), ("а с джазом где-нибудь?", ("add", "джаз")), ("а с мастер-классом можно?", ("add", "мастер-класс")),
+    ("нет, лучше кофейня", ("swap", "кофейня")), ("не, давай лучше в кино", ("swap", "кино")), ("хотя нет, давай бар", ("swap", "бар")),
+    ("а может, лучше на каток?", ("swap", "каток")), ("передумал — хочу в музей", ("swap", "музей")), ("я имел в виду ресторан", ("swap", "ресторан")),
+    ("давай лучше квест", ("swap", "квест")), ("а может стендап?", ("swap", "стендап")), ("или баня?", ("swap", "баня")), ("лучше прогуляться в парке", ("swap", "парк")),
+    ("до 3000 на двоих", ("max", 3000)), ("не дороже пяти тысяч", ("max", 5000)), ("в пределах 2к", ("max", 2000)), ("до 10 тысяч можно", ("max", 10000)),
+    ("чтобы можно было спокойно поговорить", ("mood", "chill")), ("чтобы не шумно", ("mood", "chill")), ("что-нибудь повеселее", ("mood", "fun")),
+    ("чтобы романтично было", ("mood", "romantic")), ("где мы ещё не были", ("mood", "new")), ("а бесплатное есть?", ("mood", "free")), ("чтобы до ночи", ("mood", "night")),
+    ("покажи все варианты", ("all",)), ("покажи вообще всё", ("all",)),
+]
+TEST_REFINE = [("а с караоке можно?", ("add", "караоке")), ("не, хочу в кофейню", ("swap", "кофейня")), ("до 4000 на двоих", ("max", 4000)), ("где потише", ("mood", "chill"))]
+
+def refine(prev, op):
+    it = json.loads(json.dumps(prev))
+    if op[0] == "add":
+        it["g"] = list(dict.fromkeys(it.get("g", []) + [op[1]]))
+        it["cats"] = list(dict.fromkeys(it.get("cats", []) + [_CAT[op[1]]]))
+    elif op[0] == "swap":
+        it["g"], it["cats"] = [op[1]], [_CAT[op[1]]]
+        it["notw"] = [w for w in it.get("notw", []) if w != op[1]]
+    elif op[0] == "max":
+        it["max"] = op[1]
+    elif op[0] == "mood":
+        it["moods"] = [op[1]]
+    elif op[0] == "all":
+        it["all"] = True
+    return it
+
+def g_chain(today, test=False):
+    first = R.choice([g_kind, g_find])(today, test)
+    prev_u, prev = first["messages"][1]["content"], json.loads(first["messages"][2]["content"])
+    if prev.get("i") != "find":
+        return first
+    for _ in range(R.choice([1, 1, 2, 2, 3])):  # the last step is the one to learn; the one before it is its context
+        if R.random() < 0.6:
+            phrase, op = R.choice(TEST_REFINE if test else REFINE)
+            cur = refine(prev, op)
+        else:
+            phrase, how = R.choice(TEST_FOLLOW if test else FOLLOW)
+            cur = follow(prev, how, today)
+        cur = {k: v for k, v in cur.items() if v not in (None, "", [], False, 0)}
+        last_u, last_prev = prev_u, prev
+        prev_u, prev = noisy(phrase), cur
+    return {"messages": [first["messages"][0], {"role": "user", "content": last_u},
+                         {"role": "assistant", "content": json.dumps(last_prev, ensure_ascii=False, separators=(",", ":"))},
+                         {"role": "user", "content": prev_u}, {"role": "assistant", "content": json.dumps(prev, ensure_ascii=False, separators=(",", ":"))}]}
+
 # periods in words → from/to (as the app's rules count them: the past part of a period is cut off)
 MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 MON_PREP = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"]
@@ -509,7 +560,7 @@ def g_taste(today, test=False):
     return ex(t, {"i": "taste"}, today)
 
 GENS = [(g_kind, 30), (g_taste, 2), (g_after, 5), (g_period, 8), (g_whole, 4), (g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
-        (g_add, 3), (g_budget, 2), (g_mode, 2), (g_dialog, 14)]
+        (g_add, 3), (g_budget, 2), (g_mode, 2), (g_dialog, 14), (g_chain, 12)]
 
 def build(n, test=False):
     out, seen = [], set()
