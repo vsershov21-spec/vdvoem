@@ -84,7 +84,8 @@ var ErrUsed = errors.New("store: action already used")
 func (s *Store) TakeAction(ctx context.Context, id string, memberID int64, now time.Time) (Action, error) {
 	var a Action
 	var p string
-	err := s.DB.QueryRowContext(ctx, `UPDATE assistant_actions SET used_at = ? WHERE id = ? AND member_id = ? AND used_at IS NULL AND created_at >= ?
+	// «open a screen» buttons are a way, not an action: they work any number of times, any time later
+	err := s.DB.QueryRowContext(ctx, `UPDATE assistant_actions SET used_at = ? WHERE id = ? AND member_id = ? AND (kind = 'open' OR used_at IS NULL AND created_at >= ?)
 		RETURNING id, space_id, member_id, kind, payload, example_id`, now.Unix(), id, memberID, now.Add(-7*24*time.Hour).Unix()).Scan(&a.ID, &a.SpaceID, &a.MemberID, &a.Kind, &p, &a.Example)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrUsed

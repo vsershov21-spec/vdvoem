@@ -77,7 +77,9 @@ export function Assistant({ home }: { home: Home | null }) {
   // came back while an answer is on its way: show «печатает…» until it lands
   useEffect(() => { if (inflight) { setBusy(true); inflight.catch(() => {}).finally(() => setBusy(false)) } }, [])
   const press = async (a: ActionBtn) => {
-    if (a.kind === 'open' && a.path) { haptic.soft(); go(a.path); return } // just a way to a screen
+    // just a way to a screen (older buttons carry no path: known by their label)
+    const way = a.kind === 'open' ? a.path || (/вкус/i.test(a.label) ? 'taste' : /афиш/i.test(a.label) ? 'ideas/scout' : '') : ''
+    if (way) { haptic.soft(); go(way); return }
     if (done[a.id] || busy) return
     if (a.kind === 'clarify') setBusy(true) // the other reading answers as a new message
     try {
