@@ -95,7 +95,11 @@ func (a *App) SuggestExtras(ctx context.Context, c Couple, r domain.Round) []sto
 	for _, e := range ex {
 		skip[e.IdeaID] = true
 	}
-	ideas, _ := a.S.Ideas(ctx, c.Space.ID, domain.IdeaActive)
+	// what fits after it: after a show, a play, a walk — somewhere to eat or a short stroll, not a second show;
+	// after a dinner — a walk, a dessert, a bar. Events at their own fixed time fit only if they start right after.
+	ideas, _ := a.S.Ideas(ctx, c.Space.ID, domain.IdeaActive, domain.IdeaDraft)
+	planned := a.S.PlannedIdeas(ctx, c.Space.ID)
+	end := r.StartsAt.Add(time.Duration(durationOf(main)) * time.Minute)
 	type sc struct {
 		i store.Idea
 		s int
@@ -103,7 +107,7 @@ func (a *App) SuggestExtras(ctx context.Context, c Couple, r domain.Round) []sto
 	var cand []sc
 	w := map[domain.Wish]int{domain.WishVery: 3, domain.WishWant: 2, domain.WishNone: 0, domain.WishSkip: -4}
 	for _, i := range ideas {
-		if skip[i.ID] || i.Kind != domain.KindLeisure {
+		if skip[i.ID] || planned[i.ID] || i.Kind != domain.KindLeisure {
 			continue
 		}
 		if r.BudgetKop > 0 && i.PriceMin > r.BudgetKop {
@@ -112,15 +116,23 @@ func (a *App) SuggestExtras(ctx context.Context, c Couple, r domain.Round) []sto
 		if i.EndsAt != nil && i.EndsAt.Before(r.StartsAt) {
 			continue
 		}
+		if i.StartsAt != nil && (i.EndsAt == nil || i.EndsAt.Sub(*i.StartsAt) < 30*time.Hour) {
+			// a dated event: only if it starts within the hour after ours ends
+			if d := i.StartsAt.Sub(end); d < 0 || d > 90*time.Minute {
+				continue
+			}
+		}
+		after := main.Category != "food" && i.Category == "food" ||
+			main.Category == "food" && (i.Category == "walk" || i.Category == "other" && durationOf(i) <= 90)
+		if !after && !(i.Category == "walk" && durationOf(i) <= 90) {
+			continue // a second big thing in one evening is not «а потом»
+		}
 		s := w[i.WishA] + w[i.WishB]
-		if main.Category != "food" && i.Category == "food" {
+		if after {
 			s += 4
 		}
-		if main.Category == "food" && (i.Category == "walk" || i.Category == "culture") {
-			s += 2
-		}
-		if i.Category == main.Category && main.Category != "food" {
-			s -= 2
+		if i.Status == domain.IdeaDraft {
+			s-- // ours first, the afisha's next
 		}
 		cand = append(cand, sc{i, s})
 	}
@@ -166,6 +178,16 @@ func (a *App) ProposeExtra(ctx context.Context, c Couple, roundID, ideaID int64,
 		ideaID = res.Idea.ID
 		if res.Existing != nil {
 			ideaID = res.Existing.ID
+		}
+		if res.Existing == nil && a.AI.Enabled() { // «поужинать рядом с …»: concrete places to choose from, without asking
+			id := ideaID
+			go func() {
+				bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 40*time.Second)
+				defer cancel()
+				if _, err := a.SuggestPlaces(bg, c, id); err == nil {
+					a.Live.From(bg, c.Space.ID)
+				}
+			}()
 		}
 	}
 	i, err := a.S.Idea(ctx, c.Space.ID, ideaID)

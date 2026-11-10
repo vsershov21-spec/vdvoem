@@ -1232,7 +1232,9 @@ func (a *API) voice(w http.ResponseWriter, r *http.Request, c app.Couple) (any, 
 		a.Log.Warn("voice", "err", err)
 		return nil, httpErr{502, "voice_failed"}
 	}
-	rep, err := a.Helper.Ask(r.Context(), c, text)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+	defer cancel()
+	rep, err := a.Helper.Ask(ctx, c, text)
 	return map[string]any{"heard": text, "reply": rep}, err
 }
 
@@ -1243,7 +1245,10 @@ func (a *API) askAssistant(w http.ResponseWriter, r *http.Request, c app.Couple)
 	if err := body(r, &in); err != nil {
 		return nil, err
 	}
-	rep, err := a.Helper.Ask(r.Context(), c, in.Text)
+	// the answer is worked out to the end and saved even if the app leaves the screen or drops the connection
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+	defer cancel()
+	rep, err := a.Helper.Ask(ctx, c, in.Text)
 	return map[string]any{"reply": rep}, err
 }
 

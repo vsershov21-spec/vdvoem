@@ -12,6 +12,14 @@ export function prefetch(paths: string[]) {
   for (const p of paths) if (!cache.has(p)) get(p).then(d => cache.set(p, d)).catch(() => {})
 }
 
+// patch: change what a path shows from outside a screen — an answer that arrives after the screen was left
+// still lands in its cache and shows when the screen opens again
+export function patch<T>(path: string, f: (x: T | null) => T | null) {
+  const v = f((cache.get(path) as T) ?? null)
+  if (v) cache.set(path, v)
+  emit('patch:' + path)
+}
+
 export function useLoad<T>(path: string | null, poll = 0) {
   const [data, setDataRaw] = useState<T | null>(() => (path && (cache.get(path) as T)) || null)
   const setData = useCallback((d: T | null | ((x: T | null) => T | null)) => {
@@ -35,6 +43,7 @@ export function useLoad<T>(path: string | null, poll = 0) {
     return () => { document.removeEventListener('visibilitychange', vis); if (t) clearInterval(t) }
   }, [load, poll])
   useOn('sync', load) // the partner changed something: refetch now
+  useOn('patch:' + (path || ''), useCallback(() => { if (path) setDataRaw((cache.get(path) as T) ?? null) }, [path]))
   return { data, err, refresh: load, set: setData }
 }
 
