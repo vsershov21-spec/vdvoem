@@ -49,18 +49,24 @@ const titles: Record<string, string> = { time: 'Когда удобно', vote: 
 type Act = (a: string, b?: object) => Promise<R>
 
 // ---------- 1. time ----------
-const PARTS: [number, string, string][] = [[0, 'Утро', 'sunrise'], [1, 'День', 'sun'], [2, 'Вечер', 'moon']]
+const PARTS: [number, string, string][] = [[0, 'Утро', 'sunrise'], [1, 'День', 'sun'], [2, 'Вечер', 'moon'], [3, 'Ночь', 'stars']]
+const PART_START = [9, 13, 18, 23]
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const monday = (d: Date) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x }
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 const MONG = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
 const weekTitle = (m: Date) => { const e = addDays(m, 6); return m.getMonth() === e.getMonth() ? `${m.getDate()}–${e.getDate()} ${MONG[e.getMonth()]}` : `${m.getDate()} ${MONG[m.getMonth()].slice(0, 3)} – ${e.getDate()} ${MONG[e.getMonth()].slice(0, 3)}` }
-const PART_END = [13, 18, 23]
+const PART_END = [13, 18, 23, 27]
+// «2026-11-14:1@14:00» → the part of the day and the exact «from» (optional)
+const splitKey = (k: string) => { const [b, at] = k.split('@'); return { b, at: at || '' } }
+// the times one can narrow a part to: every half hour after its start, until 30 minutes before its end
+const timesIn = (p: number) => { const out: string[] = []; for (let m = PART_START[p] * 60 + 30; m <= PART_END[p] * 60 - 30; m += 30) out.push(`${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`); return out }
 const slotWord = (n: number) => n % 10 === 1 && n % 100 !== 11 ? 'слот' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'слота' : 'слотов'
 
 function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: string; here?: boolean }) {
-  const [sel, setSel] = useState<Set<string>>(new Set(r.my_slots))
+  const [sel, setSel] = useState<Set<string>>(new Set(r.my_slots.map(k => splitKey(k).b)))
+  const [at, setAt] = useState<Record<string, string>>(() => Object.fromEntries(r.my_slots.map(splitKey).filter(x => x.at).map(x => [x.b, x.at])))
   const [editing, setEditing] = useState(!r.sent)
   const today = r.today || ymd(new Date())
   const last = r.horizon || ymd(addDays(parseDay(today), 60))
@@ -76,7 +82,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
   const [picker, setPicker] = useState(false)
   const paint = useRef<null | boolean>(null)
   const toggle = (k: string, on?: boolean) => setSel(s => { const n = new Set(s); const v = on ?? !n.has(k); if (v === n.has(k)) return s; v ? n.add(k) : n.delete(k); haptic.select(); return n })
-  const send = async () => { await act('slots', { slots: [...sel] }); setEditing(false) }
+  const send = async () => { await act('slots', { slots: [...sel].map(k => at[k] ? `${k}@${at[k]}` : k) }); setEditing(false) }
   // «любое возможное»: a whole day, one part of the day all week, or everything in the next two weeks
   const setMany = (ks: string[]) => { const free = ks.filter(k => !past(k.slice(0, 10), +k.slice(11)) && !myBusy.has(k)); if (!free.length) return
     const on = !free.every(k => sel.has(k)); haptic.select(); setSel(s => { const n = new Set(s); free.forEach(k => on ? n.add(k) : n.delete(k)); return n }) }
@@ -85,15 +91,17 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
     toast(`Отметил всё свободное на две недели — ${free.length} ${slotWord(free.length)}${myBusy.size ? ' (занятое по твоему календарю пропустил)' : ''}. Лишнее можно снять`) }
   const noOverlap = r.sent && r.partner_sent
   const goWeek = (m: Date) => { const t = clamp(m); if (+t === +week) return; haptic.select(); setDir(t > week ? 1 : -1); setWeek(t) }
+  const weekSel = useMemo(() => { const ds = new Set([...Array(7)].map((_, i) => ymd(addDays(week, i)))); return [...sel].filter(k => ds.has(k.slice(0, 10))).sort() }, [sel, week])
   const perDay = useMemo(() => { const m: Record<string, number> = {}; sel.forEach(k => { const d = k.slice(0, 10); m[d] = (m[d] || 0) + 1 }); return m }, [sel])
   const perWeek = useMemo(() => { const m: Record<string, number> = {}; Object.entries(perDay).forEach(([d, n]) => { const w = ymd(monday(parseDay(d))); m[w] = (m[w] || 0) + n }); return m }, [perDay])
   const nowH = new Date().getHours()
   const past = (d: string, p: number) => d < today || d > last || (d === today && nowH >= PART_END[p])
   // time is agreed in the open: the partner's proposals are visible, one tap takes one of them
-  const theirs = useMemo(() => new Set(r.partner_slots || []), [r.partner_slots?.join()])
+  const theirAt = useMemo(() => Object.fromEntries((r.partner_slots || []).map(splitKey).map(x => [x.b, x.at])), [r.partner_slots?.join()])
+  const theirs = useMemo(() => new Set(Object.keys(theirAt)), [theirAt])
   const myBusy = useMemo(() => new Set(r.my_busy || []), [r.my_busy?.join()])
   const pBusy = useMemo(() => new Set(r.partner_busy || []), [r.partner_busy?.join()])
-  const accept = async (k: string) => { haptic.ok(); await act('slots', { slots: [...new Set([k, ...r.my_slots])] }); setEditing(false) }
+  const accept = async (k: string) => { haptic.ok(); const t = theirAt[k]; await act('slots', { slots: [t ? `${k}@${t}` : k, ...r.my_slots.filter(x => splitKey(x).b !== k)] }); setEditing(false) }
   const theirList = [...theirs].sort().filter(k => !past(k.slice(0, 10), +k.slice(11)))
   const Proposals = ({ title }: { title: string }) => theirList.length ? (
     <div className="frame rise" data-testid="partner-time"><div className="frame__in">
@@ -101,7 +109,7 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
       <div className="col" style={{ gap: 8 }}>
         {theirList.slice(0, 6).map(k => { const L = dayLabel(k.slice(0, 10)); return (
           <button key={k} className="proposal" onClick={() => accept(k)}>
-            <span>{L.long}, {L.num} {L.mon} · {PARTS[+k.slice(11)][1].toLowerCase()}</span><b>Подходит</b>
+            <span>{L.long}, {L.num} {L.mon} · {theirAt[k] ? 'с ' + theirAt[k] : PARTS[+k.slice(11)][1].toLowerCase()}</span><b>Подходит</b>
           </button>) })}
       </div>
     </div></div>) : null
@@ -165,7 +173,19 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
       </motion.div>
       {(myBusy.size > 0 || pBusy.size > 0) ? <p className="caption" style={{ margin: 0 }}><span className="busy-key" /> занято по твоему календарю{pBusy.size > 0 && <> · <span className="pbusy-key" /> у {ncase(partner, 'gen')} занято</>}</p>
         : <button className="wkchip" style={{ alignSelf: 'flex-start' }} onClick={() => go('calendar')}><Icon n="cal" s={14} />Подключи свой календарь — занятое отметится само</button>}
-      <details className="howto"><summary>Утро 9–13 · день 13–18 · вечер 18–23</summary>
+      {weekSel.length > 0 && <div className="card col rise" data-testid="exact-slots" style={{ gap: 8 }}>
+        <span className="caption muted">Точнее, во сколько? Необязательно — по умолчанию весь отрезок</span>
+        {weekSel.map(k => { const L = dayLabel(k.slice(0, 10)); const p = +k.slice(11); return (
+          <label key={k} className="row" style={{ gap: 8, justifyContent: 'space-between' }}>
+            <span className="callout">{L.wd} {L.num} · {PARTS[p][1].toLowerCase()}</span>
+            <select className="input" style={{ width: 'auto', minWidth: 132 }} value={at[k] || ''} aria-label={`Во сколько: ${L.long} ${PARTS[p][1]}`}
+              onChange={e => { haptic.select(); const v = e.target.value; setAt(a => { const n = { ...a }; if (v) n[k] = v; else delete n[k]; return n }) }}>
+              <option value="">{`${String(PART_START[p] % 24).padStart(2, '0')}–${String(PART_END[p] % 24).padStart(2, '0')}, любое`}</option>
+              {timesIn(p).map(t => <option key={t} value={t}>с {t}</option>)}
+            </select>
+          </label>) })}
+      </div>}
+      <details className="howto"><summary>Утро 9–13 · день 13–18 · вечер 18–23 · ночь 23–03</summary>
         <p>Можно вести пальцем. Нажми на день — отметится целиком, на «Вечер» — все вечера. <span style={{ color: 'var(--accent)' }}>●</span> — дни, которые я предлагаю.</p></details>
       <div className="stickybar"><Btn kind="primary" block onClick={send} disabled={sel.size === 0}>{sel.size === 0 ? 'Выбери хотя бы одно время' : `Готово · ${sel.size} ${slotWord(sel.size)}`}</Btn></div>
       <Sheet open={picker} onClose={() => setPicker(false)}>
@@ -378,11 +398,26 @@ function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; 
             {r.cal?.google && <Btn kind="soft" block onClick={() => openLink(r.cal!.google)}>Google</Btn>}
           </div>}
         <p className="caption muted" style={{ textAlign: 'center', margin: 0 }}>{r.cal?.subscribed ? '' : 'Откроется календарь с заполненным событием. '}Напомню за 2 часа. После встречи спрошу, как прошло.</p>
-        <div className="row"><Btn kind="soft" block icon="clock" onClick={() => act('other-time').then(() => {}).catch(() => {})}>Перенести</Btn>
+        <ExactTime r={r} act={act} partner={home.partner?.name} />
+        <div className="row"><Btn kind="soft" block icon="cal" onClick={() => act('other-time').then(() => {}).catch(() => {})}>Другой день</Btn>
           <Btn kind="ghost" block onClick={() => act('cancel').then(() => go('', true)).catch(() => {})}>Отменить</Btn></div>
       </>}
     </div>
   )
+}
+
+// the real time of an agreed meeting (tickets say 14:00, the slot said «днём»): it moves, nothing is agreed again
+function ExactTime({ r, act, partner }: { r: Round; act: Act; partner?: string }) {
+  const [open, setOpen] = useState(false)
+  const [v, setV] = useState(r.starts_at ? hm(r.starts_at) : '')
+  if (!r.starts_at) return null
+  const save = () => act('time', { at: v }).then(() => { setOpen(false); haptic.ok(); toast(`Время — ${v}. ${partner || 'Партнёр'} знает, календарь поправлен`) }).catch(() => {})
+  return open
+    ? <div className="row rise" style={{ gap: 8 }} data-testid="exact-time">
+        <input className="input" type="time" step={300} value={v} onChange={e => setV(e.target.value)} aria-label="Точное время" style={{ flex: 1 }} />
+        <Btn kind="primary" onClick={save} disabled={!v || v === hm(r.starts_at)}>Сохранить</Btn>
+      </div>
+    : <Btn kind="soft" block icon="clock" onClick={() => { haptic.tap(); setOpen(true) }}>Точное время · {hm(r.starts_at)}</Btn>
 }
 
 // ---------- 5. done ----------

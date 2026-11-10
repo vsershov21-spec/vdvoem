@@ -46,6 +46,7 @@ type App struct {
 var (
 	ErrNoSpace   = errors.New("no_space")
 	ErrNotPaired = errors.New("not_paired")
+	ErrBadTime   = errors.New("bad_time")
 	ErrForbidden = errors.New("forbidden")
 	ErrNoRound   = errors.New("no_round")
 )
@@ -688,8 +689,9 @@ func parseSlotKeys(keys []string, loc *time.Location, now time.Time) []domain.Sl
 	var out []domain.Slot
 	seen := map[string]bool{}
 	for _, k := range keys {
-		parts := strings.SplitN(k, ":", 2)
-		if len(parts) != 2 || len(parts[1]) != 1 || parts[1][0] < '0' || parts[1][0] > '2' || seen[k] {
+		key, hm, _ := strings.Cut(k, "@") // «2026-11-14:1» or, narrowed, «2026-11-14:1@14:00»
+		parts := strings.SplitN(key, ":", 2)
+		if len(parts) != 2 || len(parts[1]) != 1 || parts[1][0] < '0' || int(parts[1][0]-'0') >= domain.Parts || seen[key] {
 			continue
 		}
 		d, err := time.ParseInLocation("2006-01-02", parts[0], loc)
@@ -697,10 +699,13 @@ func parseSlotKeys(keys []string, loc *time.Location, now time.Time) []domain.Sl
 			continue
 		}
 		sl := domain.Slot{Day: d, Part: int(parts[1][0] - '0')}
+		if hm != "" {
+			sl.At = domain.ParseAt(sl.Part, hm)
+		}
 		if !sl.End(loc).After(now) {
 			continue
 		}
-		seen[k] = true
+		seen[key] = true
 		out = append(out, sl)
 		if len(out) == maxSlots {
 			break
@@ -752,18 +757,23 @@ func (a *App) AcceptSlot(ctx context.Context, c Couple, roundID int64, key strin
 		mine = r.SlotsB
 	}
 	keys := []string{key}
+	base, _, _ := strings.Cut(key, "@")
 	for _, s := range mine {
-		if s.Key() != key {
-			keys = append(keys, s.Key())
+		if s.Key() != base {
+			keys = append(keys, s.Code())
 		}
 	}
 	return a.SubmitSlots(ctx, c, roundID, keys)
 }
 
-var partNames = [3]string{"утро", "день", "вечер"}
+var partNames = [domain.Parts]string{"утро", "день", "вечер", "ночь"}
 
 func slotLabel(s domain.Slot) string {
-	return strings.ToLower(ruWeekdayShort(s.Day)) + " " + s.Day.Format("02.01") + " · " + partNames[s.Part]
+	w := partNames[s.Part]
+	if s.At > 0 {
+		w = fmt.Sprintf("с %02d:%02d", s.At/60%24, s.At%60)
+	}
+	return strings.ToLower(ruWeekdayShort(s.Day)) + " " + s.Day.Format("02.01") + " · " + w
 }
 
 func ruWeekdayShort(t time.Time) string {
@@ -789,7 +799,7 @@ func (a *App) slotButtons(roundID int64, ss []domain.Slot, other string) *tg.Mar
 		if k == 4 {
 			break
 		}
-		rows = append(rows, tg.Row(tg.CB("✓ "+slotLabel(s), fmt.Sprintf("ts:%d:%s", roundID, s.Key()))))
+		rows = append(rows, tg.Row(tg.CB("✓ "+slotLabel(s), fmt.Sprintf("ts:%d:%s", roundID, s.Code()))))
 	}
 	rows = append(rows, tg.Row(tg.App(other, a.appURL(fmt.Sprintf("round/%d", roundID)))))
 	return tg.Keyboard(rows...)
@@ -1218,6 +1228,53 @@ func (a *App) OtherTime(ctx context.Context, c Couple, roundID int64) (domain.Ro
 		}
 		a.send(ctx, m.ChatID, lead+" Отметь, когда удобно — идея остаётся та же.",
 			tg.Keyboard(tg.Row(tg.App("Отметить время", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
+	}
+	return r, nil
+}
+
+// ExactTime: the meeting is agreed (or tickets are bought) and the real time is known — «в 14:00», not «днём».
+// The same day, the same idea, no new agreement: the time moves, the calendar follows, the partner is told.
+func (a *App) ExactTime(ctx context.Context, c Couple, roundID int64, hm string) (domain.Round, error) {
+	r, err := a.round(ctx, c, roundID)
+	if err != nil {
+		return r, err
+	}
+	if r.State != domain.StatePlanned && r.State != domain.StateConfirm || r.StartsAt.IsZero() {
+		return r, domain.ErrWrongState
+	}
+	var h, m int
+	if n, _ := fmt.Sscanf(hm, "%d:%d", &h, &m); n != 2 || h < 0 || h > 23 || m < 0 || m > 59 {
+		return r, ErrBadTime
+	}
+	loc := c.Loc()
+	cur := r.StartsAt.In(loc)
+	day := time.Date(cur.Year(), cur.Month(), cur.Day(), 0, 0, 0, 0, loc)
+	if cur.Hour() < 6 { // a night meeting is on the evening's date
+		day = day.AddDate(0, 0, -1)
+	}
+	if h < 6 {
+		h += 24 // «01:00» after an evening: the night after it
+	}
+	start := day.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute)
+	if start.Equal(r.StartsAt) {
+		return r, nil
+	}
+	if !start.After(a.now()) {
+		return r, ErrBadTime
+	}
+	ver, dur := r.Version, int(r.EndsAt.Sub(r.StartsAt).Minutes())
+	r.SetTime(start, dur)
+	if err := a.save(ctx, r, ver); err != nil {
+		return r, err
+	}
+	title := "встреча"
+	if i, err := a.S.Idea(ctx, c.Space.ID, r.Chosen); err == nil {
+		title = "«" + i.Title + "»"
+	}
+	when := fmt.Sprintf("%s %s в %s", strings.ToLower(ruWeekdayShort(start)), start.Format("02.01"), start.Format("15:04"))
+	if c.Partner != nil {
+		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("🕑 %s %s время: %s — <b>%s</b>. В календаре уже поправлено.", esc(c.Me.Name), Past(c.Me.Name, "уточнил"), esc(title), when),
+			tg.Keyboard(tg.Row(tg.App("Открыть встречу", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
 	}
 	return r, nil
 }

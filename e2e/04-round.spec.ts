@@ -133,7 +133,7 @@ test('E13 другое время сохраняет идею, отмена на
   const planned = await planMeeting(v, n)
   const chosen = planned.chosen.title
   const vp = await open(await phone(browser), v, 'round/' + planned.id)
-  await vp.getByRole('button', { name: 'Перенести' }).click()
+  await vp.getByRole('button', { name: 'Другой день' }).click()
   await expect(vp.getByText('Решили')).toBeVisible()
   await expect(vp.getByText(chosen).first()).toBeVisible()
   await waitMsg(n, /просит другое время/)
@@ -149,3 +149,35 @@ test('E13 другое время сохраняет идею, отмена на
   await waitMsg(n, /удали её там/, 10000, before)
 })
 
+
+test('E13b точное время: внутри слота при выборе, и после «Билеты есть» — без нового согласования; ночь', async ({ browser }) => {
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  await addIdeas(v, ['Спектакль в театре', 'Кино', 'Прогулка'])
+  // when choosing: «day, from 14:00» — the meeting starts at 14:00, not at 13:00
+  const { round } = await api(v, 'POST', '/rounds')
+  await api(v, 'POST', `/rounds/${round.id}/slots`, { slots: [round.days[1] + ':1@14:00'] })
+  let r = (await api(n, 'POST', `/rounds/${round.id}/slots`, { slots: [round.days[1] + ':1'] })).round
+  expect(r.my_slots).toEqual([round.days[1] + ':1'])
+  await api(v, 'POST', `/rounds/${round.id}/vote`, { idea_id: r.triple[0].id })
+  await api(n, 'POST', `/rounds/${round.id}/vote`, { idea_id: r.triple[0].id })
+  await api(v, 'POST', `/rounds/${round.id}/confirm`)
+  r = (await api(n, 'POST', `/rounds/${round.id}/confirm`)).round
+  expect(r.state).toBe('planned')
+  expect(new Date(r.starts_at * 1000).getHours()).toBe(14)
+
+  // tickets bought, the real time is 15:30: it moves, the meeting stays planned, Настя is told
+  await api(v, 'POST', `/rounds/${round.id}/tickets`)
+  const vp = await open(await phone(browser), v, 'round/' + round.id)
+  await vp.getByRole('button', { name: /Точное время/ }).click()
+  await vp.getByLabel('Точное время').fill('15:30')
+  await vp.getByTestId('exact-time').getByRole('button', { name: 'Сохранить' }).click()
+  await expect(vp.getByRole('button', { name: /Точное время · 15:30/ })).toBeVisible()
+  await shot(vp, 'E13b-exact-time')
+  r = (await api(n, 'GET', `/rounds/${round.id}`)).round
+  expect(r.state).toBe('planned')
+  expect(new Date(r.starts_at * 1000).getHours()).toBe(15)
+  expect(new Date(r.starts_at * 1000).getMinutes()).toBe(30)
+  await waitMsg(n, /уточнил.? время.*15:30/s)
+  await expect(vp.getByText('Решили')).toHaveCount(0) // no step back to agreeing
+})
