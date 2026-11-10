@@ -30,7 +30,7 @@ export function TasteScreen() {
   const [busy, setBusy] = useState(false)
   const [shape, setShape] = useState<Shape>('sphere') // the cloud of points follows what you pick
   useEffect(() => {
-    get<Data>('/taste').then(x => { setD(x); setT(norm(x.me)); if (empty(x.me)) setStep(1) }).catch(e => toast(humanError(e)))
+    get<Data>('/taste').then(x => { x.cloud = x.cloud || []; if (x.partner) x.partner.cloud = x.partner.cloud || []; setD(x); setT(norm(x.me)); if (empty(x.me)) setStep(1) }).catch(e => toast(humanError(e)))
   }, [])
   const liked = useMemo(() => (d && t ? d.spheres.filter(s => (t.spheres[s.id] || 0) > 0) : []), [d, t])
   if (!d || !t) return <><SubHeader title="Мой вкус" /><Skel h={120} /><Skel h={320} /></>

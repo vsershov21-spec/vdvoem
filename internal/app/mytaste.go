@@ -190,7 +190,7 @@ type CloudTag struct {
 
 func (a *App) TasteCloud(ctx context.Context, c Couple, memberID int64) []CloudTag {
 	t := a.Taste(ctx, memberID)
-	var out []CloudTag
+	out := []CloudTag{}
 	seen := map[string]bool{}
 	for tag, w := range t.Tags {
 		out = append(out, CloudTag{tag, w, true, leisure.SphereOf(tag)})
