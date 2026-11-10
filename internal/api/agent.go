@@ -189,7 +189,7 @@ func (a *API) agentBriefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"briefs": b, "now": a.App.Now().Format("2006-01-02T15:04:05-07:00"),
-		"how": "POST /agent/picks {space, picks:[{title,url,image,address,category,starts,ends,price_rub,duration_min,why,score,horizon,on_sale,goal_id,about,genres,cast,age}]} — 15–20 per space, horizon week|later; POST /agent/prices {space, updates:[{idea_id,price_rub,ends,status,about,genres,cast,age,url}]} — also for briefs[].enrich; POST /agent/answers {space, answers:[{id,text,price_rub,url}]} — for briefs[].questions. A question «Найти новое: …» is a search asked in the app (e.g. «еда», «бар в субботу»): search the web for exactly that first, post 3–8 real events/places as picks (real event or venue names, never a page title like «Афиша …, цены на официальном сайте»), then answer the question in one line («Нашёл 5: …»)."})
+		"how": "POST /agent/picks {space, picks:[{title,url,image,address,category,starts,ends,price_rub,duration_min,why,score,horizon,on_sale,goal_id,about,genres,cast,age}]} — 15–20 per space, horizon week|later; POST /agent/prices {space, updates:[{idea_id,price_rub,ends,status,about,genres,cast,age,url,image}]} — also for briefs[].enrich (need: what is missing — about, genres, image); POST /agent/answers {space, answers:[{id,text,price_rub,url}]} — for briefs[].questions. A question «Найти новое: …» is a search asked in the app (e.g. «еда», «бар в субботу»): search the web for exactly that first, post 3–8 real events/places as picks (real event or venue names, never a page title like «Афиша …, цены на официальном сайте»), then answer the question in one line («Нашёл 5: …»)."})
 }
 
 func readJSON(r *http.Request, v any) error {

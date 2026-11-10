@@ -342,7 +342,8 @@ type ScoutPrice struct {
 	Genres []string `json:"genres"`
 	Cast   []string `json:"cast"`
 	Age    string   `json:"age"`
-	URL    string   `json:"url"` // the event's page, if the idea had none
+	URL    string   `json:"url"`   // the event's page, if the idea had none
+	Image  string   `json:"image"` // its picture, if the idea had none
 }
 
 func (a *App) ScoutPrices(ctx context.Context, spaceID int64, ups []ScoutPrice) (int, error) {
@@ -388,6 +389,9 @@ func (a *App) ScoutPrices(ctx context.Context, spaceID int64, ups []ScoutPrice) 
 				}
 				i.Info = in
 			}
+			if i.ImageURL == "" && safeURL(u.Image) != "" {
+				i.ImageURL = safeURL(u.Image)
+			}
 			if i.URL == "" && safeURL(u.URL) != "" {
 				i.URL = safeURL(u.URL)
 			}
@@ -422,13 +426,24 @@ func (a *App) InfoChecks(ctx context.Context, spaceID int64) []map[string]any {
 	ideas, _ := a.S.Ideas(ctx, spaceID, domain.IdeaActive, domain.IdeaDraft)
 	out := []map[string]any{}
 	for _, i := range ideas {
-		if i.Kind != domain.KindLeisure || i.Info.About != "" && len(i.Info.Genres) > 0 {
+		if i.Kind != domain.KindLeisure || i.Info.About != "" && len(i.Info.Genres) > 0 && i.ImageURL != "" {
 			continue
 		}
 		if i.StartsAt != nil && i.StartsAt.Before(a.now()) {
 			continue
 		}
 		m := map[string]any{"idea_id": i.ID, "title": i.Title, "venue": i.Address}
+		var need []string
+		if i.Info.About == "" {
+			need = append(need, "about")
+		}
+		if len(i.Info.Genres) == 0 {
+			need = append(need, "genres")
+		}
+		if i.ImageURL == "" {
+			need = append(need, "image")
+		}
+		m["need"] = need
 		if i.URL != "" {
 			m["url"] = i.URL
 		}
