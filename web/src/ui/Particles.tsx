@@ -2,11 +2,11 @@
 // Added: the «pair» shape (our mark: two discs, ember + blue, light where they overlap) and per-particle colour.
 import { useEffect, useRef } from 'react'
 
-export type Shape = 'sphere' | 'pair' | 'bridge' | 'heart' | 'ring' | `text:${string}`
+export type Shape = 'sphere' | 'pair' | 'bridge' | 'heart' | 'ring' | `text:${string}` | `tint:${string}`
 
 const SPEED = 0.28, BASE_TILT = 0.18, REPEL_RADIUS = 0.6, REPEL_FORCE = 4, SPRING = 0.04, DAMPING = 0.84
 const SCATTER = 0.7, FORM = 1.6, MAX_DELAY = 0.4
-const isFlat = (id: Shape) => id === 'heart' || id === 'pair' || id === 'bridge' || id.startsWith('text:')
+const isFlat = (id: Shape) => id === 'heart' || id === 'pair' || id === 'bridge' || id.startsWith('text:') || id.startsWith('tint:')
 
 // colours: 0 white, 1 ember (person a), 2 blue (person b), 3 warm light
 const PALETTE = [[255, 255, 255], [239, 101, 55], [77, 125, 255], [255, 222, 150]]
@@ -103,7 +103,15 @@ function text(n: number, s: string): Built {
   return { pos: out }
 }
 
+// a word in our two colours: ember on the left, blue on the right, warm light where they meet
+function tint(n: number, s: string): Built {
+  const b = text(n, s), col = new Uint8Array(n)
+  for (let i = 0; i < n; i++) { const x = b.pos[i * 3]; col[i] = Math.abs(x) < 0.12 && Math.random() < 0.5 ? 3 : x < 0 ? 1 : 2 }
+  return { pos: b.pos, col }
+}
+
 function build(id: Shape, n: number): Built {
+  if (id.startsWith('tint:')) return tint(n, id.slice(5))
   if (id === 'ring') return ring(n)
   if (id === 'heart') return heart(n)
   if (id === 'pair') return pair(n)
