@@ -150,6 +150,8 @@ test('E13 другое время сохраняет идею, отмена на
 })
 
 
+const msk = (t: number) => new Date(t * 1000).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' })
+
 test('E13b точное время: внутри слота при выборе, и после «Билеты есть» — без нового согласования; ночь', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
@@ -164,7 +166,7 @@ test('E13b точное время: внутри слота при выборе,
   await api(v, 'POST', `/rounds/${round.id}/confirm`)
   r = (await api(n, 'POST', `/rounds/${round.id}/confirm`)).round
   expect(r.state).toBe('planned')
-  expect(new Date(r.starts_at * 1000).getHours()).toBe(14)
+  expect(msk(r.starts_at)).toBe('14:00')
 
   // tickets bought, the real time is 15:30: it moves, the meeting stays planned, Настя is told
   await api(v, 'POST', `/rounds/${round.id}/tickets`)
@@ -176,8 +178,7 @@ test('E13b точное время: внутри слота при выборе,
   await shot(vp, 'E13b-exact-time')
   r = (await api(n, 'GET', `/rounds/${round.id}`)).round
   expect(r.state).toBe('planned')
-  expect(new Date(r.starts_at * 1000).getHours()).toBe(15)
-  expect(new Date(r.starts_at * 1000).getMinutes()).toBe(30)
+  expect(msk(r.starts_at)).toBe('15:30')
   await waitMsg(n, /уточнил.? время.*15:30/s)
   await expect(vp.getByText('Решили')).toHaveCount(0) // no step back to agreeing
 })
