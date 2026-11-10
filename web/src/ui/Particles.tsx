@@ -183,7 +183,16 @@ export function Particles({ shape, count = 5200, scale = 0.24, from, colored = t
     addEventListener('pointermove', onMove); addEventListener('pointerup', onLeave); addEventListener('blur', onLeave)
 
     let angle = 0, last = performance.now(), raf = 0
+    // no frames while it cannot be seen (scrolled away, another tab, the app in the background): a phone's CPU is
+    // the app's speed — an off-screen cloud of points must not take it
+    let seen = true, paused = false
+    const io = new IntersectionObserver(es => { seen = es.some(e => e.isIntersecting); wake() })
+    io.observe(canvas)
+    const wake = () => { if (paused && seen && document.visibilityState === 'visible') { paused = false; last = performance.now(); raf = requestAnimationFrame(draw) } }
+    const onVis = () => wake()
+    document.addEventListener('visibilitychange', onVis)
     const draw = (now: number) => {
+      if (!seen || document.visibilityState !== 'visible') { paused = true; return }
       const raw = Math.min((now - last) / 1000, 0.25), dt = Math.min(raw, 0.05); last = now
       tilt.x += (target.x - tilt.x) * 0.05; tilt.y += (target.y - tilt.y) * 0.05; flat += (flatT - flat) * 0.04; fade += (fadeTo - fade) * 0.05
       if (flatT) { const home = Math.round(angle / (Math.PI * 2)) * Math.PI * 2; angle += (home - angle) * 0.05 } else if (!reduce) angle += dt * SPEED
@@ -231,7 +240,7 @@ export function Particles({ shape, count = 5200, scale = 0.24, from, colored = t
     }
     raf = requestAnimationFrame(draw)
     if (from && from !== shape) setTimeout(() => morph.current?.(shape), 60)
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); removeEventListener('pointermove', onMove); removeEventListener('pointerup', onLeave); removeEventListener('blur', onLeave) }
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); document.removeEventListener('visibilitychange', onVis); removeEventListener('pointermove', onMove); removeEventListener('pointerup', onLeave); removeEventListener('blur', onLeave) }
   }, [])
 
   const prev = useRef(shape)
