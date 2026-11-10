@@ -14,11 +14,11 @@ test('E06 интро: лампа зажигается сама, частицы, 
   await shot(p, 'E06-particles')
   await expect(p.locator('.pnav')).toBeVisible({ timeout: 15000 })
   await expect(p.locator('.room')).toHaveCount(0)
-  // second launch the same day: short version, and a tap skips it
+  // second launch the same day: no show — straight in, fast
+  const t0 = Date.now()
   const p2 = await open(ctx, v, '', true)
-  await expect(p2.locator('.intro')).toBeVisible({ timeout: 5000 })
-  await p2.locator('.room').click()
-  await expect(p2.locator('.pnav')).toBeVisible({ timeout: 3000 })
+  await expect(p2.locator('.pnav')).toBeVisible({ timeout: 4000 })
+  expect(Date.now() - t0).toBeLessThan(4000)
 })
 
 test('E03 вход в браузере через Telegram: код одноразовый', async ({ browser }) => {
