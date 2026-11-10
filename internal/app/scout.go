@@ -555,7 +555,16 @@ func (a *App) coupleOfSpace(ctx context.Context, spaceID int64) (Couple, error) 
 // pickIdea: one found event → a draft idea (false: a duplicate or already over)
 func (a *App) pickIdea(ctx context.Context, p ScoutPick, spaceID, authorID int64, source string, loc *time.Location, now time.Time) (store.Idea, bool) {
 	fp := domain.Fingerprint(p.URL, p.Title)
-	if _, err := a.S.IdeaByFingerprint(ctx, spaceID, fp); err == nil {
+	old, err := a.S.IdeaByFingerprint(ctx, spaceID, fp)
+	if err != nil && p.URL != "" { // the same card sent before without its link
+		old, err = a.S.IdeaByFingerprint(ctx, spaceID, domain.Fingerprint("", p.Title))
+	}
+	if err == nil {
+		// already there: what was missing the first time (a picture, a description, a link) is filled in now —
+		// a re-sent card is how the scout repairs its own earlier ones; what is there is never overwritten
+		if fillIdea(&old, p) {
+			_ = a.S.UpdateIdea(ctx, old, now)
+		}
 		return store.Idea{}, false
 	}
 	i := store.Idea{Source: source, Why: clip(p.Why, 240), Parsed: true}
@@ -589,4 +598,36 @@ func (a *App) pickIdea(ctx context.Context, p ScoutPick, spaceID, authorID int64
 		i.Info.Src = map[string]string{"scout": "web", "channel": "post"}[source]
 	}
 	return i, true
+}
+
+// fillIdea: the empty fields of an existing idea from a fresh pick; true when something changed
+func fillIdea(i *store.Idea, p ScoutPick) bool {
+	ch := false
+	set := func(dst *string, v string) {
+		if *dst == "" && v != "" {
+			*dst, ch = v, true
+		}
+	}
+	set(&i.ImageURL, safeURL(p.Image))
+	set(&i.URL, safeURL(p.URL))
+	set(&i.Address, clip(p.Address, 200))
+	set(&i.Why, clip(p.Why, 240))
+	set(&i.Info.About, sentences(p.About, 400))
+	set(&i.Info.Age, clip(p.Age, 4))
+	if len(i.Info.Genres) == 0 && len(p.Genres) > 0 {
+		i.Info.Genres, ch = p.Genres, true
+	}
+	if len(i.Info.Cast) == 0 && len(p.Cast) > 0 {
+		i.Info.Cast, ch = p.Cast, true
+		if len(i.Info.Cast) > 8 {
+			i.Info.Cast = i.Info.Cast[:8]
+		}
+	}
+	if i.PriceMin == 0 && p.PriceRub > 0 {
+		i.PriceMin, i.PriceMax, ch = p.PriceRub*100, p.PriceRub*100, true
+	}
+	if ch && i.Info.Src == "" && !i.Info.Empty() {
+		i.Info.Src = "web"
+	}
+	return ch
 }

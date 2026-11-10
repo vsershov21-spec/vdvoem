@@ -846,3 +846,47 @@ func TestTicketsFile(t *testing.T) {
 		t.Fatalf("the calendar event links the tickets: %s", ics)
 	}
 }
+
+// a re-sent card fills what the first one lacked (a picture, a description), never overwrites; a page title is no card
+func TestScoutRefills(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, _ := pair(t, a)
+	sat := ck.t.AddDate(0, 0, 3).Format("2006-01-02") + "T19:00"
+	first := []app.ScoutPick{{Title: "Выставка «Хлеб» в Центре «Зотов»", Category: "culture", Starts: sat, URL: "https://zotov.example/bread", Score: 6},
+		{Title: "Афиша мероприятий Московского Планетария, цены на официальном сайте", Category: "culture", Starts: sat, URL: "https://planetarium.example/", Score: 6}}
+	if res, _ := a.ScoutPicks(ctx, v.Space.ID, first); res.Added != 1 || res.Skipped != 1 {
+		t.Fatalf("first: %+v", res)
+	}
+	again := []app.ScoutPick{{Title: "Выставка «Хлеб» в Центре «Зотов»", Category: "culture", Starts: sat, URL: "https://zotov.example/bread",
+		Image: "https://zotov.example/bread.jpg", About: "Выставка о хлебе в культуре.", Genres: []string{"выставка"}}}
+	if res, _ := a.ScoutPicks(ctx, v.Space.ID, again); res.Added != 0 {
+		t.Fatalf("again added: %+v", res)
+	}
+	ideas, _ := a.S.Ideas(ctx, v.Space.ID, domain.IdeaDraft, domain.IdeaActive)
+	n := 0
+	for _, i := range ideas {
+		if strings.Contains(i.Title, "Хлеб") {
+			n++
+			if i.ImageURL != "https://zotov.example/bread.jpg" || i.Info.About == "" {
+				t.Fatalf("not refilled: %+v", i)
+			}
+		}
+		if strings.Contains(i.Title, "официальном сайте") {
+			t.Fatal("a page title became a card")
+		}
+	}
+	if n != 1 {
+		t.Fatalf("%d copies", n)
+	}
+	// what is there stays
+	if res, _ := a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{{Title: "Выставка «Хлеб» в Центре «Зотов»", URL: "https://zotov.example/bread", Image: "https://other.example/x.jpg"}}); res.Added != 0 {
+		t.Fatal(res)
+	}
+	ideas, _ = a.S.Ideas(ctx, v.Space.ID, domain.IdeaDraft, domain.IdeaActive)
+	for _, i := range ideas {
+		if strings.Contains(i.Title, "Хлеб") && i.ImageURL != "https://zotov.example/bread.jpg" {
+			t.Fatal("overwritten")
+		}
+	}
+}
