@@ -3,15 +3,18 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
+	"vdvoem/internal/store"
 )
 
 // The scout agent (a scheduled Claude task) talks to the app from the server itself, through the admin
@@ -45,6 +48,8 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /agent/train", local(a.agentTrain))
 	mux.HandleFunc("GET /agent/semantic", local(a.agentSemantic))
 	mux.HandleFunc("GET /agent/perf", local(a.agentPerf))
+	mux.HandleFunc("GET /agent/assistant", local(a.agentAssistant))
+	mux.HandleFunc("GET /agent/boots", local(a.agentBoots))
 }
 
 // agentSemantic: what a request is closest to by meaning (?space=1&q=…) — to tune the threshold
@@ -250,4 +255,137 @@ func (a *API) agentGoalDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// agentAssistant: the assistant's journal for the owner (the admin reads it): every request with how it was read,
+// by what, how long it took, what the answer offered and how it ended; plus the summary numbers.
+// ?days=7 &limit=300
+func (a *API) agentAssistant(w http.ResponseWriter, r *http.Request) {
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	if days <= 0 || days > 90 {
+		days = 7
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 2000 {
+		limit = 300
+	}
+	since := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+	rows, err := a.App.S.AssistantLog(r.Context(), since, limit)
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+	sum := map[string]any{}
+	n, pressed, missed, errs, slow := 0, 0, 0, 0, 0
+	src := map[string]int{}
+	intents := map[string]int{}
+	var ms []int64
+	for _, x := range rows {
+		n++
+		if x.Pressed {
+			pressed++
+		}
+		if strings.HasPrefix(x.Outcome, "clarified") || strings.HasPrefix(x.Outcome, "rephrased") {
+			missed++
+		}
+		if x.Err != "" {
+			errs++
+		}
+		if x.Ms > 8000 {
+			slow++
+		}
+		if x.Src != "" {
+			src[x.Src]++
+		}
+		var in struct {
+			I string `json:"i"`
+		}
+		_ = json.Unmarshal([]byte(strings.TrimPrefix(x.Intent, "intent:")), &in)
+		if in.I != "" {
+			intents[in.I]++
+		}
+		if x.Ms > 0 {
+			ms = append(ms, x.Ms)
+		}
+	}
+	sort.Slice(ms, func(i, j int) bool { return ms[i] < ms[j] })
+	pct := func(p int) int64 {
+		if len(ms) == 0 {
+			return 0
+		}
+		return ms[len(ms)*p/100]
+	}
+	sum["requests"], sum["pressed"], sum["missed"], sum["errors"], sum["slow"] = n, pressed, missed, errs, slow
+	sum["src"], sum["intents"], sum["p50_ms"], sum["p90_ms"] = src, intents, pct(50), pct(90)
+	model := ""
+	if a.Helper != nil && a.Helper.IntentModel() != nil {
+		model = a.Helper.IntentModel().M()
+	}
+	sum["model"] = model
+	writeJSON(w, 200, map[string]any{"days": days, "summary": sum, "rows": rows})
+}
+
+// agentBoots: how long the app took to open, per opening (stages html → tg → boot → data), and the server time per
+// route — from the database, so it survives deploys. ?days=7
+func (a *API) agentBoots(w http.ResponseWriter, r *http.Request) {
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	if days <= 0 || days > 30 {
+		days = 7
+	}
+	since := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+	bs, _ := a.App.S.Boots(r.Context(), since, 3000)
+	type open struct {
+		Boot   string         `json:"boot"`
+		At     int64          `json:"at"`
+		Stages map[string]int `json:"stages"`
+		UA     string         `json:"ua"`
+		Errors []string       `json:"errors,omitempty"`
+	}
+	by := map[string]*open{}
+	var order []string
+	for k := len(bs) - 1; k >= 0; k-- { // oldest first
+		b := bs[k]
+		id := b.Boot
+		if id == "" {
+			id = fmt.Sprint("t", b.At)
+		}
+		o := by[id]
+		if o == nil {
+			o = &open{Boot: id, At: b.At, Stages: map[string]int{}}
+			by[id] = o
+			order = append(order, id)
+		}
+		switch b.Stage {
+		case "html":
+			o.UA = b.Msg
+		case "error", "reject":
+			o.Errors = append(o.Errors, b.Msg)
+		}
+		if _, ok := o.Stages[b.Stage]; !ok {
+			o.Stages[b.Stage] = b.Ms
+		}
+	}
+	opens := []*open{}
+	var data []int
+	for k := len(order) - 1; k >= 0; k-- { // newest first
+		o := by[order[k]]
+		opens = append(opens, o)
+		if v, ok := o.Stages["data"]; ok {
+			data = append(data, v)
+		}
+	}
+	sort.Ints(data)
+	q := func(p int) int {
+		if len(data) == 0 {
+			return 0
+		}
+		return data[len(data)*p/100]
+	}
+	rt, _ := a.App.S.RouteTimes(r.Context(), since)
+	routes := []store.RouteStat{}
+	for k, l := range rt {
+		routes = append(routes, store.RouteStat{Route: k, N: len(l), P50: l[len(l)/2], P90: l[len(l)*9/10], Max: l[len(l)-1]})
+	}
+	sort.Slice(routes, func(i, j int) bool { return routes[i].P90 > routes[j].P90 })
+	writeJSON(w, 200, map[string]any{"days": days, "opens": opens, "to_data_p50_ms": q(50), "to_data_p90_ms": q(90), "routes": routes})
 }

@@ -127,7 +127,7 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	rep.Intent, rep.Src, rep.Ms = &in, src, time.Since(start).Milliseconds()
 	as.noteRephrase(ctx, c, in, text)
 	var exID int64
-	if in.I != "chat" || alt.I != "" { // a labelled example for the model: accepted once a button from it is pressed
+	{ // every request goes to the journal (the owner sees it in the admin); a labelled example once a button is pressed
 		b, _ := json.Marshal(in)
 		if id, err := as.App.S.AddExample(ctx, c.Me.ID, text, "intent:"+string(b), rep.Text, as.now()); err == nil {
 			exID = id
@@ -153,6 +153,17 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	}
 	if rep.Text == "" {
 		rep.Text = "Готово."
+	}
+	if exID != 0 {
+		model := ""
+		if as.AI != nil && src != "rules" {
+			model = as.AI.M()
+		}
+		var labels []string
+		for _, b := range rep.Actions {
+			labels = append(labels, b.Label)
+		}
+		_ = as.App.S.SetExampleMeta(ctx, exID, rep.Ms, model, strings.Join(labels, " | "), len(rep.Cards), "")
 	}
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
