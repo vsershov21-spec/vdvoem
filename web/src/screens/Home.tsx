@@ -39,6 +39,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
         </div>
       )}
       {home.paired && <Now home={home} />}
+      {home.taste_set === false && <TasteNudge />}
       {(home.going?.length || 0) > 1 && <Going list={home.going!} />}
       <ToMark ideas={home.to_mark || []} total={home.counts.unmarked} onAdd={onAdd} />
       {/* numbers mean something after a few meetings; before that they are zeros next to a planned date */}
@@ -208,4 +209,18 @@ function ToMark({ ideas, total, onAdd }: { ideas: Idea[]; total: number; onAdd: 
       </div>
     )}
   </>)
+}
+
+// the first open, like a music app: a minute about yourself and the picks fit from the start; dismissable
+function TasteNudge() {
+  const [gone, setGone] = useState(() => { try { return localStorage.getItem('vd-taste-nudge') === '1' } catch { return false } })
+  if (gone) return null
+  const hide = () => { try { localStorage.setItem('vd-taste-nudge', '1') } catch { /* private */ } setGone(true) }
+  return (
+    <div className="card rise tastecta" style={{ marginTop: 12 }} role="button" onClick={() => go('taste')}>
+      <span className="tastecta__e">✨</span>
+      <span className="col" style={{ gap: 2, flex: 1, textAlign: 'left' }}><b>Расскажи о своих вкусах — минута</b><span className="caption muted">Театр или стендап, джаз или рок — и подборки сразу попадут в точку</span></span>
+      <button className="iconbtn" aria-label="Не сейчас" onClick={e => { e.stopPropagation(); hide() }}><Icon n="x" s={14} /></button>
+    </div>
+  )
 }

@@ -42,7 +42,7 @@ type Intent struct {
 	refined bool     // a follow-up («а подешевле?») merged into the previous request
 }
 
-var intentNames = []string{"find", "suggest", "price", "book", "about", "remember", "goal", "overview", "past", "chores", "add_idea", "budget", "suggest_mode", "plan", "chat"}
+var intentNames = []string{"find", "suggest", "price", "book", "about", "remember", "goal", "overview", "past", "chores", "add_idea", "budget", "suggest_mode", "plan", "chat", "taste"}
 
 var intentSchema = map[string]any{
 	"type": "object",
@@ -80,10 +80,15 @@ var (
 	budgetSetRe = regexp.MustCompile(`(?i)бюджет\D{0,12}(\d[\d\s]{2,6})`)
 	followRe    = regexp.MustCompile(`(?i)^(?:(?:а|и|ну|тогда|лучше|только|ещё|еще)(?:\s|,|$)|подешевле|дешевле|подороже|без |не |кроме|покажи вс|показать вс|все варианты)`)
 	timeQ       = regexp.MustCompile(`(?i)^(?:эт(?:ой|у) недел|выходн|сегодня|завтра|неделе)`)
+	// «обо мне», «настрой мои вкусы», «что ты про меня знаешь» — the portrait, to look at and correct
+	tasteRe = regexp.MustCompile(`(?i)^(?:расскажи\s+)?обо\s+мне(?:$|[^\p{L}])|мо(?:и|й|ё|е)\s+(?:вкус|интерес|предпочтени)|настр(?:ой|оить|аивать)\s+(?:мо(?:и|й)\s+)?(?:вкус|интерес)|что\s+ты\s+(?:обо|про)\s+меня\s+знаешь|что\s+(?:я|мне)\s+(?:люблю|нравится)\s*\?|мой\s+портрет|(?:узнай|изучи)\s+(?:мои\s+)?вкус|точнее\s+(?:под|по)\s+(?:меня|мой\s+вкус)`)
 )
 
 func rulesIntent(text string, now time.Time) Intent {
 	t := strings.ToLower(strings.TrimSpace(text))
+	if tasteRe.MatchString(t) {
+		return Intent{I: "taste", conf: 0.92}
+	}
 	if mem := memoryFromText(text); mem != "" {
 		return Intent{I: "remember", Text: mem, conf: 0.95}
 	}
@@ -244,7 +249,7 @@ var LLMBudget = 6500 * time.Millisecond
 
 func intentSystem(now time.Time) string {
 	return `Ты разбираешь запросы пары к приложению «Вдвоём» и отвечаешь ТОЛЬКО JSON по схеме. Сегодня ` + now.Format("2006-01-02") + ` (` + ruWeekday(now) + `).
-i: find — что поделать/куда сходить/что есть (афиша скаута, копилка), с фильтрами; suggest — выбрать одну идею из копилки (mode random — «удиви»); price — сколько стоит что-то (q — что именно); book — записать конкретное событие в календарь/пойти на него (q); about — рассказать о конкретном событии: что это, жанр, кто играет, подойдёт ли нам (q); remember — человек сообщает свой вкус (text — фраза); goal — следить за чем-то в будущем (text); overview — наши планы; past — где были; chores — дела по дому; add_idea — добавить идею (text); budget — поставить бюджет (rub); suggest_mode — как бот присылает идеи (mode); plan — начать выбор вместе; chat — приветствие и прочее.
+i: find — что поделать/куда сходить/что есть (афиша скаута, копилка), с фильтрами; suggest — выбрать одну идею из копилки (mode random — «удиви»); price — сколько стоит что-то (q — что именно); book — записать конкретное событие в календарь/пойти на него (q); about — рассказать о конкретном событии: что это, жанр, кто играет, подойдёт ли нам (q); remember — человек сообщает свой вкус (text — фраза); taste — показать или настроить его вкусы целиком («обо мне», «мои вкусы», «что ты обо мне знаешь»); goal — следить за чем-то в будущем (text); overview — наши планы; past — где были; chores — дела по дому; add_idea — добавить идею (text); budget — поставить бюджет (rub); suggest_mode — как бот присылает идеи (mode); plan — начать выбор вместе; chat — приветствие и прочее.
 Фильтры find: date (YYYY-MM-DD), wknd (ближайшие выходные), part (morning/day/evening), max (₽ на двоих), cats/not (food culture walk sport other), notw (слова-исключения), moods (chill — отдохнуть, расслабиться; active; romantic; culture; fun; food; outdoor; home; free; new; night), hz (week — ближайшее, later — анонсы на месяцы вперёд), scout (только находки скаута/афиша), g (вид досуга из словаря: джаз, иммерсивный, керамика, квест, баня…), from/to (период: «в конце ноября», «на следующей неделе» — YYYY-MM-DD), all (вообще всё списком), whose (ours — только наши идеи, new — только то, чего мы не видели).
 Пиши только нужные поля. Ничего не придумывай.`
 }
@@ -620,6 +625,8 @@ func describe(in Intent) string {
 		return "Следить за" + q(firstNonEmpty(in.Q, in.Text))
 	case "remember":
 		return "Запомнить это"
+	case "taste":
+		return "Показать и настроить твой вкус"
 	case "add_idea":
 		return "Добавить в копилку"
 	case "overview":
