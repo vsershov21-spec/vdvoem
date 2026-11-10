@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"vdvoem/internal/ai"
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
 	"vdvoem/internal/domain"
@@ -1260,7 +1261,7 @@ func (a *API) voice(w http.ResponseWriter, r *http.Request, c app.Couple) (any, 
 		a.Log.Warn("voice", "err", err)
 		return nil, httpErr{502, "voice_failed"}
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+	ctx, cancel := context.WithTimeout(ai.Foreground(context.WithoutCancel(r.Context())), 90*time.Second)
 	defer cancel()
 	rep, err := a.Helper.Ask(ctx, c, text)
 	return map[string]any{"heard": text, "reply": rep}, err
@@ -1274,7 +1275,7 @@ func (a *API) askAssistant(w http.ResponseWriter, r *http.Request, c app.Couple)
 		return nil, err
 	}
 	// the answer is worked out to the end and saved even if the app leaves the screen or drops the connection
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+	ctx, cancel := context.WithTimeout(ai.Foreground(context.WithoutCancel(r.Context())), 90*time.Second) // someone waits: first in the model's queue
 	defer cancel()
 	rep, err := a.Helper.Ask(ctx, c, in.Text)
 	if err != nil && a.App != nil { // a failure is a row in the journal too: the owner sees what broke and when
@@ -1292,7 +1293,7 @@ func (a *API) act(w http.ResponseWriter, r *http.Request, c app.Couple) (any, er
 	if err := body(r, &in); err != nil {
 		return nil, err
 	}
-	rep, err := a.Helper.Act(r.Context(), c, in.ID)
+	rep, err := a.Helper.Act(ai.Foreground(r.Context()), c, in.ID)
 	return map[string]any{"reply": rep}, err
 }
 

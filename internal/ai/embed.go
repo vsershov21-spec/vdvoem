@@ -18,6 +18,11 @@ func (c *Client) Embed(ctx context.Context, model string, texts []string) ([][]f
 	if c == nil || c.URL == "" || model == "" || len(texts) == 0 {
 		return nil, fmt.Errorf("embed: off")
 	}
+	if c.IsLocal() { // one CPU model: whoever waits goes first (priority.go)
+		var release func()
+		ctx, release = gate(ctx)
+		defer release()
+	}
 	b, _ := json.Marshal(map[string]any{"model": model, "input": texts})
 	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimSuffix(c.URL, "/")+"/embeddings", bytes.NewReader(b))
 	if err != nil {

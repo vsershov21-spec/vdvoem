@@ -58,6 +58,11 @@ func (c *Client) Step(ctx context.Context, task string, msgs []Message, tools []
 	if !c.Enabled() {
 		return Turn{}, errors.New("ai disabled")
 	}
+	if c.IsLocal() { // one CPU model: whoever waits goes first (priority.go)
+		var release func()
+		ctx, release = gate(ctx)
+		defer release()
+	}
 	t0 := time.Now()
 	var wm []map[string]any
 	for _, m := range msgs {
