@@ -57,7 +57,7 @@ type Reply struct {
 	Text    string   `json:"text"`
 	Cards   []Card   `json:"cards,omitempty"`
 	Actions []Button `json:"actions,omitempty"`
-	Open    string   `json:"open,omitempty"` // the screen to open (an «open» button pressed)
+	Open    string   `json:"open,omitempty"`   // the screen to open (an «open» button pressed)
 	Intent  *Intent  `json:"intent,omitempty"` // how the request was understood — for follow-ups («а подешевле?»)
 	Src     string   `json:"src,omitempty"`    // rules | model | rules-fallback
 	Ms      int64    `json:"ms,omitempty"`
@@ -1112,6 +1112,11 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 	}
 	var rep Reply
 	switch a.Kind {
+	case "scout_ask": // new things come from the scout: it searches this on its next round (every morning)
+		if err := as.App.AskScout(ctx, c, p.Text, 0); err != nil {
+			return rep, err
+		}
+		rep.Text = "🔭 Попросил скаута поискать: " + strings.TrimPrefix(p.Text, "Найти новое: ") + ". Он ищет каждое утро — найденное пришлю сюда и в бот, оно появится в Афише."
 	case "add_idea":
 		res, err := as.App.AddIdea(ctx, c, p.Text)
 		if err != nil {
