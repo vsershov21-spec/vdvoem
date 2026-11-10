@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { people, pair, phone, open, shot, api, addIdeas, BASE } from './lib'
+import { people, pair, phone, open, shot, api, addIdeas, tab, BASE } from './lib'
 
 // «Мой вкус»: spheres → kinds → how, saved as you go; the cloud on «Мы», the partner sees it; the ranking leans
 // on it at once; the assistant tells the portrait back and «обожаю …» moves it.
@@ -53,6 +53,15 @@ test('E40 мой вкус: три уровня, облако, влияет на 
   expect(r.reply.text).toMatch(/Очень: .*джаз/)
   await api(n, 'POST', '/assistant', { text: 'обожаю стендап' })
   expect((await api(n, 'GET', '/taste')).me.tags['стендап']).toBe(2)
+
+  // the assistant's button opens the screen (it used to answer «Не знаю такое действие»)
+  const q = await open(ctx, v)
+  await tab(q, 'ai')
+  await q.getByPlaceholder(/Спроси/).fill('обо мне')
+  await q.getByLabel('Отправить').click()
+  await q.locator('.ai-act', { hasText: /вкус/i }).first().click()
+  await expect(q.locator('.tcloud__t', { hasText: 'джаз' })).toBeVisible()
+  await expect(q.getByText('Не знаю такое действие')).toHaveCount(0)
   await ctx.close()
   void BASE
 })

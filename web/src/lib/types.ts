@@ -40,8 +40,8 @@ export type Home = {
 }
 
 export type Card = { type: 'idea' | 'meeting'; idea_id?: number; round_id?: number; title: string; meta?: string; image?: string; category?: string; why?: string; when?: string; about?: string }
-export type ActionBtn = { id: string; label: string; kind: string }
-export type Reply = { text: string; cards?: Card[]; actions?: ActionBtn[]; intent?: { i: string }; ms?: number; next?: string[]; pick?: { id: number; title: string; n: number } }
+export type ActionBtn = { id: string; label: string; kind: string; path?: string }
+export type Reply = { text: string; cards?: Card[]; actions?: ActionBtn[]; intent?: { i: string }; ms?: number; next?: string[]; pick?: { id: number; title: string; n: number }; open?: string }
 export type ChatMsg = { id: number; role: 'user' | 'assistant'; at: number; reply: Reply }
 
 export type Settings = {
