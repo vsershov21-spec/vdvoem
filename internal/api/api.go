@@ -53,7 +53,11 @@ func (a *API) Routes(mux *http.ServeMux) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			t := time.Now()
 			g(w, r)
-			perf.route(pattern, time.Since(t))
+			d := time.Since(t)
+			perf.route(pattern, d)
+			if a.App != nil && (d > 300*time.Millisecond || t.UnixNano()%4 == 0) { // every slow one, a quarter of the rest
+				a.App.S.AddRouteTime(context.WithoutCancel(r.Context()), pattern, d.Milliseconds(), t)
+			}
 		})
 	}
 	a.peopleRoutes(h)
@@ -194,6 +198,7 @@ func (a *API) clientLog(w http.ResponseWriter, r *http.Request) {
 		Stage string `json:"stage"`
 		Msg   string `json:"msg"`
 		Ms    int    `json:"ms"`
+		Boot  string `json:"b"`
 	}
 	_ = json.NewDecoder(io.LimitReader(r.Body, 2048)).Decode(&in)
 	cut := func(s string, n int) string {
@@ -204,6 +209,9 @@ func (a *API) clientLog(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Log.Info("client", "stage", cut(in.Stage, 24), "msg", cut(in.Msg, 300), "ms", in.Ms)
 	perf.boot(bootRec{At: time.Now(), Stage: cut(in.Stage, 24), Msg: cut(in.Msg, 120), Ms: in.Ms})
+	if a.App != nil && in.Stage != "" {
+		a.App.S.AddBoot(context.WithoutCancel(r.Context()), cut(in.Boot, 16), cut(in.Stage, 24), cut(in.Msg, 200), in.Ms, time.Now())
+	}
 	w.WriteHeader(204)
 }
 
@@ -1269,6 +1277,11 @@ func (a *API) askAssistant(w http.ResponseWriter, r *http.Request, c app.Couple)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
 	defer cancel()
 	rep, err := a.Helper.Ask(ctx, c, in.Text)
+	if err != nil && a.App != nil { // a failure is a row in the journal too: the owner sees what broke and when
+		if id, e := a.App.S.AddExample(context.WithoutCancel(r.Context()), c.Me.ID, in.Text, "error", "", time.Now()); e == nil {
+			_ = a.App.S.SetExampleMeta(context.WithoutCancel(r.Context()), id, 0, "", "", 0, clipErr(err))
+		}
+	}
 	return map[string]any{"reply": rep}, err
 }
 
@@ -1531,4 +1544,12 @@ func (a *API) delOption(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 		return nil, err
 	}
 	return a.options(w, r, c)
+}
+
+func clipErr(err error) string {
+	s := err.Error()
+	if len(s) > 300 {
+		s = s[:300]
+	}
+	return s
 }
