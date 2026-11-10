@@ -41,7 +41,7 @@ button,a,[role=tab]{touch-action:manipulation}
 .col{display:flex;flex-direction:column;gap:12px}
 .spacer{flex:1}
 .sec{margin:28px 0 12px;display:flex;align-items:baseline;justify-content:space-between}
-.sec .link{appearance:none;border:0;background:none;color:var(--ink-muted);font:600 14px/1 var(--font-sans);cursor:pointer;padding:6px 0}
+.link{display:inline-flex;align-items:center;gap:4px;appearance:none;border:0;background:none;color:var(--ink-muted);font:600 14px/1 var(--font-sans);cursor:pointer;padding:6px 0}
 
 /* ---------- header ---------- */
 .hdr{display:flex;align-items:center;gap:12px;height:var(--hdr);margin:0 0 8px}
