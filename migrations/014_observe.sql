@@ -14,7 +14,7 @@ CREATE TABLE client_boots (
   at      INTEGER NOT NULL
 );
 CREATE INDEX client_boots_at ON client_boots(at);
--- the server time of every API request, sampled (one in four) and kept 7 days
+-- the server time of every API request, kept 7 days
 CREATE TABLE route_times (
   route TEXT NOT NULL,
   ms    INTEGER NOT NULL,

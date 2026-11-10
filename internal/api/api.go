@@ -55,7 +55,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 			g(&timedWriter{ResponseWriter: w, t: t}, r)
 			d := time.Since(t)
 			perf.route(pattern, d)
-			if a.App != nil && (d > 300*time.Millisecond || t.UnixNano()%4 == 0) { // every slow one, a quarter of the rest
+			if a.App != nil { // a couple's app is a few hundred requests a day: keep them all (7 days)
 				a.App.S.AddRouteTime(context.WithoutCancel(r.Context()), pattern, d.Milliseconds(), t)
 			}
 		})
