@@ -39,6 +39,7 @@ export async function upload<T = any>(path: string, form: FormData): Promise<T> 
 export const get = <T = any>(p: string) => api<T>('GET', p)
 export const post = <T = any>(p: string, b?: unknown) => api<T>('POST', p, b ?? {})
 export const patch = <T = any>(p: string, b: unknown) => api<T>('PATCH', p, b)
+export const put = <T = any>(p: string, b: unknown) => api<T>('PUT', p, b)
 export const del = <T = any>(p: string) => api<T>('DELETE', p)
 
 export const errText: Record<string, string> = {

@@ -27,7 +27,13 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 		if _, err := r.as.App.Remember(ctx, r.c, in.Text); err != nil {
 			return Reply{Text: "Не понял, что запомнить."}
 		}
+		if tags := r.as.App.NudgeTaste(ctx, r.c, in.Text); len(tags) > 0 { // «обожаю джаз» moves «Мой вкус» too
+			r.propose(ctx, "open", map[string]any{"path": "taste"}, "Мой вкус")
+			return Reply{Text: "Запомнил: «" + short(in.Text, 80) + "» — и отметил в «Моём вкусе»: " + strings.Join(tags, ", ") + ". Подборки сразу это учтут."}
+		}
 		return Reply{Text: "Запомнил: «" + short(in.Text, 80) + "». Буду учитывать — и скаут тоже. Посмотреть и удалить — «Мы → Помощник помнит»."}
+	case "taste":
+		return r.taste(ctx)
 	case "goal":
 		if in.Text == "" {
 			in.Text = text
@@ -746,4 +752,14 @@ func cyrillic(s string) bool {
 		}
 	}
 	return n > 0 && cy*10 >= n*8
+}
+
+// taste: «обо мне» — the portrait from their own words and marks, and the way to correct it
+func (r *run) taste(ctx context.Context) Reply {
+	r.propose(ctx, "open", map[string]any{"path": "taste"}, "✨ Настроить мой вкус")
+	p := r.as.App.Portrait(ctx, r.c, r.c.Me.ID)
+	if p == "" {
+		return Reply{Text: "Пока я знаю о тебе мало — только то, что ты отмечаешь. Давай настроим за минуту: отметишь, что нравится — от сфер до жанров, — и подборки станут точнее с первого раза.", Next: []string{"Что нам подходит на выходных?"}}
+	}
+	return Reply{Text: "Вот что я о тебе знаю:\n" + p + "\n\nПоправь или дополни — подборки подстроятся сразу.", Next: []string{"Что мне понравится на неделе?", "Удиви нас"}}
 }

@@ -672,3 +672,25 @@ button.island{border:0;font:inherit;padding:0;display:block;text-align:left}
 :root[data-theme="dark"] .bloader__r{stroke:#6b95ff}
 @keyframes bl{0%{stroke-dashoffset:1}45%,60%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:-1;opacity:.2}}
 @media (prefers-reduced-motion:reduce){.bloader path{animation:none;stroke-dashoffset:0}}
+/* «Мой вкус» */
+.steps{display:flex;gap:6px;margin:0 2px 12px}.steps i{flex:1;height:4px;border-radius:4px;background:var(--line)}.steps i[data-on]{background:var(--accent)}
+.tgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ttile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-height:88px;padding:14px;border-radius:20px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer;transition:transform .12s,border-color .15s,background .15s}
+.ttile:active{transform:scale(.97)}
+.ttile__e{font-size:28px;line-height:1}.ttile__t{font-weight:650;font-size:15px;line-height:19px}
+.ttile__m{position:absolute;top:10px;right:12px;font-weight:800;font-size:13px}
+.ttile[data-w="1"]{border-color:var(--accent);background:var(--accent-soft)}
+.ttile[data-w="2"]{border-color:var(--accent);background:var(--accent);color:#fff}
+.ttile[data-w="-1"]{opacity:.5;border-style:dashed}.ttile[data-w="-1"] .ttile__t{text-decoration:line-through}
+.tchip[data-w="1"]{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.tchip[data-w="2"]{border-color:var(--accent);background:var(--accent);color:#fff}
+.tchip[data-w="-1"]{opacity:.55;text-decoration:line-through}
+.tcloud{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:baseline}
+.tcloud__t{font-weight:600;font-size:14px;line-height:1.2;padding:5px 11px;border-radius:999px;background:var(--surface-sunken,var(--line));color:var(--ink-muted)}
+.tcloud__t[data-said]{color:var(--ink)}
+.tcloud__t[data-w="2"]{font-size:18px;font-weight:750;background:var(--accent);color:#fff}
+.tcloud__t[data-w="1"][data-said]{background:var(--accent-soft);color:var(--ink)}
+.tcloud__t[data-w="-1"]{text-decoration:line-through;opacity:.6}
+.tcloud__t:not([data-said]){background:transparent;border:1.5px dashed var(--line)}
+.tastecta{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border-radius:16px;border:0;background:var(--accent-soft);color:var(--ink);font:inherit;cursor:pointer}
+.tastecta__e{font-size:24px}

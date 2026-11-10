@@ -50,15 +50,17 @@ func examplesFor(ideas []store.Idea, color string) []taste.Example {
 
 // Tastes trains both people's models (microseconds; always the current marks).
 type Tastes struct {
-	Me, Partner taste.Model
-	c           Couple
+	Me, Partner     taste.Model
+	MyMe, MyPartner MyTaste // what each said about themselves («Мой вкус»)
+	c               Couple
 }
 
 func (a *App) Tastes(ctx context.Context, c Couple) Tastes {
 	ideas, _ := a.S.Ideas(ctx, c.Space.ID, domain.IdeaActive, domain.IdeaDone, domain.IdeaArchived, domain.IdeaDraft)
-	t := Tastes{c: c, Me: taste.Train(examplesFor(ideas, c.Me.Color), c.Loc())}
+	t := Tastes{c: c, Me: taste.Train(examplesFor(ideas, c.Me.Color), c.Loc()), MyMe: a.Taste(ctx, c.Me.ID)}
 	if c.Partner != nil {
 		t.Partner = taste.Train(examplesFor(ideas, c.Partner.Color), c.Loc())
+		t.MyPartner = a.Taste(ctx, c.Partner.ID)
 	}
 	return t
 }
@@ -75,6 +77,13 @@ func (t Tastes) Of(i store.Idea) Match {
 	if t.c.Partner != nil {
 		m.Partner = t.Partner.Score(itemOf(i), loc)
 	}
+	if !t.MyMe.Empty() || !t.MyPartner.Empty() { // their own words count at once, before the marks have taught anything
+		k := itemKinds(i)
+		m.Me = clamp01(m.Me + tasteBias(t.MyMe, k, i.Category))
+		if t.c.Partner != nil {
+			m.Partner = clamp01(m.Partner + tasteBias(t.MyPartner, k, i.Category))
+		}
+	}
 	lo, hi := m.Me, m.Partner
 	if lo > hi {
 		lo, hi = hi, lo
@@ -89,6 +98,7 @@ type TasteProfile struct {
 	Dislikes []string `json:"dislikes"`
 	Said     []string `json:"said"`
 	Marks    int      `json:"marks"`
+	Portrait string   `json:"portrait,omitempty"` // «Мой вкус» in their own words: spheres, kinds, how — trust it first
 }
 
 func (a *App) Profiles(ctx context.Context, c Couple) (me, partner TasteProfile) {
@@ -108,6 +118,7 @@ func (a *App) Profiles(ctx context.Context, c Couple) (me, partner TasteProfile)
 				p.Said = append(p.Said, x.Text)
 			}
 		}
+		p.Portrait = a.Portrait(ctx, c, memberID)
 		return p
 	}
 	me = fill(t.Me, c.Me.ID)
@@ -144,4 +155,14 @@ func MatchNote(m Match, partner string) string {
 		return ""
 	}
 	return "по вкусу: " + strings.Join(parts, ", ")
+}
+
+func clamp01(x float64) float64 {
+	if x < 0.02 {
+		return 0.02
+	}
+	if x > 0.98 {
+		return 0.98
+	}
+	return x
 }
