@@ -15,8 +15,8 @@
     <title>Вдвоём</title>
     <script>
       // boot diagnostics: stages and script errors go to the server log (a hang on a phone becomes visible)
-      var __t0 = Date.now(), __vdb = Math.random().toString(36).slice(2, 10)
-      window.__vdlog = function (stage, msg) { try { navigator.sendBeacon('/api/client-log', JSON.stringify({ b: __vdb, stage: stage, msg: String(msg || '').slice(0, 300), ms: Date.now() - __t0 })) } catch (e) {} }
+      var __t0 = Date.now()
+      window.__vdlog = function (stage, msg) { try { navigator.sendBeacon('/api/client-log', JSON.stringify({ stage: stage, msg: String(msg || '').slice(0, 300), ms: Date.now() - __t0 })) } catch (e) {} }
       addEventListener('error', function (e) { var t = e.target; __vdlog('error', (e.message || '') + ' ' + (t && (t.src || t.href) ? 'load ' + (t.src || t.href) : (e.filename || '') + ':' + (e.lineno || ''))) }, true)
       addEventListener('unhandledrejection', function (e) { __vdlog('reject', e.reason && (e.reason.message || e.reason)) })
       __vdlog('html', navigator.userAgent.slice(-60))

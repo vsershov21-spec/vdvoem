@@ -83,8 +83,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     // who is it? (inside Telegram initData; in a browser, a session cookie)
     // a network blip must not leave the lamp waiting forever: retry, then offer a button
     let tries = 0
-    prefetch(['/home']) // in parallel with «who is it»: the first screen's data is on its way from the first millisecond
-    const who = () => get<{ biometric_lock?: boolean }>('/me').then(m => { authed.current = true; lock.current = !!m.biometric_lock; (window as any).__vdlog?.('me', ''); if (tries) prefetch(['/home']) })
+    const who = () => get<{ biometric_lock?: boolean }>('/me').then(m => { authed.current = true; lock.current = !!m.biometric_lock; prefetch(['/home']) })
       .catch(e => {
         if (e instanceof ApiError && e.status === 401) { authed.current = false; return }
         if (++tries < 4) later(600 * tries, who); else setNetErr(true)

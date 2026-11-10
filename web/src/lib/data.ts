@@ -8,15 +8,8 @@ import { live } from './live'
 // it showed before and quietly refreshes — no skeleton flash on every tab switch.
 const cache = new Map<string, unknown>()
 export const cached = (path: string) => cache.has(path)
-// a request already on its way (a prefetch during the intro) is shared, not sent twice
-const flying = new Map<string, Promise<unknown>>()
-function fetchOnce<T>(p: string): Promise<T> {
-  let f = flying.get(p)
-  if (!f) { f = get(p).finally(() => flying.delete(p)); flying.set(p, f) }
-  return f as Promise<T>
-}
 export function prefetch(paths: string[]) {
-  for (const p of paths) if (!cache.has(p)) fetchOnce(p).then(d => cache.set(p, d)).catch(() => {})
+  for (const p of paths) if (!cache.has(p)) get(p).then(d => cache.set(p, d)).catch(() => {})
 }
 
 // patch: change what a path shows from outside a screen — an answer that arrives after the screen was left
@@ -37,7 +30,7 @@ export function useLoad<T>(path: string | null, poll = 0) {
   const load = useCallback(async () => {
     if (!path) return
     const my = ++seq.current
-    try { const d = await fetchOnce<T>(path); if (my === seq.current) { setData(d); setErr(null) } }
+    try { const d = await get<T>(path); if (my === seq.current) { setData(d); setErr(null) } }
     catch (e) { if (my === seq.current) setErr(e) }
   }, [path])
   useEffect(() => { setDataRaw((path && (cache.get(path) as T)) || null); load() }, [load])

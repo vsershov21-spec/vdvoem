@@ -1390,9 +1390,6 @@ func (a *App) Photo(ctx context.Context, c Couple, fileID string) (bool, error) 
 // Tick moves time-driven things: expiry, nudges, weekly plan day, queued jobs.
 func (a *App) Tick(ctx context.Context) {
 	now := a.now()
-	if now.Minute() == 17 && now.Second() < 70 && now.Hour() == 4 { // once a night: old boot and route timings go
-		a.S.PruneObserve(ctx, now)
-	}
 	rounds, err := a.S.ActiveRounds(ctx)
 	if err != nil {
 		a.Log.Error("tick rounds", "err", err)

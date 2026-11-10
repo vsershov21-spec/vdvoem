@@ -43,7 +43,7 @@ export function App() {
   useEffect(() => { applyTheme(); onTheme(applyTheme) }, [])
   return (<>
     {entered && <Main />}
-    {!entered && <Entry onEnter={() => { (window as any).__vdlog?.('enter', ''); setEntered(true) }} />}
+    {!entered && <Entry onEnter={() => setEntered(true)} />}
     <Burst />
     <Toasts />
   </>)
