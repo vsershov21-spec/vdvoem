@@ -254,7 +254,7 @@ func inPeriod(i store.Idea, from, to string, loc *time.Location) bool {
 
 var (
 	priceRe = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум)\s*(\d[\d\s]{2,6})`)
-	kRe     = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум|за)\s*(\d{1,3}(?:[.,]\d)?)\s*(?:тыс|тысяч|к\b|k\b)`)
+	kRe     = regexp.MustCompile(`(?:до|не дороже|дешевле|максимум|за)\s*(\d{1,3}(?:[.,]\d)?)\s*(?:тыс|тысяч|к(?:$|[^\p{L}])|k\b)`)
 	notRe   = regexp.MustCompile(`(?:без|кроме|не хочу|только не)\s+([а-яё]+)`)
 )
 
