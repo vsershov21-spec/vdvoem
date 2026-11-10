@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ActionBtn, ChatMsg, Home, Reply } from '../lib/types'
-import { useLoad, emit } from '../lib/data'
+import { useLoad, emit, patch } from '../lib/data'
 import { post, del, get, upload, humanError } from '../lib/api'
 import { complete } from '../lib/complete'
 import { go } from '../lib/router'
@@ -13,6 +13,12 @@ const SUGG = ['Куда сходить в субботу вечером?', 'Уд
 // after a search when the server sent no follow-ups (older answers): refine it in one tap
 const FOLLOW = ['А подешевле?', 'А в воскресенье?', 'А спокойнее?', 'А без театра?']
 const canRecord = () => typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
+
+// a question in flight lives outside the screen: switch tabs while it thinks — the answer still arrives
+// and is waiting in the chat when you come back
+type Chat = { messages: ChatMsg[]; ai: boolean; voice?: boolean }
+let inflight: Promise<unknown> | null = null
+const addMsg = (m: ChatMsg) => patch<Chat>('/assistant', d => ({ ...(d || { ai: false }), messages: [...(d?.messages || []), m] }))
 
 export function Assistant({ home }: { home: Home | null }) {
   const { data, set } = useLoad<{ messages: ChatMsg[]; ai: boolean; voice?: boolean }>('/assistant')
@@ -60,15 +66,16 @@ export function Assistant({ home }: { home: Home | null }) {
     haptic.tap(); if (!retry) setText('')
     const id = retry || Date.now()
     if (retry) setFailed(f => { const n = { ...f }; delete n[retry]; return n })
-    else set(d => ({ ...d, ai: d?.ai ?? false, messages: [...(d?.messages || []), { id, role: 'user', at: Date.now() / 1000, reply: { text: q } }] }))
+    else addMsg({ id, role: 'user', at: Date.now() / 1000, reply: { text: q } })
     setBusy(true); setAtBottom(true)
-    try {
-      const r = await post<{ reply: Reply }>('/assistant', { text: q })
-      say(r.reply)
-      haptic.soft()
-    } catch (e) { setFailed(f => ({ ...f, [id]: q })); toast(humanError(e)) } finally { setBusy(false) }
+    const p = post<{ reply: Reply }>('/assistant', { text: q }).then(r => { say(r.reply); haptic.soft() })
+    inflight = p.finally(() => { if (inflight === p2) inflight = null })
+    const p2 = inflight
+    try { await p } catch (e) { setFailed(f => ({ ...f, [id]: q })); toast(humanError(e)) } finally { setBusy(false) }
   }
-  const say = (r: Reply) => set(d => ({ ...d, ai: d?.ai ?? false, messages: [...(d?.messages || []), { id: Date.now() + 1, role: 'assistant', at: Date.now() / 1000, reply: r }] }))
+  const say = (r: Reply) => addMsg({ id: Date.now() + 1, role: 'assistant', at: Date.now() / 1000, reply: r })
+  // came back while an answer is on its way: show «печатает…» until it lands
+  useEffect(() => { if (inflight) { setBusy(true); inflight.catch(() => {}).finally(() => setBusy(false)) } }, [])
   const press = async (a: ActionBtn) => {
     if (done[a.id] || busy) return
     if (a.kind === 'clarify') setBusy(true) // the other reading answers as a new message
@@ -179,7 +186,9 @@ function AiMsg({ r, at, done, onPress }: { r: Reply; at: number; done: Record<st
               </Cover>
               <div style={{ padding: '8px 4px 2px' }}>
                 {c.meta && <p className="caption muted" style={{ margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.meta}</p>}
-                {c.why && <p className="caption" style={{ margin: '4px 0 0' }}>{c.why}</p>}
+                {c.about && <p className="caption" style={{ margin: '4px 0 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.about}</p>}
+                {c.why && <p className="caption muted" style={{ margin: '4px 0 0' }}>{c.why}</p>}
+                <span className="caption" style={{ display: 'inline-block', marginTop: 6, color: 'var(--accent-deep, var(--accent))', fontWeight: 600 }}>Подробнее ›</span>
               </div>
             </div>
           ))}

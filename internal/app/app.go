@@ -1142,6 +1142,9 @@ func (a *App) icsEvent(ctx context.Context, c Couple, r domain.Round, seq int, c
 		loc = strings.Trim(p.Title+", "+p.Address, ", ")
 		desc = "Место: " + p.Title + "\n" + p.Maps + "\n\n" + desc
 	}
+	if t := a.TicketsLink(a.TicketFile(ctx, c.Space.ID, r.ID)); t != "" { // the tickets open right from the event
+		desc = "🎟 Билеты: " + t + "\n\n" + desc
+	}
 	link := p.URL
 	if link == "" {
 		link = p.Maps

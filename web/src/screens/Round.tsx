@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import type { Home, Idea, Round } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
-import { post, humanError, ApiError } from '../lib/api'
+import { post, upload, humanError, ApiError } from '../lib/api'
 import { go } from '../lib/router'
 import { dayLabel, hm, money, dur, relLeft, when, parseDay, ncase, past as agreed } from '../lib/format'
 import { haptic, download } from '../lib/tg'
@@ -320,6 +320,29 @@ function Ticket({ r }: { r: Round }) {
 }
 
 // ---------- 4. planned ----------
+// the tickets themselves, kept with the meeting: a file or a link — sent to the partner, linked from the calendar
+function TicketsFile({ r, home, onRound }: { r: Round; home: Home; onRound: (x: R) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [link, setLink] = useState('')
+  const pick = useRef<HTMLInputElement>(null)
+  const f = r.tickets_file
+  const send = async (body: FormData | { url: string }) => {
+    setBusy(true); haptic.tap()
+    try { onRound(body instanceof FormData ? await upload<R>(`/rounds/${r.id}/tickets/file`, body) : await post<R>(`/rounds/${r.id}/tickets/file`, body)); haptic.ok(); toast('Сохранил и отправил ' + ncase(home.partner?.name || 'партнёру', 'dat')) }
+    catch (e) { toast(humanError(e)) } finally { setBusy(false) }
+  }
+  if (f) return <Btn kind="soft" block icon="link" onClick={() => openLink(f.url)}>{f.kind === 'link' ? 'Открыть билеты' : 'Билеты' + (f.name ? ' · ' + f.name : '')}</Btn>
+  return <div className="col" style={{ gap: 8 }}>
+    <input ref={pick} type="file" accept="image/*,application/pdf,.pkpass" hidden onChange={e => { const x = e.target.files?.[0]; if (!x) return; const d = new FormData(); d.append('file', x, x.name); send(d); e.target.value = '' }} />
+    <Btn kind="surface" block icon="plus" onClick={() => pick.current?.click()} disabled={busy}>Прикрепить билеты — файл или скрин</Btn>
+    <form className="places__add" onSubmit={e => { e.preventDefault(); if (link.trim()) send({ url: link.trim() }) }}>
+      <input className="input" placeholder="или ссылка на билеты" value={link} onChange={e => setLink(e.target.value)} aria-label="Ссылка на билеты" />
+      <button className="places__send" type="submit" disabled={!link.trim() || busy} aria-label="Сохранить ссылку"><Icon n="check" s={18} w={2.6} /></button>
+    </form>
+    <p className="caption muted" style={{ margin: 0 }}>Перешлю {ncase(home.partner?.name || 'партнёру', 'dat')} и добавлю в событие календаря. Можно и в боте — просто пришли туда файл.</p>
+  </div>
+}
+
 function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; home: Home; onPlace: () => void; onRound: (x: R) => void }) {
   const past = (r.starts_at || 0) * 1000 < Date.now()
   return (
@@ -339,7 +362,10 @@ function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; 
         <Btn kind="ghost" block onClick={() => act('done', { answer: 'no' }).then(() => {}).catch(() => {})}>Не получилось</Btn>
       </> : <>
         {r.book && <div className="frame rise" data-testid="tickets"><div className="frame__in col" style={{ gap: 10 }}>
-          {r.tickets ? <p className="callout" style={{ margin: 0 }}>✓ {r.tickets === 'me' ? 'Ты ' + agreed(home.me?.name, 'взял') : `${home.partner?.name || 'Партнёр'} ${agreed(home.partner?.name, 'взял')}`} {r.chosen?.category === 'food' ? 'стол' : 'билеты'} — всё готово.</p> : <>
+          {r.tickets ? <>
+            <p className="callout" style={{ margin: 0 }}>✓ {r.tickets === 'me' ? 'Ты ' + agreed(home.me?.name, 'взял') : `${home.partner?.name || 'Партнёр'} ${agreed(home.partner?.name, 'взял')}`} {r.chosen?.category === 'food' ? 'стол' : 'билеты'} — всё готово.</p>
+            <TicketsFile r={r} home={home} onRound={onRound} />
+          </> : <>
             <p className="callout" style={{ margin: 0 }}><b>{r.book.label}</b> — места разбирают, лучше сразу. Отметь, когда возьмёшь, — чтобы не купить дважды.</p>
             <div className="row" style={{ gap: 8 }}><Btn kind="accent" block icon="link" onClick={() => openLink(r.book!.url)}>{r.book.label}</Btn>
               <Btn kind="soft" block icon="check" onClick={() => act('tickets').then(() => {}).catch(() => {})}>{r.chosen?.category === 'food' ? 'Стол есть' : 'Билеты есть'}</Btn></div>

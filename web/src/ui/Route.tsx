@@ -16,6 +16,17 @@ type R = { round: Round }
 const errs: Record<string, string> = { extra_limit: 'В маршруте уже два продолжения.', extra_state: 'Сначала договоритесь о главном.', extra_own: 'Это твоё предложение — ждём партнёра.' }
 const fail = (e: unknown) => toast(e instanceof ApiError && errs[e.code] || humanError(e))
 
+function quick(r: Round): [string, string][] {
+  const c = r.chosen
+  if (!c) return []
+  const near = ' рядом с «' + (c.place?.title || c.title) + '»'
+  const late = (r.starts_at || 0) && new Date((r.starts_at || 0) * 1000).getHours() >= 17
+  if (c.category === 'food') return [['🚶 Прогуляться', 'Прогулка' + near], ['🍨 Десерт', 'Десерт и кофе' + near], ['🍷 Бар', 'Бар' + near]]
+  return late
+    ? [['🍽 Поужинать', 'Поужинать' + near], ['🍷 Бар', 'Бар' + near], ['☕ Кофе и десерт', 'Кофе и десерт' + near]]
+    : [['🍽 Пообедать', 'Пообедать' + near], ['☕ Кофе', 'Кофе' + near], ['🚶 Прогуляться', 'Прогулка' + near]]
+}
+
 export function RouteBlock({ r, home, onRound }: { r: Round; home: Home; onRound: (x: R) => void }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(0)
@@ -34,7 +45,7 @@ export function RouteBlock({ r, home, onRound }: { r: Round; home: Home; onRound
   return (
     <div className="card route rise" data-testid="route">
       <div className="route__head"><b className="headline">А потом?</b>
-        <span className="caption muted">{route.length ? 'Маршрут встречи' : 'Добавьте, куда пойти после — например, поесть рядом'}</span></div>
+        <span className="caption muted">{route.length ? 'Маршрут встречи' : 'Куда после? Поесть рядом — в одно касание'}</span></div>
       <ol className="route__line">
         <li className="route__stop is-main"><span className="route__t">{hm(r.starts_at)}</span><span className="route__dot" /><span className="route__name">{r.chosen.title}</span></li>
         <AnimatePresence initial={false}>
@@ -59,6 +70,10 @@ export function RouteBlock({ r, home, onRound }: { r: Round; home: Home; onRound
         </AnimatePresence>
       </ol>
       {route.length < 2 && <>
+        {/* the obvious next step for this kind of evening — one tap, the assistant finds the places near */}
+        <div className="wkchips" aria-label="Быстро добавить">
+          {quick(r).map(([l, t]) => <button key={l} className="wkchip" disabled={busy === -1} onClick={() => run(-1, () => post<R>(`/route/${r.id}`, { text: t }))}>{l}</button>)}
+        </div>
         {sug.length > 0 && <div className="route__sug">
           {sug.map(i => (
             <button key={i.id} className="route__card" onClick={() => add(i)} disabled={busy === i.id} aria-label={'Добавить после: ' + i.title}>

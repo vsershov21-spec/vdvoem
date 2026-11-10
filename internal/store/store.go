@@ -653,7 +653,7 @@ func (s *Store) LogScout(ctx context.Context, spaceID int64, picks, prices int, 
 // PlannedIdeas: ideas already agreed for a coming meeting — not offered again as «where to go».
 func (s *Store) PlannedIdeas(ctx context.Context, spaceID int64) map[int64]bool {
 	out := map[int64]bool{}
-	rows, err := s.DB.QueryContext(ctx, `SELECT body FROM rounds WHERE space_id=? AND state='planned'`, spaceID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT body FROM rounds WHERE space_id=? AND state IN ('planned','confirm')`, spaceID)
 	if err != nil {
 		return out
 	}

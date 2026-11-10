@@ -369,7 +369,17 @@ def _norm(s):
 
 def _wanted(t):
     w = t.split()
-    out = [x for i, x in enumerate(w) if not (i > 0 and w[i - 1] in _NO and x not in _NO or i > 1 and w[i - 2] == "не" and w[i - 1] in _VERB)]
+    out, ctx = [], 0
+    for i, x in enumerate(w):
+        if x in ("после", "перед"):
+            ctx = 3
+            continue
+        if ctx > 0:
+            ctx -= 1
+            continue
+        if i > 0 and w[i - 1] in _NO and x not in _NO or i > 1 and w[i - 2] == "не" and w[i - 1] in _VERB:
+            continue
+        out.append(x)
     return " " + " ".join(out) + " "
 
 def _at(t, stem):
@@ -467,7 +477,31 @@ def g_kind(today, test=False):
         text = text.lower().replace("?", "").replace("!", "")
     return ex(text, it, today)
 
-GENS = [(g_kind, 30), (g_period, 8), (g_whole, 4), (g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
+# «а потом»: the evening is planned, what comes after it — the plan after «после» is context, the ask is the rest
+AFTER_WHAT = [("поесть", ["food"]), ("поужинать", ["food"]), ("перекусить", ["food"]), ("пообедать", ["food"]), ("выпить кофе", ["food"]),
+              ("в бар", ["food"]), ("съесть десерт", ["food"]), ("погулять", ["walk"]), ("прогуляться", ["walk"])]
+AFTER_LEAD = ["где {w} после {x}", "куда {w} после {x}?", "а после {x} где можно {w}", "что рядом, чтобы {w} после {x}",
+              "посоветуй где {w} после {x}", "после {x} хотим {w}", "{w} после {x} — есть идеи?", "а потом после {x} куда {w}"]
+AFTER_X = ["театра", "планетария", "кино", "концерта", "выставки", "спектакля", "музея", "катка", "квеста", "стендапа", "балета", "экскурсии"]
+
+def g_after(today, test=False):
+    w, cats = R.choice(AFTER_WHAT)
+    text = R.choice(AFTER_LEAD[4:] if test else AFTER_LEAD).format(w=w, x=R.choice(AFTER_X))
+    it = {"i": "find", "cats": cats}
+    if R.random() < 0.3:
+        d, kind, arg = R.choice(DAYS)
+        text += " " + d
+        if kind == "rel":
+            it["date"] = (today + dt.timedelta(days=arg)).isoformat()
+        elif kind == "wd":
+            it["date"] = nearest(today, arg).isoformat()
+        else:
+            it["wknd"] = True
+    if R.random() < 0.3:
+        text = text[0].lower() + text[1:]
+    return ex(text, it, today)
+
+GENS = [(g_kind, 30), (g_after, 5), (g_period, 8), (g_whole, 4), (g_find, 40), (g_scout, 3), (g_suggest, 7), (g_price, 7), (g_book, 7), (g_about, 7), (g_remember, 6), (g_goal, 5), (g_simple, 14),
         (g_add, 3), (g_budget, 2), (g_mode, 2), (g_dialog, 14)]
 
 def build(n, test=False):
@@ -487,7 +521,7 @@ def build(n, test=False):
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "out"
     os.makedirs(out, exist_ok=True)
-    train, valid = build(6300), None
+    train, valid = build(int(os.environ.get("N", "6300"))), None  # N=14000 for the big run
     valid, train = train[:300], train[300:]
     global SHOWS, EVENTS, PREFS
     SHOWS, EVENTS = TEST_SHOWS, TEST_EVENTS  # test uses names the model never saw in training

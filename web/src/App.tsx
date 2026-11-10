@@ -53,6 +53,9 @@ function Main() {
   const [adding, setAdding] = useState(false)
   const [surprise, setSurprise] = useState<'' | 'random' | 'best'>('')
   const home = useLoad<HomeT>('/home', 20000)
+  // boot timing: when the first real data is on screen (with html → sdk → app before it, see index.html)
+  const sent = useRef(false)
+  useEffect(() => { if (home.data && !sent.current) { sent.current = true; (window as any).__vdlog?.('data', location.pathname.replace('/app/', '') || 'home') } }, [home.data])
   useOn('home', home.refresh)
   useEffect(() => {
     get_me_theme(); startLive()

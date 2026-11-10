@@ -44,6 +44,7 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /agent/learn", local(a.agentLabel))
 	mux.HandleFunc("GET /agent/train", local(a.agentTrain))
 	mux.HandleFunc("GET /agent/semantic", local(a.agentSemantic))
+	mux.HandleFunc("GET /agent/perf", local(a.agentPerf))
 }
 
 // agentSemantic: what a request is closest to by meaning (?space=1&q=…) — to tune the threshold

@@ -74,13 +74,23 @@ func at(t, stem string) bool {
 	}
 }
 
-// wanted: the text without what is turned down — «без стендапа», «кроме квестов», «не хотим караоке»
+// wanted: the text without what is turned down — «без стендапа», «кроме квестов», «не хотим караоке» —
+// and without the context of an evening already planned («после театра», «перед кино»)
 func wanted(t string) string {
 	w := strings.Fields(t)
 	no := map[string]bool{"без": true, "кроме": true, "не": true, "никаких": true, "никакого": true, "никакой": true, "нет": true}
 	verb := map[string]bool{"хочу": true, "хотим": true, "люблю": true, "любим": true, "надо": true, "нужно": true, "нужен": true, "нужна": true, "предлагай": true}
 	out := make([]string, 0, len(w))
+	ctx := 0 // «где поесть после планетария»: what comes after «после» is the plan already made, not the ask
 	for i, x := range w {
+		if x == "после" || x == "перед" {
+			ctx = 3
+			continue
+		}
+		if ctx > 0 {
+			ctx--
+			continue
+		}
 		if i > 0 && no[w[i-1]] && !no[x] || i > 1 && w[i-2] == "не" && verb[w[i-1]] {
 			continue
 		}

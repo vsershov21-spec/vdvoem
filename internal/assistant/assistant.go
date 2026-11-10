@@ -43,6 +43,7 @@ type Card struct {
 	Category string `json:"category,omitempty"`
 	Why      string `json:"why,omitempty"`
 	When     string `json:"when,omitempty"`
+	About    string `json:"about,omitempty"` // what it is, from the source — a line of detail right on the card
 }
 
 type Button struct {
@@ -634,7 +635,14 @@ func (r *run) addCard(cd Card) {
 }
 
 func ideaCard(i store.Idea, why string) Card {
-	return Card{Type: "idea", IdeaID: i.ID, Title: i.Title, Meta: app.IdeaMeta(i), Image: i.ImageURL, Category: i.Category, Why: why}
+	about := strings.TrimSpace(i.Info.About)
+	if r := []rune(about); len(r) > 140 {
+		about = strings.TrimSpace(string(r[:137])) + "…"
+	}
+	if about == "" && len(i.Info.Genres) > 0 {
+		about = strings.Join(i.Info.Genres, ", ")
+	}
+	return Card{Type: "idea", IdeaID: i.ID, Title: i.Title, Meta: app.IdeaMeta(i), Image: i.ImageURL, Category: i.Category, Why: why, About: about}
 }
 
 func (r *run) myWish(i store.Idea) (me, partner domain.Wish) {

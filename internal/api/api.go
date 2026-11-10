@@ -22,6 +22,7 @@ import (
 	"vdvoem/internal/assistant"
 	"vdvoem/internal/domain"
 	"vdvoem/internal/live"
+	"vdvoem/internal/parse"
 	"vdvoem/internal/store"
 	"vdvoem/internal/stt"
 	"vdvoem/internal/tgauth"
@@ -48,7 +49,12 @@ func (a *API) Routes(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/dev/advance", a.devAdvance)
 	}
 	h := func(pattern string, f func(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error)) {
-		mux.HandleFunc(pattern, a.auth(f))
+		g := a.auth(f)
+		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+			t := time.Now()
+			g(w, r)
+			perf.route(pattern, time.Since(t))
+		})
 	}
 	a.peopleRoutes(h)
 	a.agentRoutes(mux)
@@ -75,6 +81,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("GET /api/rounds/current", a.currentRound)
 	h("GET /api/rounds/{id}", a.round)
 	h("POST /api/rounds/{id}/{action}", a.roundAction)
+	h("POST /api/rounds/{id}/tickets/file", a.ticketsFile)
 	h("POST /api/route/{id}", a.addExtra) // not under /api/rounds/{id}/…: it would clash with /api/rounds/with/{idea}
 	h("POST /api/extras/{id}/{answer}", a.answerExtra)
 	h("DELETE /api/extras/{id}", a.delExtra)
@@ -196,6 +203,7 @@ func (a *API) clientLog(w http.ResponseWriter, r *http.Request) {
 		return s
 	}
 	a.Log.Info("client", "stage", cut(in.Stage, 24), "msg", cut(in.Msg, 300), "ms", in.Ms)
+	perf.boot(bootRec{At: time.Now(), Stage: cut(in.Stage, 24), Msg: cut(in.Msg, 120), Ms: in.Ms})
 	w.WriteHeader(204)
 }
 
@@ -836,6 +844,9 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 			case t != 0:
 				out["tickets"] = "partner"
 			}
+			if f := a.App.TicketFile(ctx, c.Space.ID, rd.ID); f.Kind != "" {
+				out["tickets_file"] = map[string]any{"kind": f.Kind, "url": a.App.TicketsLink(f), "name": f.Name, "mine": f.By == c.Me.ID}
+			}
 		}
 	}
 	if rd.State == domain.StateConfirm || rd.State == domain.StatePlanned || rd.State == domain.StateDone {
@@ -1232,7 +1243,9 @@ func (a *API) voice(w http.ResponseWriter, r *http.Request, c app.Couple) (any, 
 		a.Log.Warn("voice", "err", err)
 		return nil, httpErr{502, "voice_failed"}
 	}
-	rep, err := a.Helper.Ask(r.Context(), c, text)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+	defer cancel()
+	rep, err := a.Helper.Ask(ctx, c, text)
 	return map[string]any{"heard": text, "reply": rep}, err
 }
 
@@ -1243,7 +1256,10 @@ func (a *API) askAssistant(w http.ResponseWriter, r *http.Request, c app.Couple)
 	if err := body(r, &in); err != nil {
 		return nil, err
 	}
-	rep, err := a.Helper.Ask(r.Context(), c, in.Text)
+	// the answer is worked out to the end and saved even if the app leaves the screen or drops the connection
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+	defer cancel()
+	rep, err := a.Helper.Ask(ctx, c, in.Text)
 	return map[string]any{"reply": rep}, err
 }
 
@@ -1256,6 +1272,46 @@ func (a *API) act(w http.ResponseWriter, r *http.Request, c app.Couple) (any, er
 	}
 	rep, err := a.Helper.Act(r.Context(), c, in.ID)
 	return map[string]any{"reply": rep}, err
+}
+
+// ticketsFile: the tickets from the app — a file (multipart «file», ≤ 15 MB) or a link ({"url": …})
+func (a *API) ticketsFile(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
+		r.Body = http.MaxBytesReader(w, r.Body, 15<<20+64<<10)
+		f, h, err := r.FormFile("file")
+		if err != nil {
+			return nil, bad("bad_file")
+		}
+		defer f.Close()
+		data, err := io.ReadAll(io.LimitReader(f, 15<<20+1))
+		if err != nil || len(data) > 15<<20 || len(data) == 0 {
+			return nil, bad("bad_file")
+		}
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 60*time.Second)
+		defer cancel()
+		if err := a.App.UploadTickets(ctx, c, id, h.Filename, data); err != nil {
+			return nil, err
+		}
+	} else {
+		var in struct {
+			URL string `json:"url"`
+		}
+		if err := body(r, &in); err != nil || parse.FirstURL(in.URL) == "" {
+			return nil, bad("bad_url")
+		}
+		if err := a.App.AttachTickets(r.Context(), c, id, app.TicketFile{Kind: "link", URL: parse.FirstURL(in.URL)}); err != nil {
+			return nil, err
+		}
+	}
+	rd, err := a.App.S.Round(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"round": a.viewRound(r.Context(), c, rd)}, nil
 }
 
 func (a *API) clearChat(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {

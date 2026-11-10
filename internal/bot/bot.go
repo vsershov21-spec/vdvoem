@@ -165,6 +165,24 @@ func (b *Bot) message(ctx context.Context, m *tg.Message) {
 		b.voice(ctx, c, chat, v)
 		return
 	}
+	// the tickets right after «Билеты есть»: a file, a screenshot or a link — kept with the meeting, sent to the partner
+	if rid := b.App.AwaitingTickets(ctx, c); rid != 0 && (m.Document != nil || len(m.Photo) > 0 || parse.FirstURL(text) != "") {
+		f := app.TicketFile{Kind: "link", URL: parse.FirstURL(text)}
+		switch {
+		case m.Document != nil:
+			f = app.TicketFile{Kind: "document", FileID: m.Document.FileID, Name: m.Document.FileName}
+		case len(m.Photo) > 0:
+			f = app.TicketFile{Kind: "photo", FileID: m.Photo[len(m.Photo)-1].FileID}
+		}
+		if err := b.App.AttachTickets(ctx, c, rid, f); err != nil {
+			b.say(ctx, chat, "Не получилось сохранить билеты — попробуй ещё раз или прикрепи их в приложении.", b.openApp(fmt.Sprintf("round/%d", rid)))
+		}
+		return
+	}
+	if m.Document != nil {
+		b.say(ctx, chat, "Файлы я принимаю как билеты: нажми «Билеты есть» у встречи и пришли их следом.", nil)
+		return
+	}
 	if len(m.Photo) > 0 {
 		ok, _ := b.App.Photo(ctx, c, m.Photo[len(m.Photo)-1].FileID)
 		if ok {

@@ -806,3 +806,43 @@ func TestPickAndBusy(t *testing.T) {
 		t.Fatal("Настя has not connected hers")
 	}
 }
+
+// «Билеты есть» → the one who marked hears it too and may send the tickets; a link goes to the partner and into
+// the calendar event.
+func TestTicketsFile(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	pl, _ := a.AddIdea(ctx, v, "Планетарий")
+	r, err := a.GoWith(ctx, v, pl.Idea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := app.SlotDays(ck.t, v.Loc())[1].Format("2006-01-02")
+	a.SubmitSlots(ctx, v, r.ID, []string{day + ":2"})
+	r, _ = a.SubmitSlots(ctx, n, r.ID, []string{day + ":2"})
+	if r.State != domain.StatePlanned {
+		t.Fatalf("state %s", r.State)
+	}
+	if err := a.GotTickets(ctx, v, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(1), "Пришли сюда") || !strings.Contains(f.last(2), "Покупать не нужно") {
+		t.Fatalf("both hear about the tickets: %q / %q", f.last(1), f.last(2))
+	}
+	if a.AwaitingTickets(ctx, v) != r.ID {
+		t.Fatal("waiting for the tickets after the mark")
+	}
+	if err := a.AttachTickets(ctx, v, r.ID, app.TicketFile{Kind: "link", URL: "https://tickets.example/42"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(2), "https://tickets.example/42") || !strings.Contains(f.last(1), "Билеты сохранены") {
+		t.Fatalf("the link to the partner, a receipt to me: %q / %q", f.last(2), f.last(1))
+	}
+	if a.AwaitingTickets(ctx, v) != 0 {
+		t.Fatal("no more waiting once sent")
+	}
+	if ics := string(a.ICS(ctx, v, r, 0, false)); !strings.Contains(ics, "tickets.example/42") {
+		t.Fatalf("the calendar event links the tickets: %s", ics)
+	}
+}

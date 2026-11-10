@@ -92,7 +92,11 @@ func (e *emu) bot(w http.ResponseWriter, r *http.Request) {
 		}
 		silent, _ := body["disable_notification"].(bool)
 		e.msgs = append(e.msgs, sent{ID: e.next, Method: method, Chat: chat, Text: text, Markup: mk, Silent: silent, FileName: fileName, File: file, At: time.Now().UnixMilli()})
-		ok(map[string]any{"message_id": e.next, "chat": map[string]any{"id": chat, "type": "private"}, "text": text})
+		res := map[string]any{"message_id": e.next, "chat": map[string]any{"id": chat, "type": "private"}, "text": text}
+		if method == "sendDocument" { // like Telegram: the sent file comes back with an id to send it again
+			res["document"] = map[string]any{"file_id": fmt.Sprintf("emu-doc-%d", e.next), "file_name": fileName}
+		}
+		ok(res)
 	case "answerCallbackQuery":
 		t, _ := body["text"].(string)
 		e.answers = append(e.answers, t)
