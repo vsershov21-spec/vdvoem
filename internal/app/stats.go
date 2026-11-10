@@ -207,7 +207,7 @@ func (a *App) ChoreDone(ctx context.Context, c Couple, id int64) (store.Idea, er
 		return i, err
 	}
 	if c.Partner != nil {
-		a.sendQuiet(ctx, c.Partner.ChatID, esc(c.Me.Name)+" сделал(а): <b>"+esc(i.Title)+"</b> ✓", nil)
+		a.sendQuiet(ctx, c.Partner.ChatID, esc(c.Me.Name)+" "+Past(c.Me.Name, "сделал")+": <b>"+esc(i.Title)+"</b> ✓", nil)
 	}
 	return i, nil
 }

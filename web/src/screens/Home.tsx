@@ -4,7 +4,7 @@ import { go } from '../lib/router'
 import { post, humanError } from '../lib/api'
 import { emit, useLoad, useOn } from '../lib/data'
 import { useOnline } from '../lib/live'
-import { relLeft, plural, money, ncase } from '../lib/format'
+import { relLeft, plural, money, ncase, past } from '../lib/format'
 import { shareLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, CountUp, Empty, Skel, WishPicker, toast } from '../ui/kit'
@@ -35,13 +35,14 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
       {home.paired && (
         <div className="row rise" style={{ ['--d' as any]: 1, marginTop: 12, gap: 8 }}>
           <Btn kind="surface" block icon="dice" onClick={() => onSurprise('random')}>Удиви нас</Btn>
-          <Btn kind="surface" block icon="spark" onClick={() => onSurprise('best')}>Подскажи</Btn>
+          <Btn kind="surface" block icon="spark" onClick={() => onSurprise('best')}>Лучшее для нас</Btn>
         </div>
       )}
       {home.paired && <Now home={home} />}
       {(home.going?.length || 0) > 1 && <Going list={home.going!} />}
-      <Dashboard s={stats.data} home={home} />
       <ToMark ideas={home.to_mark || []} total={home.counts.unmarked} onAdd={onAdd} />
+      {/* numbers mean something after a few meetings; before that they are zeros next to a planned date */}
+      {stats.data && stats.data.meetings >= 3 && <Dashboard s={stats.data} home={home} />}
     </>
   )
 }
@@ -119,12 +120,11 @@ function Now({ home }: { home: HomeT }) {
   const pn = home.partner?.name || 'Партнёр'
   const rows: { k: string; icon: string; title: string; sub: string; go: string; hot?: boolean }[] = []
   const r = home.round
-  if (r?.state === 'time' && r.partner_sent && !r.sent) rows.push({ k: 'time', icon: 'clock', title: `${pn} предложил(а) время`, sub: 'Выбери подходящее или предложи своё', go: 'round/' + r.id, hot: true })
+  if (r?.state === 'time' && r.partner_sent && !r.sent) rows.push({ k: 'time', icon: 'clock', title: `${pn} ${past(pn, 'предложил')} время`, sub: 'Выбери подходящее или предложи своё', go: 'round/' + r.id, hot: true })
   if (r?.state === 'time' && !r.partner_sent && !r.sent) rows.push({ k: 'time0', icon: 'clock', title: 'Отметь, когда тебе удобно', sub: r.chosen ? r.chosen.title : 'Выбираем, куда пойти', go: 'round/' + r.id, hot: true })
   if (r?.state === 'vote' && !r.voted) rows.push({ k: 'vote', icon: 'heart', title: 'Выбери из трёх вариантов', sub: 'Голос партнёра откроется после твоего', go: 'round/' + r.id, hot: true })
   if (r?.state === 'confirm' && !r.confirmed) rows.push({ k: 'conf', icon: 'check', title: 'Подтверди встречу', sub: r.chosen?.title || '', go: 'round/' + r.id, hot: true })
-  for (const g of home.going || []) if (g.state === 'planned' && g.book && !g.tickets) rows.push({ k: 'tk' + g.id, icon: 'wallet', title: `${g.book.label}: ${g.chosen?.title || ''}`, sub: g.when || '', go: 'round/' + g.id })
-  if (home.counts.unmarked > 0) rows.push({ k: 'mark', icon: 'folder', title: `Отметь ${home.counts.unmarked} ${plural(home.counts.unmarked, 'идею', 'идеи', 'идей')}`, sub: 'По одной карточке — сначала то, что скоро', go: 'triage' })
+  for (const g of home.going || []) if (g.state === 'planned' && g.book && !g.tickets) rows.push({ k: 'tk' + g.id, icon: 'wallet', title: g.book.label, sub: [g.chosen?.title, g.when].filter(Boolean).join(' · '), go: 'round/' + g.id })
   if ((home.counts.fresh || 0) > 0) rows.push({ k: 'fresh', icon: 'spark', title: `🆕 ${home.counts.fresh} новых от скаута и каналов`, sub: 'Сверху — то, что понравится вам обоим', go: 'ideas/scout' })
   if (!rows.length) return null
   return (<>

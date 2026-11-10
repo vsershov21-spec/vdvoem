@@ -101,7 +101,7 @@ func (a *App) optionAdded(ctx context.Context, c Couple, i store.Idea, o store.O
 	if c.Partner == nil {
 		return
 	}
-	line := fmt.Sprintf("%s добавил(а) вариант места к «%s»: <b>%s</b>", esc(c.Me.Name), esc(i.Title), esc(o.Title))
+	line := fmt.Sprintf("%s %s вариант места к «%s»: <b>%s</b>", esc(c.Me.Name), Past(c.Me.Name, "добавил"), esc(i.Title), esc(o.Title))
 	if o.Address != "" {
 		line += "\n" + esc(o.Address)
 	}
@@ -232,7 +232,7 @@ func (a *App) ChooseOption(ctx context.Context, c Couple, ideaID, optID int64) e
 	}
 	p := a.PlaceOf(ctx, c, i)
 	if c.Partner != nil && optID != 0 {
-		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s выбрал(а) место для «%s»: <b>%s</b>%s", esc(c.Me.Name), esc(i.Title), esc(p.Title), addrLine(p.Address)),
+		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s %s место для «%s»: <b>%s</b>%s", esc(c.Me.Name), Past(c.Me.Name, "выбрал"), esc(i.Title), esc(p.Title), addrLine(p.Address)),
 			tg.Keyboard(tg.Row(tg.Link("На карте", p.Maps), tg.App("Открыть", a.appURL(fmt.Sprintf("idea/%d", i.ID))))))
 	}
 	if r, err := a.S.NextPlanned(ctx, c.Space.ID); err == nil && r.Chosen == i.ID && r.StartsAt.After(a.now()) {

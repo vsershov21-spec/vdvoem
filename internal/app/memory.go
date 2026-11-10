@@ -33,7 +33,7 @@ func (a *App) AddGoal(ctx context.Context, c Couple, text string) (store.Goal, e
 	}
 	g, err := a.S.AddGoal(ctx, c.Space.ID, c.Me.ID, text, a.now())
 	if err == nil && c.Partner != nil {
-		a.send(ctx, c.Partner.ChatID, "🎯 "+esc(c.Me.Name)+" попросил скаута следить: <b>"+esc(text)+"</b>", nil)
+		a.send(ctx, c.Partner.ChatID, "🎯 "+esc(c.Me.Name)+" "+Past(c.Me.Name, "попросил")+" скаута следить: <b>"+esc(text)+"</b>", nil)
 	}
 	return g, err
 }

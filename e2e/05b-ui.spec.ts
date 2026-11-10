@@ -49,7 +49,7 @@ for (const dark of [false, true]) {
     await api(n, 'POST', `/ideas/${ids[0]}/wish`, { wish: 'want' })
     await planMeeting(v, n)
     const ctx = await phone(browser, { dark })
-    await fakeTelegram(ctx, { platform: 'ios', bio: false }) // fullscreen insets like a real iPhone in Telegram
+    await fakeTelegram(ctx, { platform: 'ios', bio: false, dark }) // fullscreen insets like a real iPhone in Telegram
     await ctx.addInitScript(probe)
     const s = dark ? '-dark' : ''
     const p = await open(ctx, v)

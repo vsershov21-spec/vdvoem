@@ -208,13 +208,15 @@ func nextFor(in Intent, cards []Card) []string {
 		}
 	}
 	var out []string
+	switch {
+	case in.I == "suggest" && in.Mode == "random":
+		out = append(out, "Удиви ещё раз", "Расскажи про это", "Что интересного на неделе?")
+		return out
+	}
 	switch in.I {
 	case "find", "suggest":
 		if ideas > 0 {
 			out = append(out, "Расскажи про первое")
-		}
-		if ideas > 1 {
-			out = append(out, "Сколько стоит второе?")
 		}
 		if in.Max == 0 || in.Max > 1500 {
 			out = append(out, "А подешевле?")
@@ -224,7 +226,9 @@ func nextFor(in Intent, cards []Card) []string {
 		} else {
 			out = append(out, "А на неделе?")
 		}
-		out = append(out, "А спокойнее?")
+		if !in.Scout && in.Whose == "" {
+			out = append(out, "Только новое")
+		}
 	case "about":
 		if ideas > 0 {
 			out = append(out, "Сколько это стоит?", "Давай туда")
@@ -619,6 +623,11 @@ func (r *run) addCard(cd Card) {
 			return
 		}
 	}
+	if cd.Type == "idea" && cd.When == "" && cd.IdeaID != 0 { // the day on the card itself — «на выходных» is checkable at a glance
+		if i, err := r.as.App.S.Idea(context.Background(), r.c.Space.ID, cd.IdeaID); err == nil && i.StartsAt != nil && (i.EndsAt == nil || i.EndsAt.Sub(*i.StartsAt) < 30*time.Hour) {
+			cd.When = domain.When(*i.StartsAt, r.c.Loc())
+		}
+	}
 	if len(r.cards) < 6 {
 		r.cards = append(r.cards, cd)
 	}
@@ -768,8 +777,9 @@ func (r *run) suggest(ctx context.Context, mode, date, part string, budgetRub in
 	if budgetRub > 0 {
 		in.BudgetKop = budgetRub * 100
 	}
+	planned := s.PlannedIdeas(ctx, r.c.Space.ID)
 	for _, i := range ideas {
-		if cat != "" && i.Category != cat {
+		if cat != "" && i.Category != cat || planned[i.ID] || i.Kind != domain.KindLeisure {
 			continue
 		}
 		switch {

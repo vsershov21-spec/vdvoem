@@ -6,6 +6,7 @@ import { useLoad, emit } from '../lib/data'
 import { post, del, humanError } from '../lib/api'
 import { back, go } from '../lib/router'
 import { haptic } from '../lib/tg'
+import { past } from '../lib/format'
 import { Icon } from '../ui/icons'
 import { Btn, Cover, Empty, Skel, SubHeader, toast } from '../ui/kit'
 
@@ -41,7 +42,7 @@ export function Triage({ partner }: { partner?: Person }) {
   return (<>
     <SubHeader title={`Разбор · ${k + 1} из ${list.length}`} />
     <div className="progress rise" style={{ ['--p' as any]: `${Math.round(100 * k / list.length)}%` }}><i /></div>
-    <p className="caption muted" style={{ margin: '0 2px 8px', textAlign: 'center' }}>Свайп вправо — хочу · вверх — очень · влево — пропущу</p>
+    {k === 0 && <p className="caption muted" style={{ margin: '0 2px 8px', textAlign: 'center' }}>Можно свайпом: вправо — хочу · вверх — очень · влево — пропущу</p>}
     <Swipe key={i.id} onSwipe={d => wish(d === 'right' ? 'want' : d === 'up' ? 'very' : 'skip')}>
     <div className="card" data-testid="triage-card" style={{ padding: 8 }}>
       <Cover idea={i} h={220} big>
@@ -54,20 +55,21 @@ export function Triage({ partner }: { partner?: Person }) {
         {i.info?.about && <p className="callout" style={{ margin: 0 }}>{i.info.about}</p>}
         {i.why && <p className="acard__why" style={{ margin: 0 }}>{i.why}</p>}
         {i.match?.note && <p className="caption acard__note" style={{ margin: 0 }}>Совпадение {i.match.both}% · {i.match.note}</p>}
-        {i.partner_marked && <p className="caption muted" style={{ margin: 0 }}>{partner?.name || 'Партнёр'} уже отметил(а) — увидишь после своей отметки</p>}
+        {i.partner_marked && <p className="caption muted" style={{ margin: 0 }}>{partner?.name || 'Партнёр'} уже {past(partner?.name, 'отметил')} — увидишь после своей отметки</p>}
       </div>
     </div>
     </Swipe>
     <div className="triage__acts rise" style={{ ['--d' as any]: 1 }}>
-      <Btn kind="accent" block shine icon="heart" onClick={() => wish('very')}>Очень хочу</Btn>
+      {/* the three marks in one row, the same size; the rest quiet below */}
       <div className="row" style={{ gap: 8 }}>
-        <Btn kind="surface" block onClick={() => wish('want')}>Хочу</Btn>
-        <Btn kind="surface" block onClick={() => wish('skip')}>Пропущу</Btn>
+        <Btn kind="surface" block icon="x" onClick={() => wish('skip')}>Пропущу</Btn>
+        <Btn kind="soft" block icon="check" onClick={() => wish('want')}>Хочу</Btn>
+        <Btn kind="accent" block icon="heart" onClick={() => wish('very')}>Очень хочу</Btn>
       </div>
-      <div className="row" style={{ gap: 8 }}>
-        {partner && <Btn kind="soft" block icon="flame" onClick={urgent}>Важно</Btn>}
-        <Btn kind="ghost" block icon="trash" onClick={archive}>Убрать</Btn>
-        <Btn kind="ghost" block onClick={() => { haptic.select(); next() }}>Потом</Btn>
+      <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
+        {partner && <Btn kind="ghost" sm icon="flame" onClick={urgent}>Важно</Btn>}
+        <Btn kind="ghost" sm icon="clock" onClick={() => { haptic.select(); next() }}>Потом</Btn>
+        <Btn kind="ghost" sm icon="trash" onClick={archive}>Убрать</Btn>
       </div>
     </div>
   </>)

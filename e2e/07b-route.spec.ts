@@ -11,7 +11,7 @@ test('E29 «А потом?»: музей → ужин, предлагает од
   const day = round.days[1]
   await api(v, 'POST', `/rounds/${round.id}/slots`, { slots: [day + ':1', day + ':2'] })
   const m = (await api(n, 'POST', `/rounds/${round.id}/slots`, { slots: [day + ':1', day + ':2'] })).round
-  expect(m.state).toBe('confirm')
+  expect(m.state).toBe('planned')
   expect(m.extra_suggest[0].title).toBe('Ужин в грузинском ресторане')
 
   const vp = await open(await phone(browser), v, 'round/' + round.id)
@@ -35,10 +35,8 @@ test('E29 «А потом?»: музей → ужин, предлагает од
   await waitMsg(v, /Настя предлагает после .*Прогулка по Арбату/)
   await press(v, 'Не в этот раз')
   await expect(route.locator('.route__stop')).toHaveCount(2, { timeout: 4000 }) // main + dinner
-  // both confirm → the calendar has both stops
-  await api(v, 'POST', `/rounds/${round.id}/confirm`)
-  await api(n, 'POST', `/rounds/${round.id}/confirm`)
-  const plannedMsg = await waitMsg(v, /Мы идём[\s\S]*Потом:.*Ужин/)
+  // the meeting was planned at the match; its calendar link now carries both stops
+  const plannedMsg = await waitMsg(v, /Мы идём/)
   const link = JSON.stringify(plannedMsg.reply_markup).match(/https?:[^"]+\/cal\/[0-9a-f]{36}\/\d+\.ics/)![0].replace(/^https?:\/\/[^/]+/, BASE)
   const ics = await (await fetch(link)).text()
   expect(ics.match(/BEGIN:VEVENT/g)!.length).toBe(2)

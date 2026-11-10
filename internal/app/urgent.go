@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -224,7 +225,7 @@ func (a *App) urgentTick(ctx context.Context, now time.Time) {
 		}
 		if wishOf(i, to.Color) == domain.WishSkip { // marked «пропущу» meanwhile — that is a no
 			_, _ = a.S.CloseUrgent(ctx, u.SpaceID, u.IdeaID, "no", now)
-			a.send(ctx, by.ChatID, fmt.Sprintf("%s отметил(а) «пропущу» на <b>%s</b>.", esc(to.Name), esc(i.Title)), nil)
+			a.send(ctx, by.ChatID, fmt.Sprintf("%s %s «пропущу» на <b>%s</b>.", esc(to.Name), Past(to.Name, "отметил"), esc(i.Title)), nil)
 			continue
 		}
 		a.send(ctx, to.ChatID, a.urgentText(i, u, by.Name, u.Nudges+1), a.urgentKeys(i))
@@ -260,4 +261,32 @@ func (a *App) UrgentForMe(ctx context.Context, c Couple) []map[string]any {
 		out = append(out, m)
 	}
 	return out
+}
+
+var (
+	urgentLead = regexp.MustCompile(`(?i)^\s*(?:срочно|очень важно|важно|скорее)[\s,:!—-]+`)
+	urgentTail = regexp.MustCompile(`(?i)[,.;!—-]*\s*(?:а то |пока |ведь )?(?:билеты|места|столики)[^,.;!]*(?:кончаются|заканчиваются|разбирают|раскупают|уходят|мало)[^,.;!]*[.!]*\s*$`)
+	wantLead   = regexp.MustCompile(`(?i)^\s*(?:хочу|хотим|давай|надо|нужно)\s+(?:сходить\s+|пойти\s+|попасть\s+)?(?:на|в|во)?\s*`)
+)
+
+// UrgentText: «Срочно хочу на Мастера и Маргариту, билеты быстро кончаются» — an urgent wish about something,
+// not a new idea named so. Returns what it is about.
+func UrgentText(text string) (string, bool) {
+	t := strings.TrimSpace(text)
+	lead, tail := urgentLead.MatchString(t), urgentTail.MatchString(t)
+	if !lead && !tail {
+		return "", false
+	}
+	t = urgentLead.ReplaceAllString(t, "")
+	t = urgentTail.ReplaceAllString(t, "")
+	t = strings.TrimSpace(wantLead.ReplaceAllString(t, ""))
+	if len([]rune(t)) < 3 {
+		return "", false
+	}
+	return upperFirstRune(t), true
+}
+
+func upperFirstRune(s string) string {
+	r := []rune(s)
+	return strings.ToUpper(string(r[:1])) + string(r[1:])
 }

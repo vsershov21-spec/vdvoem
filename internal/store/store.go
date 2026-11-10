@@ -649,3 +649,19 @@ func (s *Store) LogScout(ctx context.Context, spaceID int64, picks, prices int, 
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO scout_runs(space_id, picks, prices, note, created_at) VALUES (?,?,?,?,?)`, spaceID, picks, prices, note, now.Unix())
 	return err
 }
+
+// PlannedIdeas: ideas already agreed for a coming meeting — not offered again as «where to go».
+func (s *Store) PlannedIdeas(ctx context.Context, spaceID int64) map[int64]bool {
+	out := map[int64]bool{}
+	rows, err := s.DB.QueryContext(ctx, `SELECT body FROM rounds WHERE space_id=? AND state='planned'`, spaceID)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if r, err := scanRound(rows); err == nil && r.Chosen != 0 {
+			out[r.Chosen] = true
+		}
+	}
+	return out
+}

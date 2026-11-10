@@ -161,17 +161,14 @@ func TestFullFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err = a.Vote(ctx, n, r.ID, fav)
-	if err != nil || r.State != domain.StateConfirm {
+	// the same idea at a common time is the decision: planned at once, no second «подтверди»
+	if err != nil || r.State != domain.StatePlanned {
 		t.Fatalf("vote: %v %s", err, r.State)
 	}
 	if r.StartsAt.In(v.Loc()).Weekday() != time.Saturday || r.StartsAt.In(v.Loc()).Hour() < 18 {
 		t.Fatalf("time %v", r.StartsAt)
 	}
-	r, _ = a.Confirm(ctx, v, r.ID)
-	if r.State != domain.StateConfirm {
-		t.Fatal("one confirmation must not plan")
-	}
-	r, _ = a.Confirm(ctx, n, r.ID)
+	r, _ = a.Confirm(ctx, v, r.ID) // a late «Подтвердить» from an old message changes nothing
 	if r.State != domain.StatePlanned || f.count(1, "Мы идём") != 1 || f.count(2, "Мы идём") != 1 {
 		t.Fatalf("planned? %s", r.State)
 	}
@@ -255,8 +252,8 @@ func TestSuggestAndGoWith(t *testing.T) {
 	k := days[1].Format("2006-01-02") + ":1"
 	a.SubmitSlots(ctx, v, r.ID, []string{k})
 	r, _ = a.SubmitSlots(ctx, n, r.ID, []string{k})
-	if r.State != domain.StateConfirm || r.Chosen != res.Idea.ID {
-		t.Fatalf("with preset idea vote is skipped: %s", r.State)
+	if r.State != domain.StatePlanned || r.Chosen != res.Idea.ID {
+		t.Fatalf("with preset idea vote is skipped and the common time plans it: %s", r.State)
 	}
 }
 
@@ -338,7 +335,7 @@ func TestExtras(t *testing.T) {
 	day := app.SlotDays(ck.t, v.Loc())[1].Format("2006-01-02")
 	a.SubmitSlots(ctx, v, r.ID, []string{day + ":1", day + ":2"})
 	r, _ = a.SubmitSlots(ctx, n, r.ID, []string{day + ":1", day + ":2"})
-	if r.State != domain.StateConfirm {
+	if r.State != domain.StatePlanned {
 		t.Fatalf("state %s", r.State)
 	}
 	sug := a.SuggestExtras(ctx, v, r)
@@ -367,7 +364,7 @@ func TestExtras(t *testing.T) {
 		t.Fatalf("calendar has both stops:\n%s", ics)
 	}
 	if !strings.Contains(f.last(1), "Потом:") {
-		t.Fatalf("planned message shows the route: %q", f.last(1))
+		t.Fatalf("the route update shows the stops: %q", f.last(1))
 	}
 	// text proposal creates the idea; the limit is two stops
 	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Прогулка по Арбату"); err != nil {
@@ -781,7 +778,7 @@ func TestPickAndBusy(t *testing.T) {
 	if err != nil || len(p.IDs) != rep.Pick.N {
 		t.Fatal(err)
 	}
-	if err := a.SendPick(ctx, v, p.ID); err != nil || !strings.Contains(f.last(2), "прислал(а) подборку") {
+	if err := a.SendPick(ctx, v, p.ID); err != nil || !strings.Contains(f.last(2), "Вова прислал подборку") {
 		t.Fatalf("send: %v %q", err, f.last(2))
 	}
 	if _, err := a.S.Pick(ctx, n.Space.ID+99, p.ID); err == nil {

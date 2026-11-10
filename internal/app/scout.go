@@ -258,7 +258,11 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 
 func (a *App) scoutDigest(ctx context.Context, ms []store.Member, top, later, goals []store.Idea, more int, loc *time.Location) {
 	var b strings.Builder
-	b.WriteString("🔭 <b>Скаут нашёл для вас на неделю</b>\n")
+	if len(top) > 0 {
+		b.WriteString("🔭 <b>Скаут нашёл для вас на неделю</b>\n")
+	} else {
+		b.WriteString("🔭 <b>Скаут нашёл для вас анонсы</b>")
+	}
 	var rows [][]tg.Button
 	isGoal := map[int64]bool{}
 	for _, g := range goals {
@@ -285,7 +289,9 @@ func (a *App) scoutDigest(ctx context.Context, ms []store.Member, top, later, go
 		rows = append(rows, tg.Row(tg.CB(fmt.Sprintf("%d · Хочу", k+1), fmt.Sprintf("w:%d:want", i.ID)), tg.CB(fmt.Sprintf("%d · Пропущу", k+1), fmt.Sprintf("w:%d:skip", i.ID))))
 	}
 	if len(later) > 0 {
-		b.WriteString("\n\n📅 <b>Анонсы на потом</b>")
+		if len(top) > 0 {
+			b.WriteString("\n\n📅 <b>Анонсы на потом</b>")
+		}
 		for _, i := range later {
 			fmt.Fprintf(&b, "\n• %s", esc(i.Title))
 			if i.StartsAt != nil {
@@ -297,7 +303,7 @@ func (a *App) scoutDigest(ctx context.Context, ms []store.Member, top, later, go
 		}
 	}
 	if more > 0 {
-		fmt.Fprintf(&b, "\n\nВсего в запасе ещё %d — в «Афише». Помощник поможет выбрать: «что в субботу до 3000?»", more)
+		fmt.Fprintf(&b, "\n\nЕщё %d — в «Афише». Спроси помощника: «что в субботу до 3000?»", more)
 	}
 	rows = append(rows, tg.Row(tg.App("Афиша недели", a.appURL("ideas/scout"))))
 	for _, m := range ms {

@@ -132,12 +132,16 @@ func MatchNote(m Match, partner string) string {
 		}
 		return ""
 	}
+	// a forecast from the taste, not a mark — said so, so it never reads as «Настя ответила»
 	var parts []string
 	if l := lvl(m.Partner); l != "" && partner != "" {
-		parts = append(parts, partner+": "+l)
+		parts = append(parts, NameDat(partner)+" — "+l)
 	}
 	if l := lvl(m.Me); l != "" {
-		parts = append(parts, "тебе: "+l)
+		parts = append(parts, "тебе — "+l)
 	}
-	return strings.Join(parts, " · ")
+	if len(parts) == 0 {
+		return ""
+	}
+	return "по вкусу: " + strings.Join(parts, ", ")
 }

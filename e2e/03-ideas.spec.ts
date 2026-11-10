@@ -77,7 +77,7 @@ test('E09 оценки и приватность: оценку партнёра 
   const p = await open(ctx, n, 'idea/' + id)
   await expect(p.getByText(/увидишь после своей отметки/)).toBeVisible()
   await p.getByRole('button', { name: /Очень/ }).click()
-  await expect(p.getByText('Партнёр хочет.')).toBeVisible()
+  await expect(p.getByText('Вова хочет.')).toBeVisible()
   await expect(p.locator('button[data-w=very][aria-pressed=true] svg')).toBeVisible()
   await p.waitForTimeout(400)
   await shot(p, 'E09-heart-dark')

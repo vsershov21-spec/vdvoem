@@ -4,7 +4,7 @@ import type { Home, Idea, Person } from '../lib/types'
 import { useLoad, useOn, emit } from '../lib/data'
 import { go } from '../lib/router'
 import { post, humanError } from '../lib/api'
-import { Empty, IdeaTile, Skel, SubHeader, toast, Btn } from '../ui/kit'
+import { Empty, IdeaTile, Segmented, Skel, SubHeader, toast, Btn } from '../ui/kit'
 import { type TONES } from '../ui/Folder'
 import { haptic } from '../lib/tg'
 import { Afisha } from './Afisha'
@@ -44,12 +44,18 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
   const [q, setQ] = useState('')
   // a filter is local state (no route change, so the screen does not re-animate); links like ideas/unmarked preselect it
   const [flt, setFlt] = useState(FILTERS.some(f => f.id === folder) ? folder! : '')
+  // two views of one place: our ideas and the afisha (what the scout and the channels found) — a switch, not a route
+  const [view, setView] = useState<'ours' | 'afisha'>(folder === 'scout' ? 'afisha' : 'ours')
   const now = Date.now()
   const ideas = all.data?.ideas || []
   const leisure = ideas.filter(i => i.kind === 'leisure')
   const found = useMemo(() => q.trim() ? ideas.filter(i => (i.title + ' ' + (i.address || '') + ' ' + (i.note || '')).toLowerCase().includes(q.trim().toLowerCase())) : [], [q, ideas])
 
-  if (folder === 'scout') return <Afisha />
+  const top = (<>
+    <header className="hdr"><h1 className="display">Куда пойти</h1><span className="spacer" />{view === 'ours' && <span className="pill">{`${leisure.length} ${plural(leisure.length, 'идея', 'идеи', 'идей')}`}</span>}</header>
+    <div style={{ marginBottom: 12 }}><Segmented<'ours' | 'afisha'> items={[['ours', 'Наши идеи'], ['afisha', '🔭 Афиша']]} value={view} onChange={v => { haptic.select(); setView(v) }} /></div>
+  </>)
+  if (view === 'afisha' && (!folder || folder === 'scout')) return <>{top}<Afisha embedded /></>
   if (!all.data || !home) return <><Skel h={44} /><div className="folders">{[0, 1, 2, 3, 4, 5].map(k => <Skel key={k} h={130} />)}</div></>
   if (folder && !FILTERS.some(f => f.id === folder)) {
     const def = FOLDERS.find(f => f.id === folder)
@@ -69,12 +75,11 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
   const pick = (id: string) => { haptic.select(); setFlt(f => f === id ? '' : id) }
   return (
     <>
-      <header className="hdr"><h1 className="display">Куда пойти</h1><span className="spacer" /><span className="pill">{`${leisure.length} ${plural(leisure.length, 'идея', 'идеи', 'идей')}`}</span></header>
+      {top}
       <label className="searchbar"><Icon n="search" s={19} /><input placeholder="Найти в копилке" value={q} onChange={e => setQ(e.target.value)} />{q && <button className="iconbtn" style={{ width: 28, height: 28, boxShadow: 'none' }} onClick={() => setQ('')} aria-label="Очистить"><Icon n="x" s={14} /></button>}</label>
       {!q.trim() && leisure.length > 0 && (
         <div className="wkchips fchips" role="tablist" aria-label="Показать">
           <button className="wkchip" role="tab" aria-selected={!flt} data-on={!flt || undefined} onClick={() => { haptic.select(); setFlt('') }}>Всё</button>
-          <button className="wkchip" onClick={() => go('ideas/scout')}>🔭 Афиша</button>
           {chips.map(f => <button key={f.id} className="wkchip" role="tab" aria-selected={flt === f.id} data-on={flt === f.id || undefined} onClick={() => pick(f.id)}>
             {f.id === 'both' && <Icon n="heart" s={13} w={2.4} />}{f.label}<b>{counts[f.id]}</b></button>)}
         </div>
@@ -90,7 +95,7 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
       ) : (<>
         <Going list={home.going || []} />
         <Rail title="♥ Хотите оба" items={ideas.filter(i => FILTERS[0].test(i, now)).slice(0, 10)} me={home.me} more={counts.both > 0 ? () => pick('both') : undefined} testid="rail-both" />
-        <NewRail me={home.me} />
+        <NewRail me={home.me} onAll={() => setView('afisha')} />
         {(counts.unmarked || 0) > 3 && <button className="triage-cta rise" onClick={() => go('triage')}><Icon n="folder" s={20} /><span><b>Разобрать неотмеченное · {counts.unmarked}</b><small>По одной карточке — минут на пять</small></span><Icon n="chev" s={16} w={2.4} /></button>}
         <div className="sec"><h2 className="title"><span className="orange-ind" />Ваши идеи · {leisure.length}</h2><button className="link" onClick={() => go('ideas/chores')}>Дела</button></div>
         <div className="wkchips fchips">{FOLDERS.filter(f => !f.chores).map(f => { const n = ideas.filter(i => f.test(i, now)).length; return n ? <button key={f.id} className="wkchip" onClick={() => go('ideas/' + f.id)}>{f.label}<b>{n}</b></button> : null })}</div>
@@ -142,12 +147,12 @@ function Rail({ title, items, me, more, testid }: { title: string; items: Idea[]
 }
 
 // what the scout and the channels found and neither of you has marked — the best for you two first
-function NewRail({ me }: { me: Person }) {
+function NewRail({ me, onAll }: { me: Person; onAll: () => void }) {
   const res = useLoad<{ ideas: Idea[]; counts: Record<string, number> }>('/afisha?horizon=all&source=all&sort=match&fresh=1')
   const items = (res.data?.ideas || []).slice(0, 10)
   if (!items.length) return null
   return (<>
-    <div className="sec"><h2 className="title">🆕 Новое для вас · {res.data?.counts.fresh ?? items.length}</h2><button className="link" onClick={() => go('ideas/scout')}>Вся афиша</button></div>
+    <div className="sec"><h2 className="title">🆕 Новое для вас · {res.data?.counts.fresh ?? items.length}</h2><button className="link" onClick={onAll}>Вся афиша</button></div>
     <div className="rail" data-testid="rail-new">{items.map((i, k) => <div key={i.id} style={{ width: 200 }}><IdeaTile idea={i} me={me} d={k} onOpen={() => go('idea/' + i.id)} /></div>)}</div>
   </>)
 }

@@ -276,6 +276,6 @@ func (a *App) BookFixed(ctx context.Context, c Couple, ideaID int64) (domain.Rou
 		kb = append(kb, tg.Row(tg.Link("Билеты", i.URL), tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID)))))
 	}
 	a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s зовёт: <b>%s</b>\n\n%s\n\nПодтверди — и событие придёт вам обоим в календарь.", esc(c.Me.Name), esc(i.Title), rows), tg.Keyboard(kb...))
-	a.send(ctx, c.Me.ChatID, fmt.Sprintf("Позвал(а) %s на <b>%s</b>. Как только подтвердит — пришлю событие в календарь.", esc(NameAcc(c.Partner.Name)), esc(i.Title)), nil)
+	a.send(ctx, c.Me.ChatID, fmt.Sprintf("Позвал %s на <b>%s</b>. Как только подтвердит — пришлю событие в календарь.", esc(NameAcc(c.Partner.Name)), esc(i.Title)), nil)
 	return r, nil
 }

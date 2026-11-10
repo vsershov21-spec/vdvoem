@@ -59,3 +59,22 @@ func NameAcc(name string) string {
 	}
 	return string(r)
 }
+
+// Past: «отметила» for Настя, «отметил» for Вова — a past-tense verb agreed with the name. Names that are both
+// (Саша, Женя) and unknown ones keep the neutral «(а)» only as the last resort.
+func Past(name, verb string) string {
+	r := []rune(strings.TrimSpace(name))
+	if len(r) < 2 {
+		return verb + "(а)"
+	}
+	switch strings.ToLower(string(r)) {
+	case "саша", "женя", "валя", "сеня", "шура", "слава":
+		return verb + "(а)"
+	case "никита", "илья", "кузьма", "фома", "лука", "миша", "гоша", "дима", "вова", "коля", "толя", "петя", "ваня", "серёжа", "сережа", "лёша", "леша", "гриша", "костя", "юра", "боря", "витя", "федя", "стёпа", "степа", "вася", "тёма", "тема", "лёва", "лева", "паша", "даня", "саня", "рома", "гена", "жора", "лёня", "леня", "сева", "яша", "миля":
+		return verb
+	}
+	if l := r[len(r)-1]; l == 'а' || l == 'я' {
+		return verb + "а"
+	}
+	return verb
+}

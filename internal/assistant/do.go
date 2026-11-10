@@ -78,7 +78,7 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 	case "book":
 		return r.book(ctx, in)
 	case "about":
-		return r.about(ctx, in)
+		return r.about(ctx, in, text)
 	case "suggest":
 		return r.suggestText(ctx, in)
 	case "find":
@@ -235,7 +235,10 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		events, _ = res["events"].([]map[string]any)
 	}
 	if len(events) > 0 {
-		if !r.bookButton(ctx, events) {
+		if near != "" {
+			// not what was asked: no «Идём» on something else — offer to watch for the very thing
+			r.proposeAlt(ctx, map[string]any{"intent": Intent{I: "goal", Text: near}, "text": "следи за " + near}, "🔭 Следить: "+short(near, 22))
+		} else if !r.bookButton(ctx, events) {
 			if id, _ := events[0]["id"].(int64); id != 0 {
 				r.propose(ctx, "plan", map[string]any{"idea_id": id}, "Идём: "+short(fmt.Sprint(events[0]["title"]), 26))
 			}
@@ -245,13 +248,14 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		}
 		found, _ := res["found"].(int)
 		r.found = found
-		if ids, _ := res["ids"].([]int64); len(ids) > 1 {
+		// a collection only when there is more than the cards show
+		if ids, _ := res["ids"].([]int64); len(ids) > len(events) {
 			title := upperFirst(cond)
-			if title == "" {
-				title = upperFirst(short(strings.TrimSpace(text), 48))
+			if in.Scout && title == "" {
+				title = "Новое от скаута"
 			}
 			if title == "" {
-				title = "Подборка"
+				title = "Все варианты"
 			}
 			if id, err := r.as.App.S.AddPick(ctx, store.Pick{SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Title: title, IDs: ids}, r.as.now()); err == nil {
 				r.pick = &PickRef{ID: id, Title: title, N: len(ids)}
@@ -263,7 +267,7 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		}
 		t := r.talk(events, found, in, cond)
 		if near != "" {
-			t = "Именно «" + near + "» пока не нашёл — вот близкое. Напиши «следи за …», и я сообщу, когда появится.\n" + t
+			t = "Именно «" + near + "» сейчас нет. Близкое по духу — ниже; могу следить, когда появится.\n" + t
 		}
 		return Reply{Text: t}
 	}
@@ -429,8 +433,19 @@ func (r *run) book(ctx context.Context, in Intent) Reply {
 
 // ---------- about: what it is and whether it suits us ----------
 
-func (r *run) about(ctx context.Context, in Intent) Reply {
+func (r *run) about(ctx context.Context, in Intent, text string) Reply {
+	alts := r.as.App.SameName(ctx, r.c, firstNonEmpty(text, in.Q))
+	if len(alts) > 1 {
+		// two ideas answer to the name: ask which one, never pick silently
+		for _, a := range alts {
+			r.proposeAlt(ctx, map[string]any{"intent": Intent{I: "about", Q: a.Title}, "text": "расскажи про " + a.Title}, short(a.Title, 34))
+		}
+		return Reply{Text: "У вас " + plural(len(alts), "идея", "идеи", "идей") + " с таким названием. Про какую?"}
+	}
 	i, ok := r.as.App.FindByName(ctx, r.c, in.Q)
+	if len(alts) == 1 { // the whole phrase points at one idea — better than the short query alone
+		i, ok = alts[0], true
+	}
 	if !ok {
 		_ = r.as.App.AskScout(ctx, r.c, "Расскажи про: "+in.Q, 0)
 		return Reply{Text: "Не нашёл «" + short(in.Q, 40) + "» в афише и копилке. Спросил скаута — расскажет в боте. Если есть ссылка или пост — пришли, разберу."}
@@ -470,7 +485,7 @@ func (r *run) about(ctx context.Context, in Intent) Reply {
 	}
 	if i.Info.Empty() {
 		_ = r.as.App.AskScout(ctx, r.c, "Расскажи про: "+i.Title+" (жанр, кто играет, о чём)", i.ID)
-		b.WriteString("\n\nПодробностей пока нет — спросил скаута, он дополнит карточку.")
+		b.WriteString("\n\nПодробностей пока нет — попросил скаута дополнить карточку.")
 	}
 	// does it suit us
 	b.WriteString("\n\n" + r.suits(ab))
@@ -500,7 +515,21 @@ func (r *run) suits(ab app.About) string {
 		}
 		return "нейтрально"
 	}
+	clean := func(l []string) []string { // no cut tokens («мастер…»), no repeats
+		var out []string
+		seen := map[string]bool{}
+		for _, x := range l {
+			x = strings.TrimSpace(x)
+			if x == "" || strings.HasSuffix(x, "…") || seen[x] {
+				continue
+			}
+			seen[x] = true
+			out = append(out, x)
+		}
+		return out
+	}
 	why := func(pros, cons []string) string {
+		pros, cons = clean(pros), clean(cons)
 		var p []string
 		if len(pros) > 0 {
 			p = append(p, "нравится "+strings.Join(pros, ", "))
@@ -545,61 +574,37 @@ func upperFirst(s string) string {
 func (r *run) talk(events []map[string]any, found int, in Intent, cond string) string {
 	pn := r.c.PartnerName()
 	var b strings.Builder
+	n := plural(found, "вариант", "варианта", "вариантов")
 	switch {
 	case len(in.Moods) > 0:
-		fmt.Fprintf(&b, "Под настроение%s нашёл %s.", condSuffix(cond), plural(found, "вариант", "варианта", "вариантов"))
+		fmt.Fprintf(&b, "Под настроение%s — %s.", condSuffix(cond), n)
 	case in.Scout:
-		fmt.Fprintf(&b, "Скаут нашёл%s %s.", condSuffix(cond), plural(found, "вариант", "варианта", "вариантов"))
+		fmt.Fprintf(&b, "Скаут нашёл%s %s.", condSuffix(cond), n)
 	case cond != "":
-		fmt.Fprintf(&b, "%s — %s.", upperFirst(cond), plural(found, "вариант", "варианта", "вариантов"))
+		fmt.Fprintf(&b, "%s — %s.", upperFirst(cond), n)
 	default:
-		fmt.Fprintf(&b, "Нашёл %s.", plural(found, "вариант", "варианта", "вариантов"))
+		fmt.Fprintf(&b, "Нашёл %s.", n)
 	}
-	if found > len(events) {
-		fmt.Fprintf(&b, " Вот лучшие %d — все %d в подборке ниже: там можно отметить и отправить %s.", len(events), found, app.NameDat(r.c.PartnerName()))
-	}
+	// one line about the best one — the cards below carry the rest
 	top := events[0]
-	b.WriteString(" Лучше всего вам двоим — «" + fmt.Sprint(top["title"]) + "»")
-	if o, _ := top["ours"].(bool); !o {
-		b.WriteString(" (🆕 новое, вы ещё не видели)")
-	}
+	b.WriteString(" Лучший для вас двоих — «" + fmt.Sprint(top["title"]) + "»")
 	var meta []string
 	if w, ok := top["when"].(string); ok && w != "" {
 		meta = append(meta, w)
 	}
 	if p, ok := top["price_rub"].(int64); ok && p > 0 {
-		meta = append(meta, "≈ "+domain.Money(p*100)+" на двоих")
+		meta = append(meta, "≈ "+domain.Money(p*100))
 	}
 	if len(meta) > 0 {
-		b.WriteString(": " + strings.Join(meta, ", "))
-	}
-	b.WriteString(".")
-	if w, ok := top["why"].(string); ok && w != "" {
-		b.WriteString(" " + upperFirst(strings.TrimSuffix(w, ".")) + ".")
+		b.WriteString(", " + strings.Join(meta, ", "))
 	}
 	switch top["partner_wish"] {
 	case "want", "very":
-		b.WriteString(" " + pn + " уже " + past(pn, "отметил") + " «хочу».")
+		b.WriteString(": " + pn + " " + past(pn, "отметил") + " «хочу»")
 	case "skip":
-		b.WriteString(" Правда, " + pn + " это " + past(pn, "пропускал") + ".")
+		b.WriteString(", правда " + pn + " это " + past(pn, "пропускал"))
 	}
-	if len(events) > 1 {
-		var more []string
-		for _, e := range events[1:] {
-			t := "«" + fmt.Sprint(e["title"]) + "»"
-			if o, _ := e["ours"].(bool); !o {
-				t = "🆕 " + t
-			}
-			if w, ok := e["when"].(string); ok && w != "" {
-				t += " (" + w + ")"
-			}
-			more = append(more, t)
-		}
-		b.WriteString("\nЕщё: " + strings.Join(more, ", ") + ".")
-	}
-	if found <= len(events) {
-		b.WriteString("\nМожно уточнить: «подешевле», «а в воскресенье?», «без театра».")
-	}
+	b.WriteString(".")
 	return b.String()
 }
 
@@ -677,23 +682,7 @@ func ruMonth(t time.Time) string {
 	return [...]string{"", "январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"}[t.Month()] + " " + strconv.Itoa(t.Year())
 }
 
-// past: «отметила» for Настя, «отметил» for Вова; unclear names keep «(а)»
-func past(name, verb string) string {
-	r := []rune(strings.TrimSpace(name))
-	if len(r) < 2 {
-		return verb + "(а)"
-	}
-	switch strings.ToLower(string(r)) {
-	case "саша", "женя", "валя", "сеня", "шура", "паша", "слава":
-		return verb + "(а)"
-	case "никита", "илья", "кузьма", "фома", "лука", "миша", "гоша", "дима", "вова", "коля", "толя", "петя", "ваня", "серёжа", "сережа", "лёша", "леша", "гриша", "костя", "юра", "боря", "витя", "федя", "стёпа", "степа", "вася", "тёма", "тема", "лёва", "лева":
-		return verb
-	}
-	if l := r[len(r)-1]; l == 'а' || l == 'я' {
-		return verb + "а"
-	}
-	return verb
-}
+func past(name, verb string) string { return app.Past(name, verb) }
 
 func condSuffix(c string) string {
 	if c == "" {

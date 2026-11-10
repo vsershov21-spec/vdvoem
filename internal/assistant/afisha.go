@@ -61,8 +61,9 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		m app.Match
 	}
 	var hits, late []hit
+	planned := r.as.App.S.PlannedIdeas(ctx, r.c.Space.ID) // already agreed: it is in «Мы идём», not a new option
 	for _, i := range ideas {
-		if i.Kind != domain.KindLeisure || (!q.WholeBank && !app.Afisha(i)) {
+		if i.Kind != domain.KindLeisure || (!q.WholeBank && !app.Afisha(i)) || planned[i.ID] {
 			continue
 		}
 		if q.Whose == "ours" && !Ours(i) || q.Whose == "new" && Ours(i) {

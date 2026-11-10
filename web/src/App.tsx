@@ -86,12 +86,6 @@ function Main() {
     if (home.data?.round) { go('round/' + home.data.round.id); return }
     try { const r = await post<{ round: Round }>('/rounds'); emit('home'); go('round/' + r.round.id) } catch (e) { toast(humanError(e)) }
   }
-  const actions = [
-    { id: 'go', label: 'Выбрать вместе', icon: 'cal', run: start },
-    { id: 'dice', label: 'Удиви нас', icon: 'dice', run: () => setSurprise('random') },
-    { id: 'add', label: 'Добавить идею', icon: 'plus', run: () => setAdding(true) },
-    { id: 'ask', label: 'Спросить', icon: 'spark', run: () => go('assistant') },
-  ]
 
   let screen
   switch (top) {
@@ -109,7 +103,7 @@ function Main() {
   return (
     <div className="shell">
       {/* the island lives outside the screen: it stays put (and keeps its state) while screens change under it */}
-      {!hideIsland && <Island home={home.data} actions={actions} />}
+      {!hideIsland && <Island home={home.data} />}
       <main key={key} className={'screen' + (hideIsland ? ' screen--sub' : '') + (anim.current.warm ? ' screen--warm' : '')} data-dir={anim.current.dir}>
         <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><BridgeLoader /></div>}>{screen}</Suspense>
       </main>
