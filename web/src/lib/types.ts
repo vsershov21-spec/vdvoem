@@ -10,7 +10,7 @@ export type Idea = {
   status: string; my_wish: Wish; partner_marked: boolean; partner_wish?: Wish
   mine: boolean; parsed: boolean; meta: string; liked_before?: boolean; created_at: number
   maps: string; generic: boolean; options?: PlaceOption[]; place?: { title: string; address?: string; url?: string; maps: string; chosen: boolean }
-  source?: string; why?: string; horizon?: 'week' | 'later'; on_sale?: number
+  source?: string; ours?: boolean; why?: string; horizon?: 'week' | 'later'; on_sale?: number
   match?: { me: number; partner: number; both: number; note: string }
 }
 export type PlaceOption = { id: number; title: string; url?: string; address?: string; image?: string; note?: string; price?: number; author: 'a' | 'b' | 'ai'; chosen: boolean; parsed: boolean; maps: string }

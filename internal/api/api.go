@@ -381,6 +381,7 @@ type ideaView struct {
 	Place         *placeView   `json:"place,omitempty"`
 	CreatedAt     int64        `json:"created_at"`
 	Source        string       `json:"source,omitempty"`  // scout
+	Ours          bool         `json:"ours"`              // in «Наши идеи»: added by one of us, or a find one of us marked «хочу»
 	Why           string       `json:"why,omitempty"`     // the scout's reason
 	Info          *store.Info  `json:"info,omitempty"`    // description, genres, cast, age
 	Horizon       string       `json:"horizon,omitempty"` // week | later
@@ -419,6 +420,8 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 		Assignee: i.Assignee, Status: string(i.Status), MyWish: string(me), PartnerMarked: p != domain.WishNone, Mine: i.AuthorID == c.Me.ID,
 		Parsed: i.Parsed, Meta: app.IdeaMeta(i), LikedBefore: i.AgainYes > 0, CreatedAt: i.CreatedAt.Unix(),
 		Generic: app.Generic(i), Source: i.Source, Why: i.Why, Horizon: i.Horizon, OnSale: unix(i.OnSale)}
+	wants := func(w domain.Wish) bool { return w == domain.WishWant || w == domain.WishVery }
+	v.Ours = i.Source != "scout" && i.Source != "channel" || wants(i.WishA) || wants(i.WishB)
 	if !i.Info.Empty() {
 		in := i.Info
 		v.Info = &in

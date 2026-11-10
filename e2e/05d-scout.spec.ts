@@ -37,6 +37,20 @@ test('E30 скаут: агент изнутри сервера, драфт не�
   expect(dg.text).toContain('Гамлет')
   await press(n, '1 · Хочу')
 
+  // «Наши идеи» hold only what we added (or marked «хочу» in the afisha); the rest of the finds stay in the afisha
+  const pv = await open(await phone(browser), v)
+  await tab(pv, 'bank')
+  const bank = pv.locator('.grid').last()
+  await expect(bank).toContainText('Спектакль в театре Вахтангова')
+  const all = (await api(v, 'GET', '/ideas')).ideas
+  const foreign = all.filter((i: any) => !i.ours)
+  expect(foreign.length).toBeGreaterThan(0)
+  expect(foreign.every((i: any) => i.source === 'scout' || i.source === 'channel')).toBe(true)
+  for (const f of foreign) await expect(bank).not.toContainText(f.title)
+  // Настя's «хочу» from the digest puts that find into the bank for both of them
+  expect(all.filter((i: any) => i.ours && i.source === 'scout').length).toBe((await api(n, 'GET', '/ideas')).ideas.filter((i: any) => i.ours && i.source === 'scout').length)
+  await pv.context().close()
+
   // «Афиша»: the week and announcements; marking a draft puts it in the bank
   const p = await open(await phone(browser), v, 'ideas/scout')
   await p.getByRole('tab', { name: /Ближайшие 2 недели/ }).click()
