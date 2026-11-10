@@ -7,6 +7,7 @@ import (
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/domain"
+	"vdvoem/internal/leisure"
 	"vdvoem/internal/store"
 )
 
@@ -25,6 +26,29 @@ func (a *API) peopleRoutes(h func(string, handler)) {
 	h("GET /api/triage", a.triage)
 	h("GET /api/picks/{id}", a.pick)
 	h("POST /api/picks/{id}/send", a.sendPick)
+	h("GET /api/taste", a.taste)
+	h("PUT /api/taste", a.setTaste)
+}
+
+// «Мой вкус»: the levels to choose from, my profile and cloud, and the partner's cloud to look at
+func (a *API) taste(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	out := map[string]any{"spheres": leisure.Spheres, "me": a.App.Taste(r.Context(), c.Me.ID), "cloud": a.App.TasteCloud(r.Context(), c, c.Me.ID)}
+	if c.Partner != nil {
+		out["partner"] = map[string]any{"name": c.Partner.Name, "cloud": a.App.TasteCloud(r.Context(), c, c.Partner.ID)}
+	}
+	return out, nil
+}
+
+func (a *API) setTaste(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in app.MyTaste
+	if err := body(r, &in); err != nil {
+		return nil, err
+	}
+	t, err := a.App.SetTaste(r.Context(), c, in)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"me": t, "cloud": a.App.TasteCloud(r.Context(), c, c.Me.ID)}, nil
 }
 
 func (a *API) profile(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {

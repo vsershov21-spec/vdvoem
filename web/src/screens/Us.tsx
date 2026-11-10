@@ -248,8 +248,13 @@ function TasteSection() {
   const addGoal = async () => { const t = text.trim(); if (!t) return; setText(''); try { await post('/goals', { text: t }); goals.refresh(); toast('Скаут будет следить') } catch (e) { toast(humanError(e)) } }
   const t = prof.data?.taste
   return (<>
-    <div className="sec"><h2 className="title"><span className="orange-ind" />Твой вкус</h2></div>
+    <div className="sec"><h2 className="title"><span className="orange-ind" />Твой вкус</h2><button className="link" onClick={() => go('taste')}>Настроить</button></div>
     <div className="card col" data-testid="taste">
+      <button className="tastecta" onClick={() => go('taste')}>
+        <span className="tastecta__e">✨</span>
+        <span className="col" style={{ gap: 2, flex: 1, textAlign: 'left' }}><b>Мой вкус</b><span className="caption muted">Что нравится — от сфер до жанров, и как. Подборки сразу точнее</span></span>
+        <Icon n="chev" s={16} w={2.4} />
+      </button>
       {!t ? <Skel h={60} /> : t.marks < 3
         ? <p className="callout muted" style={{ margin: 0 }}>Отметь несколько идей «хочу» или «пропущу» — и я начну понимать, что тебе нравится. Учусь на каждой отметке, у каждого из вас — свой вкус.</p>
         : <>

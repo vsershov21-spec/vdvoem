@@ -37,3 +37,23 @@ func TestDetect(t *testing.T) {
 		t.Error("the map is too small")
 	}
 }
+
+func TestSpheresCoverTheMap(t *testing.T) {
+	seen := map[string]bool{}
+	for _, s := range Spheres {
+		for _, tag := range s.Tags {
+			if !Known(tag) {
+				t.Errorf("%s: %q is not a kind", s.ID, tag)
+			}
+			if seen[tag] {
+				t.Errorf("%q in two spheres", tag)
+			}
+			seen[tag] = true
+		}
+	}
+	for _, k := range Kinds {
+		if !seen[k.Tag] && k.Tag != "детям" {
+			t.Errorf("kind %q has no sphere", k.Tag)
+		}
+	}
+}
