@@ -69,6 +69,7 @@ type Message struct {
 	Text      string         `json:"text,omitempty"`
 	Caption   string         `json:"caption,omitempty"`
 	Photo     []PhotoSize    `json:"photo,omitempty"`
+	Document  *Document      `json:"document,omitempty"`
 	Voice     *Voice         `json:"voice,omitempty"`
 	Audio     *Voice         `json:"audio,omitempty"` // a voice note sent as a file
 	ReplyTo   *Message       `json:"reply_to_message,omitempty"`
@@ -76,6 +77,13 @@ type Message struct {
 	FwdChat   *Chat          `json:"forward_from_chat,omitempty"` // older clients
 	Entities  []Entity       `json:"entities,omitempty"`
 	CapEnts   []Entity       `json:"caption_entities,omitempty"`
+}
+
+type Document struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
 }
 
 type Voice struct {
@@ -188,6 +196,31 @@ func (c *Client) Answer(ctx context.Context, callbackID, text string) error {
 
 func (c *Client) SendPhoto(ctx context.Context, chatID int64, fileID, caption string) error {
 	return c.call(ctx, "sendPhoto", map[string]any{"chat_id": chatID, "photo": fileID, "caption": caption, "parse_mode": "HTML"}, nil)
+}
+
+// SendFile re-sends a file Telegram already has (a photo or a document) by its id — no upload.
+func (c *Client) SendFile(ctx context.Context, chatID int64, kind, fileID, caption string) error {
+	if kind == "photo" {
+		return c.SendPhoto(ctx, chatID, fileID, caption)
+	}
+	return c.call(ctx, "sendDocument", map[string]any{"chat_id": chatID, "document": fileID, "caption": caption, "parse_mode": "HTML"}, nil)
+}
+
+// UploadDocument sends new bytes as a document and returns the message (its document carries the file id).
+func (c *Client) UploadDocument(ctx context.Context, chatID int64, filename string, data []byte, caption string) (Message, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	w.WriteField("chat_id", fmt.Sprint(chatID))
+	w.WriteField("caption", caption)
+	w.WriteField("parse_mode", "HTML")
+	fw, _ := w.CreateFormFile("document", filename)
+	fw.Write(data)
+	w.Close()
+	req, _ := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/bot%s/sendDocument", c.Base, c.Token), &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	var m Message
+	err := c.do(req, "sendDocument", &m)
+	return m, err
 }
 
 // SendDocument uploads a file (the .ics event).

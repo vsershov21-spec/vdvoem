@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,26 @@ func (a *API) feedRoutes(mux *http.ServeMux, h func(string, handler)) {
 		}
 		w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(b)
+	})
+	// the tickets kept with a meeting: the link in the calendar event and in the app (the token is the key)
+	mux.HandleFunc("GET /t/{token}", func(w http.ResponseWriter, r *http.Request) {
+		b, f, err := a.App.TicketsBytes(r.Context(), r.PathValue("token"))
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		ct := http.DetectContentType(b)
+		if strings.HasPrefix(string(b), "%PDF") {
+			ct = "application/pdf"
+		}
+		name := f.Name
+		if name == "" {
+			name = "tickets"
+		}
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(name))
+		w.Header().Set("Cache-Control", "private, max-age=3600")
 		_, _ = w.Write(b)
 	})
 	// one meeting: opened in Safari it shows «Добавить в календарь» with everything filled in

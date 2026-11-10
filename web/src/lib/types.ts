@@ -25,7 +25,7 @@ export type Round = {
   windows?: { from: number; to: number }[]; triple: Idea[]; chosen?: Idea
   starts_at?: number; ends_at?: number; when?: string; compromise?: Idea; photos?: number
   route?: RouteStop[]; extra_suggest?: Idea[]
-  cal?: { ics: string; google: string; subscribed: boolean }; book?: { label: string; url: string }; tickets?: 'me' | 'partner'
+  cal?: { ics: string; google: string; subscribed: boolean }; book?: { label: string; url: string }; tickets?: 'me' | 'partner'; tickets_file?: { kind: 'photo' | 'document' | 'link'; url: string; name?: string; mine: boolean }
 }
 
 export type RouteStop = { id: number; idea: Idea; starts_at: number; ends_at: number; state: 'proposed' | 'accepted'; mine: boolean; tight: boolean }
