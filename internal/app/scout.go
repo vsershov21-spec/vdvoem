@@ -218,7 +218,7 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 	now := a.now()
 	for _, p := range picks {
 		p.Title = clip(strings.TrimSpace(p.Title), 120)
-		if p.Title == "" {
+		if p.Title == "" || PageTitle(p.Title) {
 			res.Skipped++
 			continue
 		}
@@ -630,4 +630,16 @@ func fillIdea(i *store.Idea, p ScoutPick) bool {
 		i.Info.Src = "web"
 	}
 	return ch
+}
+
+// PageTitle: a web page's title, not an event — «Афиша мероприятий Московского Планетария, цены на официальном сайте».
+// The scout sometimes copies the page it found instead of what is on there; such a card says nothing.
+func PageTitle(t string) bool {
+	l := strings.ToLower(t)
+	for _, w := range []string{"официальн", "афиша мероприятий", "афиша событий", "все мероприятия", "купить билет", "цены на ", "расписание ", "билеты на сайте", "| ", " — афиша", "главная страница"} {
+		if strings.Contains(l, w) {
+			return true
+		}
+	}
+	return false
 }

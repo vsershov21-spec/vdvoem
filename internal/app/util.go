@@ -76,5 +76,16 @@ func Past(name, verb string) string {
 	if l := r[len(r)-1]; l == 'а' || l == 'я' {
 		return verb + "а"
 	}
+	// a name in Latin letters, as Telegram often has it: Anastasiya, Nastya, Olga — but Nikita, Ilya, Misha are his
+	l := strings.ToLower(string(r))
+	switch l {
+	case "sasha", "zhenya", "valya", "slava":
+		return verb + "(а)"
+	case "nikita", "ilya", "ilia", "misha", "dima", "vova", "kolya", "tolya", "petya", "vanya", "lesha", "grisha", "kostya", "yura", "borya", "vitya", "fedya", "vasya", "pasha", "danya", "roma", "gena", "sanya", "luka", "foma", "kuzma":
+		return verb
+	}
+	if strings.HasSuffix(l, "a") {
+		return verb + "а"
+	}
 	return verb
 }
