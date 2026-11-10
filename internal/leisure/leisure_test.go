@@ -57,3 +57,25 @@ func TestSpheresCoverTheMap(t *testing.T) {
 		}
 	}
 }
+
+// artists and movements read as painting, the everyday words around them do not
+func TestArtists(t *testing.T) {
+	has := func(s string) bool {
+		for _, k := range Detect(s) {
+			if k == "живопись" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, s := range []string{"хочу на выставку Айвазовского", "что-нибудь с Моне", "Ван Гог в Москве", "где сейчас Малевич", "Шишкин в Третьяковке", "посмотреть на импрессионистов", "что-то про авангард", "Фрида Кало"} {
+		if !has(s) {
+			t.Errorf("not painting: %q", s)
+		}
+	}
+	for _, s := range []string{"нумизматика, монеты", "нам дали билеты", "кафе на Рублёвском шоссе", "сходить в бар", "купить шишки для ёлки"} {
+		if has(s) {
+			t.Errorf("painting by mistake: %q", s)
+		}
+	}
+}

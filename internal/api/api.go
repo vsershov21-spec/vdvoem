@@ -310,6 +310,8 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 409, map[string]string{"error": "not_in_triple"})
 	case errors.Is(err, app.ErrNotPaired):
 		writeJSON(w, 409, map[string]string{"error": "not_paired"})
+	case errors.Is(err, app.ErrBadTime):
+		writeJSON(w, 400, map[string]string{"error": "bad_time"})
 	case errors.Is(err, app.ErrRoundOpen):
 		writeJSON(w, 409, map[string]string{"error": "round_open"})
 	case errors.Is(err, app.ErrNoIdeas):
@@ -763,12 +765,12 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	mySlots, _ := pick(me, rd.SlotsA, rd.SlotsB).([]domain.Slot)
 	keys := []string{}
 	for _, s := range mySlots {
-		keys = append(keys, s.Key())
+		keys = append(keys, s.Code())
 	}
 	theirSlots, _ := pick(other, rd.SlotsA, rd.SlotsB).([]domain.Slot)
 	theirKeys := []string{} // time is agreed in the open: each sees what the other proposed
 	for _, s := range theirSlots {
-		theirKeys = append(theirKeys, s.Key())
+		theirKeys = append(theirKeys, s.Code())
 	}
 	sentMe, _ := pick(me, rd.SentA, rd.SentB).(bool)
 	sentOther, _ := pick(other, rd.SentA, rd.SentB).(bool)
@@ -1018,6 +1020,7 @@ func (a *API) roundAction(w http.ResponseWriter, r *http.Request, c app.Couple) 
 		Slots  []string `json:"slots"`
 		IdeaID int64    `json:"idea_id"`
 		Answer string   `json:"answer"`
+		At     string   `json:"at"`
 	}
 	if r.ContentLength != 0 {
 		if err := body(r, &in); err != nil {
@@ -1037,6 +1040,8 @@ func (a *API) roundAction(w http.ResponseWriter, r *http.Request, c app.Couple) 
 		rd, err = a.App.Confirm(ctx, c, id)
 	case "other-time":
 		rd, err = a.App.OtherTime(ctx, c, id)
+	case "time": // the exact time of an agreed meeting: {"at":"14:00"}
+		rd, err = a.App.ExactTime(ctx, c, id, in.At)
 	case "cancel":
 		rd, err = a.App.Cancel(ctx, c, id)
 	case "done":

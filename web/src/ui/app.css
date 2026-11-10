@@ -214,7 +214,7 @@ button,a,[role=tab]{touch-action:manipulation}
 .input::placeholder{color:var(--ink-muted)}
 
 /* ---------- slot picker ---------- */
-.slots{display:grid;grid-template-columns:64px repeat(3,1fr);gap:8px;align-items:stretch}
+.slots{display:grid;grid-template-columns:60px repeat(4,1fr);gap:8px;align-items:stretch}
 .slots__h{font:650 12px/1 var(--font-sans);color:var(--ink-muted);text-align:center;padding:4px 0 2px}
 .slots__day{display:flex;flex-direction:column;justify-content:center;padding-left:2px}
 .slots__day b{font:800 20px/1 var(--font-sans);letter-spacing:-.5px}

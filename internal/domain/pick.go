@@ -15,13 +15,16 @@ func (w Window) Minutes() int { return int(w.To.Sub(w.From) / time.Minute) }
 
 // CommonWindows merges the slots both partners marked into contiguous windows, sorted by start.
 func CommonWindows(a, b []Slot, loc *time.Location) []Window {
-	inB := map[string]bool{}
+	inB := map[string]Slot{}
 	for _, s := range b {
-		inB[s.Key()] = true
+		inB[s.Key()] = s
 	}
 	var common []Slot
 	for _, s := range a {
-		if inB[s.Key()] {
+		if t, ok := inB[s.Key()]; ok { // the same part of the day; an exact «from» of either narrows it
+			if t.Start(loc).After(s.Start(loc)) {
+				s.At = t.At
+			}
 			common = append(common, s)
 		}
 	}

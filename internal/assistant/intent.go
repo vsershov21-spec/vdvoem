@@ -78,7 +78,9 @@ var (
 	aboutRe     = regexp.MustCompile(`(?i)(?:расскажи (?:про|о|об|поподробнее (?:про|о))|что за спектакль|что за концерт|что за событие|что это за|что такое|о ч[её]м (?:спектакль|постановка|концерт)?|кто играет в|кто играет|кто в составе|какой жанр у|подойд[её]т ли нам|нам подойд[её]т|стоит ли идти на|стоит ли сходить на|понравится ли нам|понравится ли (?:насте|ей|ему))\s*(.*)`)
 	bookRe      = regexp.MustCompile(`(?i)(?:забронируй|бронируй|запиши нас на|запиши в календарь|добавь в календарь|поставь в календарь|идём на|идем на|пойдём на|пойдем на|давай пойдём на|давай пойдем на|берём билеты на|берем билеты на|бер[её]м|позови (?:её|ее|его) на|пойти с (?:ней|ним) на)\s*(.*)`)
 	budgetSetRe = regexp.MustCompile(`(?i)бюджет\D{0,12}(\d[\d\s]{2,6})`)
-	followRe    = regexp.MustCompile(`(?i)^(?:(?:а|и|ну|тогда|лучше|только|ещё|еще)(?:\s|,|$)|подешевле|дешевле|подороже|без |не |кроме|покажи вс|показать вс|все варианты)`)
+	followRe    = regexp.MustCompile(`(?i)^(?:(?:а|и|ну|тогда|лучше|только|ещё|еще|нет|не|хотя|давай лучше|может|может быть|или)(?:\s|,|$)|подешевле|дешевле|подороже|без |не |кроме|покажи вс|показать вс|все варианты|передумал|я имел.? в виду|чтобы |с |со |до \d|в пределах|не дороже)`)
+	// a follow-up that adds a kind to the one asked («а с караоке?», «и чтобы с дегустацией»), not replaces it
+	addKindRe = regexp.MustCompile(`(?i)(?:^|[\s,])(?:с|со|и|ещё|еще|тоже|плюс)\s`)
 	timeQ       = regexp.MustCompile(`(?i)^(?:эт(?:ой|у) недел|выходн|сегодня|завтра|неделе)`)
 	// «обо мне», «настрой мои вкусы», «что ты про меня знаешь» — the portrait, to look at and correct
 	tasteRe = regexp.MustCompile(`(?i)^(?:расскажи\s+)?обо\s+мне(?:$|[^\p{L}])|мо(?:и|й|ё|е)\s+(?:вкус|интерес|предпочтени)|настр(?:ой|оить|аивать)\s+(?:мо(?:и|й)\s+)?(?:вкус|интерес)|что\s+ты\s+(?:обо|про)\s+меня\s+знаешь|что\s+(?:я|мне)\s+(?:люблю|нравится)\s*\?|мой\s+портрет|(?:узнай|изучи)\s+(?:мои\s+)?вкус|точнее\s+(?:под|по)\s+(?:меня|мой\s+вкус)`)
@@ -221,10 +223,33 @@ func mergeFollowUp(prev, cur Intent, text string) Intent {
 			out.Max = out.Max * 2 / 3
 		}
 	}
-	if len(cur.Cats) > 0 {
+	curG := cur.G
+	if len(curG) == 0 {
+		curG = leisure.Detect(text) // the rules leave kinds for later; a follow-up needs them now
+	}
+	if len(curG) > 0 { // «нет, лучше кофейня» replaces the kind; «а с караоке?» adds one
+		var cats []string
+		for _, g := range curG {
+			if c := leisure.Cat(g); c != "" {
+				cats = append(cats, c)
+			}
+		}
+		if addKindRe.MatchString(strings.ToLower(text)) {
+			out.G = uniq(append(append([]string{}, out.G...), curG...))
+			out.Cats = uniq(append(append([]string{}, out.Cats...), cats...))
+		} else {
+			out.G, out.Cats = uniq(curG), uniq(cats)
+		}
+	} else if len(cur.Cats) > 0 {
 		out.Cats = cur.Cats
 	}
-	out.Not, out.NotW = append(out.Not, cur.Not...), append(out.NotW, cur.NotW...)
+	out.Not, out.NotW = uniq(append(append([]string{}, out.Not...), cur.Not...)), uniq(append(append([]string{}, out.NotW...), cur.NotW...))
+	if len(out.Not) == 0 {
+		out.Not = nil
+	}
+	if len(out.NotW) == 0 {
+		out.NotW = nil
+	}
 	if len(cur.Moods) > 0 {
 		out.Moods = cur.Moods
 	}
@@ -764,3 +789,4 @@ func remove(l []string, v string) []string {
 	}
 	return out
 }
+

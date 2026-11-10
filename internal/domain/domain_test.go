@@ -13,8 +13,8 @@ func day(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0,
 
 func TestCommonWindowsMergesAdjacent(t *testing.T) {
 	sat := day(2026, 11, 14)
-	a := []Slot{{sat, 1}, {sat, 2}, {day(2026, 11, 15), 0}}
-	b := []Slot{{sat, 2}, {sat, 1}}
+	a := []Slot{{Day: sat, Part: 1}, {Day: sat, Part: 2}, {Day: day(2026, 11, 15)}}
+	b := []Slot{{Day: sat, Part: 2}, {Day: sat, Part: 1}}
 	w := CommonWindows(a, b, msk)
 	if len(w) != 1 {
 		t.Fatalf("want 1 window, got %d", len(w))
@@ -90,10 +90,10 @@ func TestScoreSignals(t *testing.T) {
 func TestSilenceIsNotConsent(t *testing.T) {
 	now := time.Date(2026, 11, 12, 19, 0, 0, 0, msk)
 	r := NewRound(1, now, 0)
-	if both, _ := r.SubmitSlots("a", []Slot{{day(2026, 11, 14), 2}}, now); both {
+	if both, _ := r.SubmitSlots("a", []Slot{{Day: day(2026, 11, 14), Part: 2}}, now); both {
 		t.Fatal("one answer is not both")
 	}
-	r.SubmitSlots("b", []Slot{{day(2026, 11, 14), 2}}, now)
+	r.SubmitSlots("b", []Slot{{Day: day(2026, 11, 14), Part: 2}}, now)
 	if err := r.StartVoting([]int64{7, 8, 9}); err != nil || r.State != StateVote {
 		t.Fatal(err, r.State)
 	}
@@ -261,5 +261,31 @@ func TestRoute(t *testing.T) {
 	late := Route(time.Date(2026, 11, 14, 21, 10, 0, 0, msk), []int{120}, win, msk)
 	if late[0].Start.Format("15:04") != "21:45" || !late[0].Tight {
 		t.Fatalf("late stop must be tight and start on a quarter: %v", late[0])
+	}
+}
+
+func TestExactTimeAndNight(t *testing.T) {
+	sat := day(2026, 11, 14)
+	// «с 14:00» inside the day part narrows the common window; the other one marked the whole day
+	a := []Slot{{Day: sat, Part: 1, At: ParseAt(1, "14:00")}}
+	b := []Slot{{Day: sat, Part: 1}}
+	w := CommonWindows(a, b, msk)
+	if len(w) != 1 || w[0].From.Hour() != 14 || w[0].To.Hour() != 18 {
+		t.Fatalf("narrowed: %+v", w)
+	}
+	if w2 := CommonWindows(b, a, msk); len(w2) != 1 || w2[0].From.Hour() != 14 {
+		t.Fatalf("either side narrows: %+v", w2)
+	}
+	// night runs past midnight and joins the evening
+	n := []Slot{{Day: sat, Part: 2}, {Day: sat, Part: 3}}
+	w = CommonWindows(n, n, msk)
+	if len(w) != 1 || w[0].To.Day() != 15 || w[0].To.Hour() != 3 {
+		t.Fatalf("night: %+v", w)
+	}
+	if ParseAt(3, "01:30") != 25*60+30 || ParseAt(1, "19:00") != 0 || ParseAt(1, "17:45") != 0 || ParseAt(1, "13:00") != 0 {
+		t.Fatal("ParseAt bounds")
+	}
+	if s := (Slot{Day: sat, Part: 3, At: ParseAt(3, "00:30")}); s.Code() != "2026-11-14:3@00:30" {
+		t.Fatal(s.Code())
 	}
 }
