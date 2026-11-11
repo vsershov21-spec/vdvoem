@@ -51,6 +51,8 @@ type Stats struct {
 	Meetings     int            `json:"meetings"`
 	Hours        float64        `json:"hours"`
 	SpentKop     int64          `json:"spent"`
+	SpentMonth   int64          `json:"spent_month"` // this month, by the events' prices (kopecks)
+	HoursMonth   float64        `json:"hours_month"`
 	Ideas        int            `json:"ideas"`
 	BothWant     int            `json:"both_want"`
 	BothMarked   int            `json:"both_marked"`
@@ -95,6 +97,10 @@ func (a *App) Stats(ctx context.Context, c Couple) (Stats, error) {
 			}
 			if key == now.Format("2006-01") {
 				st.ThisMonth++
+				st.HoursMonth += r.EndsAt.Sub(r.StartsAt).Hours()
+				if i, err := a.S.Idea(ctx, c.Space.ID, r.Chosen); err == nil {
+					st.SpentMonth += i.PriceMin
+				}
 			}
 			if ok {
 				st.Months[i].Done++

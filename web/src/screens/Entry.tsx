@@ -91,7 +91,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
       })
     who()
     // the full show once a day; afterwards the lamp is on almost at once
-    later(noIntro ? 0 : quick ? 220 : 650, () => { setLit(true); setPhase('on'); haptic.soft() })
+    later(noIntro || quick ? 0 : 650, () => { setLit(true); setPhase('on'); haptic.soft() }) // after the first open of the day nothing waits for the lamp
     return () => timers.current.forEach(clearTimeout)
   }, [])
 
@@ -107,7 +107,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
       }
       intro()
     }
-    later(noIntro ? 0 : quick ? 120 : 500, decide)
+    later(noIntro || quick ? 0 : 500, decide)
   }, [phase])
 
   const intro = () => {

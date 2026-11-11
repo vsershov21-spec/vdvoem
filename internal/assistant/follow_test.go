@@ -60,6 +60,20 @@ func TestMissWords(t *testing.T) {
 	}
 }
 
+// «сколько мы потратили» is a sum of past meetings, not a search; «куда без трат» is a search for something free
+func TestSpendWords(t *testing.T) {
+	for _, s := range []string{"сколько мы потратили в этом месяце", "наши траты за ноябрь", "Сколько ушло денег на свидания?", "во сколько нам обошлись выходные", "покажи расходы за месяц"} {
+		if !spendRe.MatchString(strings.ToLower(s)) {
+			t.Errorf("%q is about money spent", s)
+		}
+	}
+	for _, s := range []string{"куда сходить без трат", "что-нибудь без больших трат", "сколько стоит Щелкунчик", "хочу потратить не больше 3000"} {
+		if spendRe.MatchString(strings.ToLower(s)) {
+			t.Errorf("%q is not", s)
+		}
+	}
+}
+
 // «тир» is a kind of its own; «с боевого оружия» is not a fight night
 func TestShootingRange(t *testing.T) {
 	now := time.Now()
@@ -67,5 +81,38 @@ func TestShootingRange(t *testing.T) {
 		if g := withKinds(rulesIntent(s, now), s).G; len(g) != 1 || g[0] != want {
 			t.Errorf("%q: %v, want %s", s, g, want)
 		}
+	}
+}
+
+// one pick from the bank and «во сколько начинается …» are read by the rules, not left to the model
+func TestBankPickAndStartTime(t *testing.T) {
+	now := time.Now()
+	for s, want := range map[string]string{"выбери что-то из нашей копилки": "suggest", "что нам точно зайдёт?": "suggest", "когда начинается Щелкунчик": "about", "во сколько начало концерта Земфиры": "about", "во сколько начинается завтра": "find"} {
+		if in := rulesIntent(s, now); in.I != want && !(want == "find" && in.I != "about") {
+			t.Errorf("%q: %s, want %s", s, in.I, want)
+		}
+	}
+	if in := rulesIntent("когда начинается Щелкунчик", now); !strings.Contains(strings.ToLower(in.Q), "щелкунчик") {
+		t.Errorf("q: %q", in.Q)
+	}
+}
+
+// the model's «без …» stands only where the words say so
+func TestNegationsBacked(t *testing.T) {
+	m := negationsBacked(Intent{I: "find", Cats: []string{"food"}, Not: []string{"other", "food"}, NotW: []string{"грузинское"}}, "а грузинское есть?")
+	if len(m.NotW) != 0 || len(m.Not) != 0 {
+		t.Errorf("nothing was excluded: %+v", m)
+	}
+	m = negationsBacked(Intent{I: "find", Cats: []string{"food"}, Not: []string{"food"}, NotW: []string{"ужин"}}, "поищи что-нибудь новое по еде")
+	if len(m.NotW) != 0 || len(m.Not) != 0 {
+		t.Errorf("«новое по еде» excludes nothing: %+v", m)
+	}
+	for text, w := range map[string]string{"только не мюзикл": "мюзикл", "хочу в театр без драмы": "драма", "куда угодно кроме кино": "кино", "никаких квестов": "квест", "не люблю стендап, не надо его": "стендап"} {
+		if m := negationsBacked(Intent{I: "find", NotW: []string{w}}, text); len(m.NotW) != 1 {
+			t.Errorf("%q must keep «без %s»", text, w)
+		}
+	}
+	if m := negationsBacked(Intent{I: "find", Not: []string{"culture"}}, "только не театр"); len(m.Not) != 1 {
+		t.Errorf("a negated category stays: %+v", m)
 	}
 }
