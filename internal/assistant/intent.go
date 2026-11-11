@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -579,6 +580,7 @@ func (as *Assistant) understand1(ctx context.Context, text string, pt Turn, now 
 	} else {
 		m = reconcile(m, rule, text)
 	}
+	m = negationsBacked(m, text)
 	m = mergeFollowUp(prev, m, text)
 	return m, "model", altFor(m, rule, text)
 }
@@ -802,3 +804,37 @@ func remove(l []string, v string) []string {
 	}
 	return out
 }
+
+// negationsBacked: the model's exclusions stand only where the words say «не / без / кроме»: «а грузинское есть?»
+// once came back as «без грузинского», «новое по еде» as «без еды, без ужина». A category asked for is never
+// also excluded.
+func negationsBacked(m Intent, text string) Intent {
+	t := " " + strings.ToLower(strings.ReplaceAll(text, "ё", "е")) + " "
+	negated := func(w string) bool {
+		r := []rune(strings.ToLower(strings.ReplaceAll(w, "ё", "е")))
+		if len(r) < 3 {
+			return false
+		}
+		r = r[:min(5, max(3, len(r)-2))] // «драма» → «драм» finds «без драмы»
+		re, err := regexp.Compile(`(?:^|[^\p{L}])(?:не|без|кроме|никаких|никакого|никакой|только не)\s+(?:[\p{L}-]+\s+){0,2}` + regexp.QuoteMeta(string(r)))
+		return err == nil && re.MatchString(t)
+	}
+	var nw []string
+	for _, w := range m.NotW {
+		if negated(w) {
+			nw = append(nw, w)
+		}
+	}
+	m.NotW = nw
+	anyNeg := negRe.MatchString(t)
+	var not []string
+	for _, c := range m.Not {
+		if anyNeg && !slices.Contains(m.Cats, c) {
+			not = append(not, c)
+		}
+	}
+	m.Not = not
+	return m
+}
+
+var negRe = regexp.MustCompile(`(?:^|[^\p{L}])(?:не|без|кроме|никаких|никакого|никакой)\s`)

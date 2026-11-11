@@ -96,3 +96,23 @@ func TestBankPickAndStartTime(t *testing.T) {
 		t.Errorf("q: %q", in.Q)
 	}
 }
+
+// the model's «без …» stands only where the words say so
+func TestNegationsBacked(t *testing.T) {
+	m := negationsBacked(Intent{I: "find", Cats: []string{"food"}, Not: []string{"other", "food"}, NotW: []string{"грузинское"}}, "а грузинское есть?")
+	if len(m.NotW) != 0 || len(m.Not) != 0 {
+		t.Errorf("nothing was excluded: %+v", m)
+	}
+	m = negationsBacked(Intent{I: "find", Cats: []string{"food"}, Not: []string{"food"}, NotW: []string{"ужин"}}, "поищи что-нибудь новое по еде")
+	if len(m.NotW) != 0 || len(m.Not) != 0 {
+		t.Errorf("«новое по еде» excludes nothing: %+v", m)
+	}
+	for text, w := range map[string]string{"только не мюзикл": "мюзикл", "хочу в театр без драмы": "драма", "куда угодно кроме кино": "кино", "никаких квестов": "квест", "не люблю стендап, не надо его": "стендап"} {
+		if m := negationsBacked(Intent{I: "find", NotW: []string{w}}, text); len(m.NotW) != 1 {
+			t.Errorf("%q must keep «без %s»", text, w)
+		}
+	}
+	if m := negationsBacked(Intent{I: "find", Not: []string{"culture"}}, "только не театр"); len(m.Not) != 1 {
+		t.Errorf("a negated category stays: %+v", m)
+	}
+}
