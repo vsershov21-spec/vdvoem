@@ -468,6 +468,7 @@ func withKinds(in Intent, text string) Intent {
 			in.G = append(in.G, x)
 		}
 	}
+	in.G = leisure.Narrow(in.G) // the model's «кухня мира» gives way to the words' «грузинская кухня»
 	if len(in.Cats) == 0 {
 		cs := map[string]bool{}
 		for _, x := range in.G {
