@@ -59,3 +59,13 @@ func TestMissWords(t *testing.T) {
 		}
 	}
 }
+
+// «тир» is a kind of its own; «с боевого оружия» is not a fight night
+func TestShootingRange(t *testing.T) {
+	now := time.Now()
+	for s, want := range map[string]string{"сходить в тир пострелять с боевого оружия": "тир", "хотим на бои в субботу": "бои", "турнир боёв": "бои"} {
+		if g := withKinds(rulesIntent(s, now), s).G; len(g) != 1 || g[0] != want {
+			t.Errorf("%q: %v, want %s", s, g, want)
+		}
+	}
+}
