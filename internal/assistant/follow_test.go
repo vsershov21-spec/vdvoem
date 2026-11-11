@@ -2,6 +2,7 @@ package assistant
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -42,5 +43,19 @@ func TestFoodWords(t *testing.T) {
 	}
 	if in := rulesIntent("прогулка в парке Победы", now); slices.Contains(in.Cats, "food") {
 		t.Errorf("Победы is not food: %+v", in)
+	}
+}
+
+// «опять мимо» is a complaint about the previous answer, not a request; «нет, не дороже 2000» is a follow-up.
+func TestMissWords(t *testing.T) {
+	for _, s := range []string{"опять мимо", "Опять мимо", "мимо", "не то", "нет, не то", "ну не то!", "это не то", "не то что я просил", "ты не понял", "совсем мимо)"} {
+		if !missRe.MatchString(strings.ToLower(s)) {
+			t.Errorf("%q must be a miss", s)
+		}
+	}
+	for _, s := range []string{"нет, не дороже 2000", "не театр", "мимо кассы концерт", "а что-то не то чтобы дорогое", "кино в субботу"} {
+		if missRe.MatchString(strings.ToLower(s)) {
+			t.Errorf("%q is not a miss", s)
+		}
 	}
 }

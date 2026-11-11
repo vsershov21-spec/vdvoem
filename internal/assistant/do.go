@@ -241,6 +241,8 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		res = r.afisha(ctx, q).(map[string]any)
 		events, _ = res["events"].([]map[string]any)
 	}
+	found, _ := res["found"].(int)
+	r.found = found
 	if len(events) > 0 {
 		if near != "" {
 			// not what was asked: no «Идём» on something else — offer to watch for the very thing
@@ -253,8 +255,7 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		if len(events) < 3 {
 			r.catalogButtons(ctx, in, 2)
 		}
-		found, _ := res["found"].(int)
-		r.found = found
+
 		// a collection only when there is more than the cards show
 		if ids, _ := res["ids"].([]int64); len(ids) > len(events) {
 			title := upperFirst(cond)
@@ -279,7 +280,9 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		// new things come only from the scout: asked for them in words — it searches tomorrow morning; little that is
 		// new among the answers — one tap asks it to
 		what := strings.TrimSpace(firstNonEmpty(cond, in.Q, text))
-		if askNewRe.MatchString(strings.ToLower(text)) {
+		// a definite kind («кино в субботу») with little or nothing of it: the scout looks without being asked
+		thin := near != "" || len(in.G) > 0 && found < 3
+		if askNewRe.MatchString(strings.ToLower(text)) || thin {
 			if r.as.App.AskScout(ctx, r.c, "Найти новое: "+what, 0) == nil {
 				t += "\n🔭 Попросил скаута поискать новое — " + short(what, 40) + ". Принесёт утром, пришлю сюда и в бот."
 			}
@@ -305,6 +308,24 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		txt += "\nСкаут поищет это при следующем обходе и ответит здесь, в боте."
 	}
 	return Reply{Text: txt}
+}
+
+// missRe: the previous answer missed — said in a few words, without a new request
+var missRe = regexp.MustCompile(`^(?:(?:нет|ну|опять|снова|всё|все|совсем|вообще|блин)[,!.]?\s+)*(?:мимо|не то|не туда|не попал|не угадал|не понял|не понимаешь|ты не понял|это не то|не то,? что (?:я )?(?:просил|спрашивал|хотел))[\s!.?)(]*$`)
+
+// miss: «опять мимо» — the previous request becomes a miss (the admin's «Промахи», labeled and trained on), the
+// scout gets it as a question, and the answer says so and asks for one more word.
+func (r *run) miss(ctx context.Context, pt Turn) Reply {
+	if e, err := r.as.App.S.LastExample(ctx, r.c.Me.ID); err == nil && !e.Accepted {
+		_ = r.as.App.S.SetOutcome(ctx, e.ID, "rephrased", "")
+	}
+	what := strings.TrimSpace(firstNonEmpty(pt.Text, describe(pt.In)))
+	t := "Понял, мимо — записал как промах, на таких доучиваю себя."
+	if pt.In.I == "find" && what != "" && r.as.App.AskScout(ctx, r.c, "Найти новое: "+what, 0) == nil {
+		t += "\n🔭 Попросил скаута поискать «" + short(what, 50) + "» — принесёт утром, пришлю сюда и в бот."
+	}
+	t += "\nСкажи одним-двумя словами, что именно хотелось: например «кино», «стендап», «ужин в грузинском»."
+	return Reply{Text: t}
 }
 
 var askNewRe = regexp.MustCompile(`поищи|найди (что-нибудь |что-то )?нов|что нового|новеньк|чего-нибудь нового|что-то новое|что-нибудь новое|ещё вариант|еще вариант|другие вариант`)

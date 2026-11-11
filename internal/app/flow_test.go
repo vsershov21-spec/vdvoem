@@ -890,3 +890,37 @@ func TestScoutRefills(t *testing.T) {
 		}
 	}
 }
+
+// «Кинчик в субботу» with almost no cinema in the data asks the scout by itself; «опять мимо» is not a search —
+// the previous request becomes a miss (to label and train on) and goes to the scout.
+func TestAssistantMiss(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, _ := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	sat := ck.t.AddDate(0, 0, 3).Format("2006-01-02") + "T19:00"
+	a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{{Title: "Стендап в баре", Category: "other", Starts: sat, URL: "https://x.example/1", Score: 6},
+		{Title: "Спектакль «Чайка»", Category: "culture", Starts: sat, URL: "https://x.example/2", Score: 6}})
+	rep, _ := as.Ask(ctx, v, "кинчик в субботу")
+	if !strings.Contains(strings.ToLower(rep.Text), "скаут") {
+		t.Fatalf("no cinema → the scout looks by itself: %q", rep.Text)
+	}
+	miss, _ := as.Ask(ctx, v, "опять мимо")
+	if !strings.Contains(miss.Text, "промах") || len(miss.Cards) != 0 {
+		t.Fatalf("a miss is not a search: %+v", miss)
+	}
+	ms, _ := a.S.Misses(ctx, ck.t.Add(-time.Hour))
+	if len(ms) != 1 || ms[0].Input != "кинчик в субботу" {
+		t.Fatalf("the previous request is the miss: %+v", ms)
+	}
+	qs, _ := a.S.OpenQuestions(ctx, v.Space.ID)
+	n := 0
+	for _, q := range qs {
+		if strings.Contains(q.Text, "кинчик в субботу") || strings.Contains(q.Text, "кино") {
+			n++
+		}
+	}
+	if n == 0 {
+		t.Fatalf("the scout must get it: %+v", qs)
+	}
+}
