@@ -481,6 +481,7 @@ button.island{border:0;font:inherit;padding:0;display:block;text-align:left}
 .mcal__day.is-sel:not(.is-planned):not(.is-done){background:var(--solid);color:var(--on-solid);box-shadow:none}
 .mcal__dot{position:absolute;bottom:3px;left:50%;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#3b82f6}
 .mcal__dot.is-ends{background:#f0b400}
+.mcal__count.is-ev{top:auto;bottom:-4px;right:50%;margin-right:-8px;background:#f0b400;color:#141414}
 .mcal__day:disabled{opacity:.35;cursor:default}
 .mcal__day.is-picked:not(.is-sel){background:color-mix(in srgb,var(--person-a) 18%,transparent);color:var(--ink)}
 .mcal__count{position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--person-a);color:#fff;font:700 10px/16px var(--font-sans);font-style:normal}

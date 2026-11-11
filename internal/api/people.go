@@ -119,12 +119,17 @@ func (a *API) delGoal(w http.ResponseWriter, r *http.Request, c app.Couple) (any
 // afisha: what the scout found, ranked by how much both of you would like it.
 // afisha: everything there is to go to, from every source — the scout's finds, posts from channels, the
 // couple's own ideas — filtered and sorted: by how much you both would like it (each person's learned taste),
-// by date or by price. ?horizon=week|later|all &source=all|scout|channel|ours &sort=match|date|price
+// by date or by price. ?horizon=week|later|ending|all (ending: closes within 14 days) &month=2026-11 (only what
+// starts that month — the calendar's «Афиша» mode; the horizon is ignored) &source=all|scout|channel|ours &sort=match|date|price
 // &cat=culture &genre=комедия &fresh=1 (only what neither of you has marked)
 func (a *API) afisha(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
 	q := r.URL.Query()
 	hz, src, srt, cat, genre := q.Get("horizon"), q.Get("source"), q.Get("sort"), q.Get("cat"), q.Get("genre")
 	fresh := q.Get("fresh") == "1"
+	var mFrom, mTo time.Time
+	if m, err := time.ParseInLocation("2006-01", q.Get("month"), c.Loc()); err == nil {
+		mFrom, mTo, hz = m, m.AddDate(0, 1, 0), "all"
+	}
 	if hz == "" {
 		hz = "all"
 	}
@@ -150,7 +155,7 @@ func (a *API) afisha(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 		i store.Idea
 	}
 	var rows []row
-	counts := map[string]int{"week": 0, "later": 0, "all": 0, "scout": 0, "channel": 0, "ours": 0, "fresh": 0}
+	counts := map[string]int{"week": 0, "later": 0, "ending": 0, "all": 0, "scout": 0, "channel": 0, "ours": 0, "fresh": 0}
 	genres := map[string]int{}
 	cats := map[string]int{}
 	for _, i := range ideas {
@@ -167,20 +172,29 @@ func (a *API) afisha(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 		if i.StartsAt != nil && i.StartsAt.Sub(now) > 14*24*time.Hour {
 			h = "later"
 		}
+		if !mFrom.IsZero() && (i.StartsAt == nil || i.StartsAt.Before(mFrom) || !i.StartsAt.Before(mTo)) {
+			continue
+		}
+		// «скоро закончится»: a run (an exhibition, a season) whose last day is within two weeks
+		ending := i.EndsAt != nil && i.EndsAt.Sub(now) <= 14*24*time.Hour && (i.StartsAt == nil || i.StartsAt.Before(now))
 		so := sourceOf(i)
 		isFresh := i.WishA == domain.WishNone && i.WishB == domain.WishNone && so != "ours"
 		// counts follow the other filters, so each chip says what it would show
 		if (src == "all" || src == so) && (!fresh || isFresh) {
 			counts[h]++
 			counts["all"]++
+			if ending {
+				counts["ending"]++
+			}
 		}
-		if hz == "all" || h == hz {
+		inHz := hz == "all" || h == hz || hz == "ending" && ending
+		if inHz {
 			counts[so]++
 			if isFresh {
 				counts["fresh"]++
 			}
 		}
-		if hz != "all" && h != hz || src != "all" && so != src || fresh && !isFresh {
+		if !inHz || src != "all" && so != src || fresh && !isFresh {
 			continue
 		}
 		for _, g := range i.Info.Genres {
@@ -193,8 +207,11 @@ func (a *API) afisha(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 		rows = append(rows, row{withMatch(viewIdea(c, i), t, i, c.PartnerName()), i})
 	}
 	at := func(x row) int64 {
-		if x.i.StartsAt != nil {
+		if x.i.StartsAt != nil && (hz != "ending" || x.i.EndsAt == nil) {
 			return x.i.StartsAt.Unix()
+		}
+		if x.i.EndsAt != nil {
+			return x.i.EndsAt.Unix()
 		}
 		return 1 << 62
 	}

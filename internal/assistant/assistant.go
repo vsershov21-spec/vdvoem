@@ -123,7 +123,15 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	run := &run{as: as, c: c}
 	pt := lastTurn(prev, as.now())
 	in, src, alt := as.understand(ctx, text, pt, as.now().In(c.Loc()))
-	rep := run.do(ctx, in, text)
+	var rep Reply
+	if pt.In.I != "" && missRe.MatchString(strings.TrimSpace(strings.ToLower(text))) {
+		// «опять мимо»: not a new request — the previous answer missed. It becomes a miss to learn from and a
+		// question to the scout; a search on «мимо» itself would only miss again.
+		in, src, alt = Intent{I: "miss"}, "rules", Intent{}
+		rep = run.miss(ctx, pt)
+	} else {
+		rep = run.do(ctx, in, text)
+	}
 	rep.Intent, rep.Src, rep.Ms = &in, src, time.Since(start).Milliseconds()
 	as.noteRephrase(ctx, c, in, text)
 	var exID int64

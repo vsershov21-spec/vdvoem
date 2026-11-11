@@ -12,7 +12,7 @@ import { EventCard } from '../ui/EventCard'
 
 type KV = { k: string; n: number }
 type Res = { ideas: Idea[]; counts: Record<string, number>; genres: KV[]; cats: KV[] }
-type F = { hz: 'all' | 'week' | 'later'; source: 'all' | 'scout' | 'channel' | 'ours'; sort: 'match' | 'date' | 'price'; fresh: boolean; genre: string; cat: string }
+type F = { hz: 'all' | 'week' | 'later' | 'ending'; source: 'all' | 'scout' | 'channel' | 'ours'; sort: 'match' | 'date' | 'price'; fresh: boolean; genre: string; cat: string }
 const SRC: [F['source'], string][] = [['all', 'Все'], ['scout', '🔭 Скаут'], ['channel', '📣 Каналы'], ['ours', '🗂 Наши']]
 const load = (): F => { try { return { hz: 'all', source: 'all', sort: 'match', fresh: false, genre: '', cat: '', ...JSON.parse(localStorage.getItem('vd-afisha') || '{}') } } catch { return { hz: 'all', source: 'all', sort: 'match', fresh: false, genre: '', cat: '' } } }
 
@@ -22,7 +22,7 @@ export function Afisha({ embedded }: { embedded?: boolean }) {
   const [f, setF] = useState<F>(load)
   const [more, setMore] = useState(false)
   const upd = (p: Partial<F>) => { haptic.select(); setF(x => { const n = { ...x, ...p }; try { localStorage.setItem('vd-afisha', JSON.stringify(n)) } catch { /* private */ } return n }) }
-  const qs = new URLSearchParams({ horizon: f.hz, source: f.source, sort: f.sort, ...(f.fresh ? { fresh: '1' } : {}), ...(f.genre ? { genre: f.genre } : {}), ...(f.cat ? { cat: f.cat } : {}) })
+  const qs = new URLSearchParams({ horizon: f.hz, source: f.source, sort: f.hz === 'ending' ? 'date' : f.sort, ...(f.fresh ? { fresh: '1' } : {}), ...(f.genre ? { genre: f.genre } : {}), ...(f.cat ? { cat: f.cat } : {}) })
   const res = useLoad<Res>('/afisha?' + qs)
   const mark = async (i: Idea, w: Wish) => {
     haptic.tap()
@@ -39,7 +39,7 @@ export function Afisha({ embedded }: { embedded?: boolean }) {
   return (<>
     {!embedded && <SubHeader title="Афиша" />}
     <div className="wkchips fchips" role="tablist" aria-label="Когда">
-      {([['all', 'Всё'], ['week', 'Ближайшие 2 недели'], ['later', 'Анонсы']] as [F['hz'], string][]).filter(([k]) => k === 'all' || k === f.hz || counts[k] !== 0).map(([k, l]) =>
+      {([['all', 'Всё'], ['week', 'Ближайшие 2 недели'], ['ending', '⏳ Скоро закончатся'], ['later', 'Анонсы']] as [F['hz'], string][]).filter(([k]) => k === 'all' || k === f.hz || counts[k] !== 0).map(([k, l]) =>
         <button key={k} className="wkchip" role="tab" aria-selected={f.hz === k} data-on={f.hz === k || undefined} onClick={() => upd({ hz: k })}>{l}{n(k)}</button>)}
       <button className="wkchip" data-on={extra > 0 || undefined} onClick={() => setMore(true)} aria-label="Фильтры"><Icon n="filter" s={13} w={2.4} />Фильтры{extra > 0 && <b>{extra}</b>}</button>
     </div>
