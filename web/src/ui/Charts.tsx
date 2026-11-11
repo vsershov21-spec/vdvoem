@@ -99,10 +99,10 @@ const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-export type DayMark = { planned?: boolean; done?: boolean; deadline?: boolean; ends?: boolean; picked?: number }
+export type DayMark = { planned?: boolean; done?: boolean; deadline?: boolean; ends?: boolean; picked?: number; events?: number }
 
 export function MonthGrid({ month, marks, today, selected, onSelect, onMonth, last, legend = true }: {
-  month: Date; marks: Record<string, DayMark>; today: string; selected: string; onSelect: (d: string) => void; onMonth: (delta: number) => void; last?: string; legend?: boolean
+  month: Date; marks: Record<string, DayMark>; today: string; selected: string; onSelect: (d: string) => void; onMonth: (delta: number) => void; last?: string; legend?: boolean | [string, string][]
 }) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1)
   const lead = (first.getDay() + 6) % 7
@@ -129,11 +129,13 @@ export function MonthGrid({ month, marks, today, selected, onSelect, onMonth, la
               {d.getDate()}
               {(m.deadline || m.ends) && <i className={'mcal__dot' + (m.ends ? ' is-ends' : '')} />}
               {!!m.picked && <i className="mcal__count">{m.picked}</i>}
+              {!!m.events && <i className="mcal__count is-ev">{m.events}</i>}
             </motion.button>
           )
         })}
       </div>
-      {legend && <div className="mcal__legend"><span><i style={{ background: '#ff701e' }} />встреча</span><span><i style={{ background: '#22c55e' }} />были</span><span><i style={{ background: '#3b82f6' }} />дедлайн</span><span><i style={{ background: '#ff3b71' }} />сегодня</span></div>}
+      {Array.isArray(legend) ? <div className="mcal__legend">{legend.map(([c, t]) => <span key={t}><i style={{ background: c }} />{t}</span>)}</div>
+        : legend && <div className="mcal__legend"><span><i style={{ background: '#ff701e' }} />встреча</span><span><i style={{ background: '#22c55e' }} />были</span><span><i style={{ background: '#3b82f6' }} />дедлайн</span><span><i style={{ background: '#ff3b71' }} />сегодня</span></div>}
     </div>
   )
 }

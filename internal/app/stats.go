@@ -140,7 +140,7 @@ func (a *App) Stats(ctx context.Context, c Couple) (Stats, error) {
 
 type CalEvent struct {
 	Date     string `json:"date"`
-	Kind     string `json:"kind"` // planned | done | deadline | ends | open
+	Kind     string `json:"kind"` // planned | done | deadline | open
 	Title    string `json:"title"`
 	Time     string `json:"time,omitempty"`
 	At       int64  `json:"at,omitempty"`
@@ -149,7 +149,8 @@ type CalEvent struct {
 	Category string `json:"category,omitempty"`
 }
 
-// Calendar lists what happens in a month: meetings, chore deadlines, events that end.
+// Calendar lists what is ours in a month: meetings and chore deadlines. Events from the afisha are not here —
+// the calendar's «Афиша» mode (GET /afisha?month=) shows them, and «Скоро закончатся» is a pick of its own.
 func (a *App) Calendar(ctx context.Context, c Couple, month string) ([]CalEvent, error) {
 	loc := c.Loc()
 	m, err := time.ParseInLocation("2006-01", month, loc)
@@ -182,9 +183,6 @@ func (a *App) Calendar(ctx context.Context, c Couple, month string) ([]CalEvent,
 	for _, i := range ideas {
 		if i.Kind == domain.KindChore && i.Deadline != nil && in(i.Deadline.In(loc)) {
 			out = append(out, CalEvent{Date: i.Deadline.In(loc).Format("2006-01-02"), Kind: "deadline", Title: i.Title, IdeaID: i.ID, Category: i.Category, At: i.Deadline.Unix()})
-		}
-		if i.Kind == domain.KindLeisure && i.EndsAt != nil && in(i.EndsAt.In(loc)) {
-			out = append(out, CalEvent{Date: i.EndsAt.In(loc).Format("2006-01-02"), Kind: "ends", Title: i.Title, IdeaID: i.ID, Category: i.Category, At: i.EndsAt.Unix()})
 		}
 	}
 	sort.SliceStable(out, func(x, y int) bool {
