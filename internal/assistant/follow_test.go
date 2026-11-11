@@ -83,3 +83,16 @@ func TestShootingRange(t *testing.T) {
 		}
 	}
 }
+
+// one pick from the bank and «во сколько начинается …» are read by the rules, not left to the model
+func TestBankPickAndStartTime(t *testing.T) {
+	now := time.Now()
+	for s, want := range map[string]string{"выбери что-то из нашей копилки": "suggest", "что нам точно зайдёт?": "suggest", "когда начинается Щелкунчик": "about", "во сколько начало концерта Земфиры": "about", "во сколько начинается завтра": "find"} {
+		if in := rulesIntent(s, now); in.I != want && !(want == "find" && in.I != "about") {
+			t.Errorf("%q: %s, want %s", s, in.I, want)
+		}
+	}
+	if in := rulesIntent("когда начинается Щелкунчик", now); !strings.Contains(strings.ToLower(in.Q), "щелкунчик") {
+		t.Errorf("q: %q", in.Q)
+	}
+}

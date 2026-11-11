@@ -133,6 +133,14 @@ func rulesIntent(text string, now time.Time) Intent {
 	if has(t, "удиви нас", "удиви ещё", "удиви еще", "рандом", "случайн", "наугад") || t == "удиви" || t == "удиви!" || surpriseRe.MatchString(t) {
 		return Intent{I: "suggest", Mode: "random", conf: 0.9}
 	}
+	// «посоветуй что-нибудь из копилки», «что нам больше всего понравится?» — one pick from the bank, by the match
+	if bankPickRe.MatchString(t) {
+		return Intent{I: "suggest", conf: 0.88}
+	}
+	// «во сколько начинается Мастер и Маргарита» — about a known event (its time is in the card)
+	if m := startsAtRe.FindStringSubmatch(text); m != nil && len([]rune(cleanQ(m[1]))) >= 3 && !timeQ.MatchString(cleanQ(m[1])) {
+		return Intent{I: "about", Q: bookQ(m[1]), conf: 0.88}
+	}
 	if has(t, "что запланир", "что у нас запланир", "какие планы", "ближайшая встреча", "когда встреча", "что у нас на ", "наши планы", "что дальше по плану", "следующая встреча", "следующее свидание", "мы куда-то идём", "мы куда-то идем", "мы куда-нибудь идём", "мы куда-нибудь идем") {
 		return Intent{I: "overview", conf: 0.9}
 	}
@@ -427,6 +435,8 @@ var (
 	oursRe   = regexp.MustCompile(`только наш|наши идеи|наше|из копилки|в копилке|в нашем банке|в банке|что мы (сами )?добавл|мы хотели`)
 	randomRe = regexp.MustCompile(`удиви|рандом|случайн|наугад|наобум`)
 	// «хз, удиви», «ну удиви», «давай удиви чем-нибудь» — a short request that is only «surprise me»
+	bankPickRe = regexp.MustCompile(`(?:посоветуй|выбери|предложи|подбери|дай|достань)\s+(?:что-нибудь|что-то|одно|одну|идею)?\s*из\s+(?:нашей\s+)?(?:копилки|банка)|что\s+нам\s+(?:больше\s+всего|точно|сильнее\s+всего)\s+(?:понравится|зайд[её]т)`)
+	startsAtRe = regexp.MustCompile(`(?i)(?:во\s+сколько|когда)\s+(?:начинается|начало|начн[её]тся|стартует|идёт|идет)\s+(.+)`)
 	surpriseRe = regexp.MustCompile(`^(?:хз|не знаю|ну|давай|а давай|тогда|короче|кароч|просто)?[,\s]*удиви(?:\s+(?:нас|меня|чем-нибудь|чем-то))?[!.\s]*$`)
 	weekRe     = regexp.MustCompile(`недел|выходн|сегодня|завтра|суббот|воскрес|пятниц|ближайш`)
 )
