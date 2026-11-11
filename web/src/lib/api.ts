@@ -20,9 +20,21 @@ export function authHeaders(): Record<string, string> {
   return h
 }
 
+// a request the person waited for over 1.5 s is reported with its timing: the owner sees where the phone loses time
+// (network before the server answered, or the server itself — its own time is in the response header)
+const slow = (method: string, path: string, ms: number, res?: Response) => {
+  if (ms < 1500) return
+  const srv = res?.headers.get('X-Server-Ms') || '?'
+  ;(window as any).__vdlog?.('slow', `${method} ${path.split('?')[0]} ${ms}ms server ${srv}ms`)
+}
+
 export async function api<T = any>(method: string, path: string, body?: unknown): Promise<T> {
   const h = { ...authHeaders(), 'Content-Type': 'application/json' }
-  const res = await fetch('/api' + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) })
+  const t0 = performance.now()
+  let res: Response
+  try { res = await fetch('/api' + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }) }
+  catch (e) { slow(method, path, Math.round(performance.now() - t0)); throw e }
+  if (!(method === 'POST' && path.startsWith('/assistant'))) slow(method, path, Math.round(performance.now() - t0), res) // the assistant thinks: its time is its own
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error || 'error')
   return data as T

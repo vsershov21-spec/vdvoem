@@ -112,7 +112,8 @@ func MoodFit(i store.Idea, moods []string) float64 {
 	}
 	hit := 0
 	for _, m := range moods {
-		if tags[m] {
+		// «спокойно поговорить» is not a skating rink in a park: something active is never «chill»
+		if tags[m] && !(m == "chill" && tags["active"]) {
 			hit++
 		}
 	}

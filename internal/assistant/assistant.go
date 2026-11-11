@@ -57,7 +57,7 @@ type Reply struct {
 	Text    string   `json:"text"`
 	Cards   []Card   `json:"cards,omitempty"`
 	Actions []Button `json:"actions,omitempty"`
-	Open    string   `json:"open,omitempty"` // the screen to open (an «open» button pressed)
+	Open    string   `json:"open,omitempty"`   // the screen to open (an «open» button pressed)
 	Intent  *Intent  `json:"intent,omitempty"` // how the request was understood — for follow-ups («а подешевле?»)
 	Src     string   `json:"src,omitempty"`    // rules | model | rules-fallback
 	Ms      int64    `json:"ms,omitempty"`
@@ -127,7 +127,7 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	rep.Intent, rep.Src, rep.Ms = &in, src, time.Since(start).Milliseconds()
 	as.noteRephrase(ctx, c, in, text)
 	var exID int64
-	if in.I != "chat" || alt.I != "" { // a labelled example for the model: accepted once a button from it is pressed
+	{ // every request goes to the journal (the owner sees it in the admin); a labelled example once a button is pressed
 		b, _ := json.Marshal(in)
 		if id, err := as.App.S.AddExample(ctx, c.Me.ID, text, "intent:"+string(b), rep.Text, as.now()); err == nil {
 			exID = id
@@ -153,6 +153,17 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	}
 	if rep.Text == "" {
 		rep.Text = "Готово."
+	}
+	if exID != 0 {
+		model := ""
+		if as.AI != nil && src != "rules" {
+			model = as.AI.M()
+		}
+		var labels []string
+		for _, b := range rep.Actions {
+			labels = append(labels, b.Label)
+		}
+		_ = as.App.S.SetExampleMeta(ctx, exID, rep.Ms, model, strings.Join(labels, " | "), len(rep.Cards), "")
 	}
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
@@ -1112,6 +1123,11 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 	}
 	var rep Reply
 	switch a.Kind {
+	case "scout_ask": // new things come from the scout: it searches this on its next round (every morning)
+		if err := as.App.AskScout(ctx, c, p.Text, 0); err != nil {
+			return rep, err
+		}
+		rep.Text = "🔭 Попросил скаута поискать: " + strings.TrimPrefix(p.Text, "Найти новое: ") + ". Он ищет каждое утро — найденное пришлю сюда и в бот, оно появится в Афише."
 	case "add_idea":
 		res, err := as.App.AddIdea(ctx, c, p.Text)
 		if err != nil {

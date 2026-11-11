@@ -218,7 +218,7 @@ func (a *App) ScoutPicks(ctx context.Context, spaceID int64, picks []ScoutPick) 
 	now := a.now()
 	for _, p := range picks {
 		p.Title = clip(strings.TrimSpace(p.Title), 120)
-		if p.Title == "" {
+		if p.Title == "" || PageTitle(p.Title) {
 			res.Skipped++
 			continue
 		}
@@ -342,7 +342,8 @@ type ScoutPrice struct {
 	Genres []string `json:"genres"`
 	Cast   []string `json:"cast"`
 	Age    string   `json:"age"`
-	URL    string   `json:"url"` // the event's page, if the idea had none
+	URL    string   `json:"url"`   // the event's page, if the idea had none
+	Image  string   `json:"image"` // its picture, if the idea had none
 }
 
 func (a *App) ScoutPrices(ctx context.Context, spaceID int64, ups []ScoutPrice) (int, error) {
@@ -388,6 +389,9 @@ func (a *App) ScoutPrices(ctx context.Context, spaceID int64, ups []ScoutPrice) 
 				}
 				i.Info = in
 			}
+			if i.ImageURL == "" && safeURL(u.Image) != "" {
+				i.ImageURL = safeURL(u.Image)
+			}
 			if i.URL == "" && safeURL(u.URL) != "" {
 				i.URL = safeURL(u.URL)
 			}
@@ -422,13 +426,24 @@ func (a *App) InfoChecks(ctx context.Context, spaceID int64) []map[string]any {
 	ideas, _ := a.S.Ideas(ctx, spaceID, domain.IdeaActive, domain.IdeaDraft)
 	out := []map[string]any{}
 	for _, i := range ideas {
-		if i.Kind != domain.KindLeisure || i.Info.About != "" && len(i.Info.Genres) > 0 {
+		if i.Kind != domain.KindLeisure || i.Info.About != "" && len(i.Info.Genres) > 0 && i.ImageURL != "" {
 			continue
 		}
 		if i.StartsAt != nil && i.StartsAt.Before(a.now()) {
 			continue
 		}
 		m := map[string]any{"idea_id": i.ID, "title": i.Title, "venue": i.Address}
+		var need []string
+		if i.Info.About == "" {
+			need = append(need, "about")
+		}
+		if len(i.Info.Genres) == 0 {
+			need = append(need, "genres")
+		}
+		if i.ImageURL == "" {
+			need = append(need, "image")
+		}
+		m["need"] = need
 		if i.URL != "" {
 			m["url"] = i.URL
 		}
@@ -555,7 +570,16 @@ func (a *App) coupleOfSpace(ctx context.Context, spaceID int64) (Couple, error) 
 // pickIdea: one found event → a draft idea (false: a duplicate or already over)
 func (a *App) pickIdea(ctx context.Context, p ScoutPick, spaceID, authorID int64, source string, loc *time.Location, now time.Time) (store.Idea, bool) {
 	fp := domain.Fingerprint(p.URL, p.Title)
-	if _, err := a.S.IdeaByFingerprint(ctx, spaceID, fp); err == nil {
+	old, err := a.S.IdeaByFingerprint(ctx, spaceID, fp)
+	if err != nil && p.URL != "" { // the same card sent before without its link
+		old, err = a.S.IdeaByFingerprint(ctx, spaceID, domain.Fingerprint("", p.Title))
+	}
+	if err == nil {
+		// already there: what was missing the first time (a picture, a description, a link) is filled in now —
+		// a re-sent card is how the scout repairs its own earlier ones; what is there is never overwritten
+		if fillIdea(&old, p) {
+			_ = a.S.UpdateIdea(ctx, old, now)
+		}
 		return store.Idea{}, false
 	}
 	i := store.Idea{Source: source, Why: clip(p.Why, 240), Parsed: true}
@@ -589,4 +613,48 @@ func (a *App) pickIdea(ctx context.Context, p ScoutPick, spaceID, authorID int64
 		i.Info.Src = map[string]string{"scout": "web", "channel": "post"}[source]
 	}
 	return i, true
+}
+
+// fillIdea: the empty fields of an existing idea from a fresh pick; true when something changed
+func fillIdea(i *store.Idea, p ScoutPick) bool {
+	ch := false
+	set := func(dst *string, v string) {
+		if *dst == "" && v != "" {
+			*dst, ch = v, true
+		}
+	}
+	set(&i.ImageURL, safeURL(p.Image))
+	set(&i.URL, safeURL(p.URL))
+	set(&i.Address, clip(p.Address, 200))
+	set(&i.Why, clip(p.Why, 240))
+	set(&i.Info.About, sentences(p.About, 400))
+	set(&i.Info.Age, clip(p.Age, 4))
+	if len(i.Info.Genres) == 0 && len(p.Genres) > 0 {
+		i.Info.Genres, ch = p.Genres, true
+	}
+	if len(i.Info.Cast) == 0 && len(p.Cast) > 0 {
+		i.Info.Cast, ch = p.Cast, true
+		if len(i.Info.Cast) > 8 {
+			i.Info.Cast = i.Info.Cast[:8]
+		}
+	}
+	if i.PriceMin == 0 && p.PriceRub > 0 {
+		i.PriceMin, i.PriceMax, ch = p.PriceRub*100, p.PriceRub*100, true
+	}
+	if ch && i.Info.Src == "" && !i.Info.Empty() {
+		i.Info.Src = "web"
+	}
+	return ch
+}
+
+// PageTitle: a web page's title, not an event — «Афиша мероприятий Московского Планетария, цены на официальном сайте».
+// The scout sometimes copies the page it found instead of what is on there; such a card says nothing.
+func PageTitle(t string) bool {
+	l := strings.ToLower(t)
+	for _, w := range []string{"официальн", "афиша мероприятий", "афиша событий", "все мероприятия", "купить билет", "цены на ", "расписание ", "билеты на сайте", "| ", " — афиша", "главная страница"} {
+		if strings.Contains(l, w) {
+			return true
+		}
+	}
+	return false
 }

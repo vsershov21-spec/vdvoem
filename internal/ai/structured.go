@@ -20,6 +20,11 @@ func (c *Client) Structured(ctx context.Context, task string, msgs []Message, sc
 	if !c.Enabled() {
 		return nil, ErrDisabled
 	}
+	if c.IsLocal() { // one CPU model: whoever waits goes first (priority.go)
+		var release func()
+		ctx, release = gate(ctx)
+		defer release()
+	}
 	t0 := time.Now()
 	last := ""
 	if len(msgs) > 0 {

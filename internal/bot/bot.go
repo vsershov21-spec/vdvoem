@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"vdvoem/internal/ai"
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
 	"vdvoem/internal/domain"
@@ -349,7 +350,7 @@ func looksLikeQuestion(t string) bool {
 }
 
 func (b *Bot) ask(ctx context.Context, c app.Couple, chat int64, q string) {
-	rep, err := b.Helper.Ask(ctx, c, q)
+	rep, err := b.Helper.Ask(ai.Foreground(ctx), c, q)
 	if errors.Is(err, assistant.ErrLimit) {
 		b.say(ctx, chat, "На сегодня вопросов достаточно — продолжим завтра.", nil)
 		return
@@ -387,7 +388,7 @@ func (b *Bot) voice(ctx context.Context, c app.Couple, chat int64, v *tg.Voice) 
 		b.say(ctx, chat, "Не получилось разобрать голосовое — напиши текстом.", nil)
 		return
 	}
-	rep, err := b.Helper.Ask(ctx, c, text)
+	rep, err := b.Helper.Ask(ai.Foreground(ctx), c, text)
 	if errors.Is(err, assistant.ErrLimit) {
 		b.say(ctx, chat, "На сегодня вопросов достаточно — продолжим завтра.", nil)
 		return

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -275,6 +276,16 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		if near != "" {
 			t = "Именно «" + near + "» сейчас нет. Близкое по духу — ниже; могу следить, когда появится.\n" + t
 		}
+		// new things come only from the scout: asked for them in words — it searches tomorrow morning; little that is
+		// new among the answers — one tap asks it to
+		what := strings.TrimSpace(firstNonEmpty(cond, in.Q, text))
+		if askNewRe.MatchString(strings.ToLower(text)) {
+			if r.as.App.AskScout(ctx, r.c, "Найти новое: "+what, 0) == nil {
+				t += "\n🔭 Попросил скаута поискать новое — " + short(what, 40) + ". Принесёт утром, пришлю сюда и в бот."
+			}
+		} else if r.fresh(ctx, events) < 2 {
+			r.propose(ctx, "scout_ask", map[string]any{"text": "Найти новое: " + what}, "🔭 Поискать новое")
+		}
 		return Reply{Text: t}
 	}
 	// nothing in the data: ideas of the kind, as buttons to add — and a question to the scout
@@ -294,6 +305,21 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		txt += "\nСкаут поищет это при следующем обходе и ответит здесь, в боте."
 	}
 	return Reply{Text: txt}
+}
+
+var askNewRe = regexp.MustCompile(`поищи|найди (что-нибудь |что-то )?нов|что нового|новеньк|чего-нибудь нового|что-то новое|что-нибудь новое|ещё вариант|еще вариант|другие вариант`)
+
+// fresh: how many of the answers are new to us — the scout's or a channel's finds nobody has marked yet
+func (r *run) fresh(ctx context.Context, events []map[string]any) int {
+	n := 0
+	for _, e := range events {
+		if id, _ := e["id"].(int64); id != 0 {
+			if i, err := r.as.App.S.Idea(ctx, r.c.Space.ID, id); err == nil && !Ours(i) && i.WishA == domain.WishNone && i.WishB == domain.WishNone {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // the first event with its own date and time gets «Идём!» — a meeting in the calendar right away

@@ -14,10 +14,12 @@ import { Ideas } from './screens/Ideas'
 import { AddSheet } from './screens/AddSheet'
 
 // screens off the first paint load as separate chunks, fetched in the background right after start
+// screens load on first open; a slow chunk is reported like a slow request
+const timed = <T,>(name: string, f: () => Promise<T>) => () => { const t0 = performance.now(); return f().then(m => { const ms = Math.round(performance.now() - t0); if (ms > 1200) (window as any).__vdlog?.('slow', 'chunk ' + name + ' ' + ms + 'ms'); return m }) }
 const load = {
-  idea: () => import('./screens/Idea'), round: () => import('./screens/Round'), assistant: () => import('./screens/Assistant'),
-  calendar: () => import('./screens/Calendar'), us: () => import('./screens/Us'), surprise: () => import('./screens/Surprise'),
-  triage: () => import('./screens/Triage'), pick: () => import('./screens/Pick'), taste: () => import('./screens/Taste'),
+  idea: timed('idea', () => import('./screens/Idea')), round: timed('round', () => import('./screens/Round')), assistant: timed('assistant', () => import('./screens/Assistant')),
+  calendar: timed('calendar', () => import('./screens/Calendar')), us: timed('us', () => import('./screens/Us')), surprise: timed('surprise', () => import('./screens/Surprise')),
+  triage: timed('triage', () => import('./screens/Triage')), pick: timed('pick', () => import('./screens/Pick')), taste: timed('taste', () => import('./screens/Taste')),
 }
 const IdeaScreen = lazy(() => load.idea().then(m => ({ default: m.IdeaScreen })))
 const RoundScreen = lazy(() => load.round().then(m => ({ default: m.RoundScreen })))
@@ -43,7 +45,7 @@ export function App() {
   useEffect(() => { applyTheme(); onTheme(applyTheme) }, [])
   return (<>
     {entered && <Main />}
-    {!entered && <Entry onEnter={() => setEntered(true)} />}
+    {!entered && <Entry onEnter={() => { (window as any).__vdlog?.('enter', ''); setEntered(true) }} />}
     <Burst />
     <Toasts />
   </>)

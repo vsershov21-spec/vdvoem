@@ -89,6 +89,11 @@ func (c *Client) complete(ctx context.Context, task, system, user string) (strin
 	if !c.Enabled() {
 		return "", errors.New("ai disabled")
 	}
+	if c.IsLocal() { // one CPU model: whoever waits goes first (priority.go)
+		var release func()
+		ctx, release = gate(ctx)
+		defer release()
+	}
 	t0 := time.Now()
 	body, _ := json.Marshal(map[string]any{"model": c.M(), "temperature": 0.2, "max_tokens": 300,
 		"messages": []msg{{"system", system}, {"user", user}}})

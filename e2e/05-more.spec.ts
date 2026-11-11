@@ -65,7 +65,8 @@ test('E19 календарь: встречи и дедлайны на днях, 
   await addIdeas(v, ['Ужин в ресторане', 'Кино', 'Купить продукты'])
   const planned = await planMeeting(v, n)
   const chore = (await api(v, 'GET', '/ideas?kind=chore')).ideas[0]
-  const dl = Math.floor(Date.now() / 1000) + 3 * 86400
+  // the chore's deadline on another day than the meeting (both «на днях»), so the meeting's day lists one row
+  const dl = planned.starts_at + 2 * 86400
   await api(v, 'PATCH', '/ideas/' + chore.id, { deadline: dl })
   const p = await open(await phone(browser), v)
   await tab(p, 'cal')

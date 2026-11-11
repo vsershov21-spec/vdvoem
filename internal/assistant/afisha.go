@@ -110,6 +110,17 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	}
 	score := func(h hit) float64 {
 		sc := h.m.Both + 0.35*app.MoodFit(h.i, q.Moods)
+		// a day was asked: what happens exactly then goes before ideas that can be any day
+		if q.Date != "" || q.Weekend {
+			if h.i.StartsAt != nil {
+				d := h.i.StartsAt.In(loc)
+				if d.Format("2006-01-02") == q.Date || q.Weekend && (d.Weekday() == time.Saturday || d.Weekday() == time.Sunday) {
+					sc += 0.3
+				}
+			} else {
+				sc -= 0.05
+			}
+		}
 		if v := q.Sem[h.i.ID]; v > 0.5 { // closer in meaning to what was asked — a little higher (scores sit in 0.45–0.65)
 			sc += v - 0.5
 		}
@@ -263,7 +274,7 @@ var (
 var wordK = map[string]int64{"одной": 1, "одна": 1, "тысячи": 1, "двух": 2, "две": 2, "трёх": 3, "трех": 3, "три": 3, "четырёх": 4, "четырех": 4, "четыре": 4,
 	"пяти": 5, "пять": 5, "шести": 6, "семи": 7, "восьми": 8, "десяти": 10}
 
-var catWords = map[string]string{"поесть": "food", "ресторан": "food", "кафе": "food", "ужин": "food", "еда": "food", "бар": "food",
+var catWords = map[string]string{"поесть": "food", " еде": "food", " еды": "food", " едой": "food", "покушать": "food", "перекус": "food", "гастро": "food", "вкусн": "food", "ресторан": "food", "кафе": "food", "ужин": "food", "еда": "food", "бар": "food",
 	"театр": "culture", "спектак": "culture", "музей": "culture", "кино": "culture", "выставк": "culture", "концерт": "culture", "опер": "culture", "балет": "culture",
 	"гуля": "walk", "прогул": "walk", "парк": "walk", "спорт": "sport", "каток": "sport", "лыж": "sport", "стендап": "other", "квиз": "other"}
 
@@ -337,7 +348,7 @@ func memoryFromText(text string) string {
 		return m[1]
 	}
 	t := strings.ToLower(text)
-	if has(t, "я не люблю", "я люблю", "мы не любим", "мы любим", "мне не нравится", "мне нравится", "мне нравятся", "нам нравится", "нам нравятся",
+	if strings.HasPrefix(strings.TrimSpace(t), "не люблю ") || strings.HasPrefix(strings.TrimSpace(t), "люблю ") || has(t, "я не люблю", "я люблю", "мы не любим", "мы любим", "мне не нравится", "мне нравится", "мне нравятся", "нам нравится", "нам нравятся",
 		"не предлагай", "у меня аллерг", "я не ем", "мы не едим", "я не пью", "обожаю", "обожаем", "терпеть не могу", "ненавижу", "не переношу", "я вегетариан", "я веган") &&
 		!strings.Contains(t, "?") {
 		return strings.TrimSpace(text)
