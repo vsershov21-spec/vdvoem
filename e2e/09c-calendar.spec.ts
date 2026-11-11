@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { people, pair, phone, open, shot, api, tab, BASE } from './lib'
 
-const day = (n: number, hm = '19:00') => { const d = new Date(Date.now() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}` }
+// the server's clock runs ahead in the suite (other tests move it): dates count from the server's «today»
+let base = new Date()
+const day = (n: number, hm = '19:00') => { const d = new Date(base.getTime() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}` }
 const ym = (s: string) => s.slice(0, 7)
 
 // The calendar has two modes: «Наше» — only what we chose; «Афиша» — what is on each day, to take into our bank.
@@ -11,6 +13,7 @@ test('E42 календарь: «Наше» без чужих событий, «�
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   const space = (await api(v, 'GET', '/me')).space.id
+  base = new Date((await api(v, 'GET', '/calendar')).today + 'T12:00')
   const picks = [
     { title: 'Концерт в Зарядье', category: 'culture', starts: day(4), price_rub: 3000, why: 'живой звук', score: 6, url: 'https://afisha.example/e2e-cal/' + space + '/1', image: '' },
     { title: 'Выставка импрессионистов', category: 'culture', starts: '', ends: day(5, '21:00'), price_rub: 1200, why: 'последние дни', score: 6, url: 'https://afisha.example/e2e-cal/' + space + '/2', image: '' },
@@ -38,7 +41,8 @@ test('E42 календарь: «Наше» без чужих событий, «�
   await expect(p.getByRole('tab', { name: 'Наше' })).toHaveAttribute('aria-selected', 'true')
   await expect(p.locator('.sched__row', { hasText: 'Выставка' })).toHaveCount(0)
   await p.getByRole('tab', { name: 'Афиша' }).click()
-  if (ym(day(4)) !== ym(day(0))) await p.getByLabel('Следующий месяц').click()
+  const now = new Date(), [ty, tm] = day(4).split('-').map(Number)
+  for (let k = (ty - now.getFullYear()) * 12 + tm - 1 - now.getMonth(); k > 0; k--) await p.getByLabel('Следующий месяц').click()
   const cell = p.getByLabel(day(4).slice(0, 10))
   await expect(cell.locator('.mcal__count.is-ev')).toHaveText('1')
   await cell.click()
