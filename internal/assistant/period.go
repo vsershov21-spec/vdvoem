@@ -82,6 +82,15 @@ func periodFrom(text string, now time.Time) (from, to string) {
 		return clip(n, monthEnd(n.Year(), n.Month()))
 	case has(t, "ближайшие две недели", "ближайшие 2 недели", "две недели"):
 		return clip(today, today.AddDate(0, 0, 13))
+	case has(t, "новый год", "новогод", "нового года", "на нг", "в нг", "новом году") && !has(t, "после нового года", "после нг"):
+		// the eve and the holidays after it: 30 December — 8 January
+		y := today.Year()
+		if today.Month() == time.January && today.Day() > 8 || today.Month() > time.January {
+			// this year's December ahead
+		} else {
+			y-- // early January: the holidays now
+		}
+		return clip(time.Date(y, time.December, 30, 0, 0, 0, 0, now.Location()), time.Date(y+1, time.January, 8, 0, 0, 0, 0, now.Location()))
 	}
 	for _, w := range strings.Fields(t) {
 		m := monthOf(w)

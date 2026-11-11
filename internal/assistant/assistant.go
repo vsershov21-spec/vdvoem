@@ -349,6 +349,7 @@ type run struct {
 	from      string   // where a pick comes from: "" — the bank, afisha — the scout and channels, all
 	found     int      // how many fit a search (more than shown → «Покажи все»)
 	pick      *PickRef
+	dry       bool // a dry run (/agent/try): reads only — nothing is saved, remembered or sent to the scout
 }
 
 func (r *run) reset() { r.cards, r.buttons, r.seen = nil, nil, nil }
@@ -626,6 +627,10 @@ func (r *run) propose(ctx context.Context, kind string, payload map[string]any, 
 	}
 	r.seen[key] = true
 	act := store.Action{ID: token(), SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Kind: kind, Payload: b}
+	if r.dry {
+		r.buttons = append(r.buttons, Button{ID: "dry", Label: label, Kind: kind})
+		return map[string]string{"status": "button shown to the user; nothing changed yet"}
+	}
 	if err := r.as.App.S.SaveAction(ctx, act, r.as.now()); err != nil {
 		return map[string]string{"error": "cannot save"}
 	}
@@ -642,6 +647,10 @@ func (r *run) propose(ctx context.Context, kind string, payload map[string]any, 
 func (r *run) proposeAlt(ctx context.Context, payload map[string]any, label string) {
 	b, _ := json.Marshal(payload)
 	act := store.Action{ID: token(), SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Kind: "clarify", Payload: b}
+	if r.dry {
+		r.buttons = append(r.buttons, Button{ID: "dry", Label: label, Kind: "clarify"})
+		return
+	}
 	if r.as.App.S.SaveAction(ctx, act, r.as.now()) == nil {
 		r.buttons = append(r.buttons, Button{ID: act.ID, Label: label, Kind: "clarify"})
 	}
@@ -1253,4 +1262,56 @@ func (as *Assistant) Hints(ctx context.Context, c app.Couple) (map[string]any, e
 		}
 	}
 	return map[string]any{"phrases": Phrases, "titles": titles}, nil
+}
+
+// TryStep: one request of a dry run and what came of it
+type TryStep struct {
+	Text   string   `json:"text"`
+	Intent Intent   `json:"intent"`
+	Src    string   `json:"src"`
+	Ms     int64    `json:"ms"`
+	Answer string   `json:"answer"`
+	Cards  []string `json:"cards"`
+	Btns   []string `json:"buttons"`
+}
+
+// Try runs requests through the whole pipeline on a couple's real data without saving anything: no chat, no
+// journal, no memories, goals, buttons or scout questions. Each request is a fresh dialog unless follow is set
+// (then the previous step is its context). For the owner to check phrases on the server (/agent/try).
+func (as *Assistant) Try(ctx context.Context, c app.Couple, texts []string, follow bool) []TryStep {
+	var out []TryStep
+	var pt Turn
+	for _, text := range texts {
+		start := time.Now()
+		run := &run{as: as, c: c, dry: true}
+		if !follow {
+			pt = Turn{}
+		}
+		in, src, _ := as.understand(ctx, text, pt, as.now().In(c.Loc()))
+		var rep Reply
+		switch {
+		case spendRe.MatchString(strings.ToLower(text)):
+			in, src = Intent{I: "past"}, "rules"
+			rep = run.spend(ctx)
+		case pt.In.I != "" && missRe.MatchString(strings.TrimSpace(strings.ToLower(text))):
+			in, src = Intent{I: "miss"}, "rules"
+			rep = run.miss(ctx, pt)
+		default:
+			rep = run.do(ctx, in, text)
+		}
+		st := TryStep{Text: text, Intent: in, Src: src, Ms: time.Since(start).Milliseconds(), Answer: rep.Text}
+		nt := Turn{Text: text, In: in}
+		for _, cd := range run.cards {
+			st.Cards = append(st.Cards, cd.Title)
+			if cd.Type == "idea" && cd.Title != "" {
+				nt.Titles = append(nt.Titles, cd.Title)
+			}
+		}
+		for _, b := range run.buttons {
+			st.Btns = append(st.Btns, b.Label)
+		}
+		pt = nt
+		out = append(out, st)
+	}
+	return out
 }

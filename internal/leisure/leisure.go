@@ -194,3 +194,26 @@ func Fits(tag, text string) bool {
 	}
 	return false
 }
+
+// Narrow drops a broad kind when a narrower one of its family is in the list too (for kinds gathered from
+// several readers: the model's and the words')
+func Narrow(tags []string) []string {
+	in := map[string]bool{}
+	for _, x := range tags {
+		in[x] = true
+	}
+	var out []string
+	for _, x := range tags {
+		keep := true
+		for _, n := range narrower[x] {
+			if in[n] {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			out = append(out, x)
+		}
+	}
+	return out
+}

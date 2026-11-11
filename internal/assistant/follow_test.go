@@ -116,3 +116,26 @@ func TestNegationsBacked(t *testing.T) {
 		t.Errorf("a negated category stays: %+v", m)
 	}
 }
+
+// cuisines are kinds of their own (not one «кухня мира»); «с рыбами» could be dinner or the oceanarium — both;
+// «на Новый год» is the holidays, 30 December — 8 January
+func TestCuisinesFishNewYear(t *testing.T) {
+	now := time.Date(2026, 11, 11, 22, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	read := func(s string) Intent { return withPeriod(withKinds(widen(rulesIntent(s, now), s), s), s, now) }
+	for s, want := range map[string][]string{
+		"Лучшие итальянские рестораны": {"итальянская кухня"}, "Грузинские рестики": {"грузинская кухня"}, "Азиатская кухня": {"азиатская кухня"},
+		"хочу суши": {"азиатская кухня"}, "рыбный ресторан": {"морепродукты"}, "посмотреть на рыбок": {"океанариум"},
+		"Что-то с рыбами": {"океанариум", "морепродукты"}, "готовить вместе пасту на мастер-классе": {"кулинарный мастер-класс"},
+	} {
+		if g := read(s).G; !slices.Equal(g, want) {
+			t.Errorf("%q: %v, want %v", s, g, want)
+		}
+	}
+	if in := read("А что на Новый год"); in.From != "2026-12-30" || in.To != "2027-01-08" {
+		t.Errorf("Новый год: %s..%s", in.From, in.To)
+	}
+	// the model's broad kind gives way to the words' narrow one
+	if g := withKinds(Intent{I: "find", G: []string{"кухня мира"}}, "грузинское что-нибудь").G; !slices.Equal(g, []string{"грузинская кухня"}) {
+		t.Errorf("narrow: %v", g)
+	}
+}
