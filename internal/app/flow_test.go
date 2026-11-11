@@ -924,3 +924,15 @@ func TestAssistantMiss(t *testing.T) {
 		t.Fatalf("the scout must get it: %+v", qs)
 	}
 }
+
+// «сколько мы потратили» answers with the meetings' sum, not a search
+func TestAssistantSpend(t *testing.T) {
+	a, _, _ := setup(t)
+	ctx := context.Background()
+	v, _ := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	rep, _ := as.Ask(ctx, v, "сколько мы потратили в этом месяце?")
+	if !strings.Contains(rep.Text, "встреч") || len(rep.Cards) != 0 {
+		t.Fatalf("a sum, not a search: %+v", rep)
+	}
+}

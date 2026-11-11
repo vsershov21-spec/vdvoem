@@ -59,3 +59,17 @@ func TestMissWords(t *testing.T) {
 		}
 	}
 }
+
+// «сколько мы потратили» is a sum of past meetings, not a search; «куда без трат» is a search for something free
+func TestSpendWords(t *testing.T) {
+	for _, s := range []string{"сколько мы потратили в этом месяце", "наши траты за ноябрь", "Сколько ушло денег на свидания?", "во сколько нам обошлись выходные", "покажи расходы за месяц"} {
+		if !spendRe.MatchString(strings.ToLower(s)) {
+			t.Errorf("%q is about money spent", s)
+		}
+	}
+	for _, s := range []string{"куда сходить без трат", "что-нибудь без больших трат", "сколько стоит Щелкунчик", "хочу потратить не больше 3000"} {
+		if spendRe.MatchString(strings.ToLower(s)) {
+			t.Errorf("%q is not", s)
+		}
+	}
+}

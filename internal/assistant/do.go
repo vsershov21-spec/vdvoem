@@ -310,6 +310,32 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 	return Reply{Text: txt}
 }
 
+// spendRe: a question about money already spent («сколько мы потратили», «наши траты за месяц»)
+var spendRe = regexp.MustCompile(`потратил|потрачен|(?:наши|мои|все|общие) траты|траты за|наши расход|расходы за|сколько (?:у нас )?(?:ушло|вышло) (?:денег|на )|во сколько нам обошл`)
+
+// spend: what the meetings cost, by the prices of the events (what was paid is not known — said so)
+func (r *run) spend(ctx context.Context) Reply {
+	st, err := r.as.App.Stats(ctx, r.c)
+	if err != nil || st.Meetings == 0 {
+		return Reply{Text: "Пока ни одной завершённой встречи — тратить было не на что. Как сходите куда-нибудь, посчитаю."}
+	}
+	t := fmt.Sprintf("В этом месяце: %s, %s вместе", plural(st.ThisMonth, "встреча", "встречи", "встреч"), hoursText(st.HoursMonth))
+	if st.SpentMonth > 0 {
+		t += ", около " + domain.Money(st.SpentMonth)
+	}
+	t += fmt.Sprintf(".\nЗа всё время: %s, %s", plural(st.Meetings, "встреча", "встречи", "встреч"), hoursText(st.Hours))
+	if st.SpentKop > 0 {
+		t += ", около " + domain.Money(st.SpentKop)
+	}
+	t += ".\nСчитаю по ценам событий на двоих — сколько заплатили на самом деле, я не знаю."
+	return Reply{Text: t}
+}
+
+func hoursText(h float64) string {
+	n := int(h + 0.5)
+	return plural(n, "час", "часа", "часов")
+}
+
 // missRe: the previous answer missed — said in a few words, without a new request
 var missRe = regexp.MustCompile(`^(?:(?:нет|ну|опять|снова|всё|все|совсем|вообще|блин)[,!.]?\s+)*(?:мимо|не то|не туда|не попал|не угадал|не понял|не понимаешь|ты не понял|это не то|не то,? что (?:я )?(?:просил|спрашивал|хотел))[\s!.?)(]*$`)
 

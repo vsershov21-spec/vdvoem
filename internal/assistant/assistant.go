@@ -124,7 +124,11 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	pt := lastTurn(prev, as.now())
 	in, src, alt := as.understand(ctx, text, pt, as.now().In(c.Loc()))
 	var rep Reply
-	if pt.In.I != "" && missRe.MatchString(strings.TrimSpace(strings.ToLower(text))) {
+	if spendRe.MatchString(strings.ToLower(text)) {
+		// «сколько мы потратили»: a number from the meetings, not a search — the model has no such intent
+		in, src, alt = Intent{I: "past"}, "rules", Intent{}
+		rep = run.spend(ctx)
+	} else if pt.In.I != "" && missRe.MatchString(strings.TrimSpace(strings.ToLower(text))) {
 		// «опять мимо»: not a new request — the previous answer missed. It becomes a miss to learn from and a
 		// question to the scout; a search on «мимо» itself would only miss again.
 		in, src, alt = Intent{I: "miss"}, "rules", Intent{}
