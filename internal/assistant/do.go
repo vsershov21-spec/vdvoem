@@ -25,6 +25,9 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 		if in.Text == "" {
 			in.Text = text
 		}
+		if r.dry {
+			return Reply{Text: "(проба) Запомнил бы: «" + short(in.Text, 80) + "»."}
+		}
 		if _, err := r.as.App.Remember(ctx, r.c, in.Text); err != nil {
 			return Reply{Text: "Не понял, что запомнить."}
 		}
@@ -38,6 +41,9 @@ func (r *run) do(ctx context.Context, in Intent, text string) Reply {
 	case "goal":
 		if in.Text == "" {
 			in.Text = text
+		}
+		if r.dry {
+			return Reply{Text: "(проба) Скаут следил бы: «" + short(in.Text, 80) + "»."}
 		}
 		if _, err := r.as.App.AddGoal(ctx, r.c, in.Text); err != nil {
 			return Reply{Text: "Не понял, за чем следить."}
@@ -265,7 +271,9 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 			if title == "" {
 				title = "Все варианты"
 			}
-			if id, err := r.as.App.S.AddPick(ctx, store.Pick{SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Title: title, IDs: ids}, r.as.now()); err == nil {
+			if r.dry {
+				r.pick = &PickRef{Title: title, N: len(ids)}
+			} else if id, err := r.as.App.S.AddPick(ctx, store.Pick{SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Title: title, IDs: ids}, r.as.now()); err == nil {
 				r.pick = &PickRef{ID: id, Title: title, N: len(ids)}
 			}
 		}
@@ -283,7 +291,7 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		// a definite kind («кино в субботу») with little or nothing of it: the scout looks without being asked
 		thin := near != "" || len(in.G) > 0 && found < 3
 		if askNewRe.MatchString(strings.ToLower(text)) || thin {
-			if r.as.App.AskScout(ctx, r.c, "Найти новое: "+what, 0) == nil {
+			if r.askScout(ctx, "Найти новое: "+what, 0) == nil {
 				t += "\n🔭 Попросил скаута поискать новое — " + short(what, 40) + ". Принесёт утром, пришлю сюда и в бот."
 			}
 		} else if r.fresh(ctx, events) < 2 {
@@ -304,7 +312,7 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		txt += " Ослабь условия — или скажи «следи за …», и скаут поищет специально."
 	}
 	if in.Q != "" || len(in.Cats) > 0 || in.Hz == "later" {
-		_ = r.as.App.AskScout(ctx, r.c, "Найти: "+strings.TrimSpace(in.Q+" "+cond), 0)
+		_ = r.askScout(ctx, "Найти: "+strings.TrimSpace(in.Q+" "+cond), 0)
 		txt += "\nСкаут поищет это при следующем обходе и ответит здесь, в боте."
 	}
 	return Reply{Text: txt}
@@ -342,12 +350,12 @@ var missRe = regexp.MustCompile(`^(?:(?:нет|ну|опять|снова|всё
 // miss: «опять мимо» — the previous request becomes a miss (the admin's «Промахи», labeled and trained on), the
 // scout gets it as a question, and the answer says so and asks for one more word.
 func (r *run) miss(ctx context.Context, pt Turn) Reply {
-	if e, err := r.as.App.S.LastExample(ctx, r.c.Me.ID); err == nil && !e.Accepted {
+	if e, err := r.as.App.S.LastExample(ctx, r.c.Me.ID); err == nil && !e.Accepted && !r.dry {
 		_ = r.as.App.S.SetOutcome(ctx, e.ID, "rephrased", "")
 	}
 	what := strings.TrimSpace(firstNonEmpty(pt.Text, describe(pt.In)))
 	t := "Понял, мимо — записал как промах, на таких доучиваю себя."
-	if pt.In.I == "find" && what != "" && r.as.App.AskScout(ctx, r.c, "Найти новое: "+what, 0) == nil {
+	if pt.In.I == "find" && what != "" && r.askScout(ctx, "Найти новое: "+what, 0) == nil {
 		t += "\n🔭 Попросил скаута поискать «" + short(what, 50) + "» — принесёт утром, пришлю сюда и в бот."
 	}
 	t += "\nСкажи одним-двумя словами, что именно хотелось: например «кино», «стендап», «ужин в грузинском»."
@@ -526,7 +534,7 @@ func (r *run) about(ctx context.Context, in Intent, text string) Reply {
 		i, ok = alts[0], true
 	}
 	if !ok {
-		_ = r.as.App.AskScout(ctx, r.c, "Расскажи про: "+in.Q, 0)
+		_ = r.askScout(ctx, "Расскажи про: "+in.Q, 0)
 		return Reply{Text: "Не нашёл «" + short(in.Q, 40) + "» в афише и копилке. Спросил скаута — расскажет в боте. Если есть ссылка или пост — пришли, разберу."}
 	}
 	ab := r.as.App.About(ctx, r.c, i)
@@ -563,7 +571,7 @@ func (r *run) about(ctx context.Context, in Intent, text string) Reply {
 		b.WriteString("\n" + i.Why)
 	}
 	if i.Info.Empty() {
-		_ = r.as.App.AskScout(ctx, r.c, "Расскажи про: "+i.Title+" (жанр, кто играет, о чём)", i.ID)
+		_ = r.askScout(ctx, "Расскажи про: "+i.Title+" (жанр, кто играет, о чём)", i.ID)
 		b.WriteString("\n\nПодробностей пока нет — попросил скаута дополнить карточку.")
 	}
 	// does it suit us
@@ -835,4 +843,12 @@ func (r *run) taste(ctx context.Context) Reply {
 		return Reply{Text: "Пока я знаю о тебе мало — только то, что ты отмечаешь. Давай настроим за минуту: отметишь, что нравится — от сфер до жанров, — и подборки станут точнее с первого раза.", Next: []string{"Что нам подходит на выходных?"}}
 	}
 	return Reply{Text: "Вот что я о тебе знаю:\n" + p + "\n\nПоправь или дополни — подборки подстроятся сразу.", Next: []string{"Что мне понравится на неделе?", "Удиви нас"}}
+}
+
+// askScout: a question to the scout (not in a dry run)
+func (r *run) askScout(ctx context.Context, text string, ideaID int64) error {
+	if r.dry {
+		return nil
+	}
+	return r.as.App.AskScout(ctx, r.c, text, ideaID)
 }

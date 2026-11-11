@@ -936,3 +936,30 @@ func TestAssistantSpend(t *testing.T) {
 		t.Fatalf("a sum, not a search: %+v", rep)
 	}
 }
+
+// a dry run (/agent/try) answers on the couple's real data and leaves no trace: no chat, no journal, no scout
+// question, no memory
+func TestAssistantTryLeavesNoTrace(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, _ := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{{Title: "Спектакль «Чайка»", Category: "culture", Starts: ck.t.AddDate(0, 0, 3).Format("2006-01-02") + "T19:00", URL: "https://x.example/3", Score: 6}})
+	steps := as.Try(ctx, v, []string{"кинчик в субботу", "не люблю стендап", "следи за Земфирой", "хочу в театр"}, false)
+	if len(steps) != 4 || steps[3].Intent.I != "find" || len(steps[3].Cards) == 0 {
+		t.Fatalf("steps: %+v", steps)
+	}
+	day := ck.t.Add(-48 * time.Hour)
+	if n, _ := a.S.ChatCountSince(ctx, v.Me.ID, day); n != 0 {
+		t.Fatalf("chat written: %d", n)
+	}
+	if qs, _ := a.S.OpenQuestions(ctx, v.Space.ID); len(qs) != 0 {
+		t.Fatalf("scout asked: %+v", qs)
+	}
+	if ms, _ := a.S.Misses(ctx, day); len(ms) != 0 {
+		t.Fatalf("journal written: %+v", ms)
+	}
+	if mem, _ := a.S.Memories(ctx, v.Space.ID); len(mem) != 0 {
+		t.Fatalf("memory written: %+v", mem)
+	}
+}

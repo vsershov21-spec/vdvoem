@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"vdvoem/internal/ai"
 	"vdvoem/internal/app"
 	"vdvoem/internal/assistant"
 	"vdvoem/internal/store"
@@ -50,6 +51,37 @@ func (a *API) agentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /agent/perf", local(a.agentPerf))
 	mux.HandleFunc("GET /agent/assistant", local(a.agentAssistant))
 	mux.HandleFunc("GET /agent/boots", local(a.agentBoots))
+	mux.HandleFunc("POST /agent/try", local(a.agentTry))
+}
+
+// agentTry: phrases through the assistant on a couple's real data, nothing saved (a dry run).
+// POST {"space":1,"member":0,"texts":["…"],"follow":false} — member 0: the space's first member.
+func (a *API) agentTry(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Space  int64    `json:"space"`
+		Member int64    `json:"member"`
+		Texts  []string `json:"texts"`
+		Follow bool     `json:"follow"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || len(req.Texts) == 0 || len(req.Texts) > 40 {
+		writeJSON(w, 400, map[string]string{"error": "space, texts (1..40)"})
+		return
+	}
+	if req.Member == 0 {
+		ms, err := a.App.S.Members(r.Context(), req.Space)
+		if err != nil || len(ms) == 0 {
+			writeJSON(w, 404, map[string]string{"error": "no such space"})
+			return
+		}
+		req.Member = ms[0].ID
+	}
+	c, err := a.App.CoupleByMember(r.Context(), req.Member)
+	if err != nil || c.Space.ID != req.Space {
+		writeJSON(w, 404, map[string]string{"error": "no such member in the space"})
+		return
+	}
+	ctx := ai.Foreground(r.Context())
+	writeJSON(w, 200, map[string]any{"model": a.Helper.AI.M(), "steps": a.Helper.Try(ctx, c, req.Texts, req.Follow)})
 }
 
 // agentSemantic: what a request is closest to by meaning (?space=1&q=…) — to tune the threshold
