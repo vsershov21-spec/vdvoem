@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"vdvoem/internal/domain"
+	"vdvoem/internal/store"
 )
 
 // a dialogue keeps its point: «хочу в бар в субботу» → «а с караоке?» → «нет, лучше кофейня» → «до 3000»
@@ -137,5 +140,37 @@ func TestCuisinesFishNewYear(t *testing.T) {
 	// the model's broad kind gives way to the words' narrow one
 	if g := withKinds(Intent{I: "find", G: []string{"кухня мира"}}, "грузинское что-нибудь").G; !slices.Equal(g, []string{"грузинская кухня"}) {
 		t.Errorf("narrow: %v", g)
+	}
+}
+
+// the model's moods and «наши / новое» stand only where the words say so
+func TestWordsBacked(t *testing.T) {
+	m := wordsBacked(Intent{I: "find", Moods: []string{"culture"}, G: []string{"итальянская кухня"}}, "Лучшие итальянские рестораны")
+	if len(m.Moods) != 0 {
+		t.Errorf("no mood was said: %v", m.Moods)
+	}
+	m = wordsBacked(Intent{I: "find", Moods: []string{"romantic"}, Whose: "ours"}, "что-нибудь романтичное до 5000")
+	if !slices.Equal(m.Moods, []string{"romantic"}) || m.Whose != "" {
+		t.Errorf("romantic stays, «ours» goes: %+v", m)
+	}
+	if m := wordsBacked(Intent{I: "find", Whose: "ours"}, "что-нибудь из нашей копилки"); m.Whose != "ours" {
+		t.Errorf("ours was said: %+v", m)
+	}
+	if m := wordsBacked(Intent{I: "find", Whose: "new"}, "Хочу другие варианты которых нет у нас в банке"); m.Whose != "new" {
+		t.Errorf("new was said: %+v", m)
+	}
+}
+
+// a cuisine fits only a place to eat; «кино» is a film, not «кинопарк»
+func TestKindFitsCategory(t *testing.T) {
+	expo := store.Idea{Idea: domain.Idea{Title: "«Ютори — слушая воздух» в галерее", Category: "culture"}, Why: "японская графика"}
+	cafe := store.Idea{Idea: domain.Idea{Title: "«Белый журавль» — корейский ресторан", Category: "food"}}
+	if fitsKinds(expo, []string{"азиатская кухня"}) || !fitsKinds(cafe, []string{"азиатская кухня"}) {
+		t.Error("азиатская кухня: only the restaurant")
+	}
+	park := store.Idea{Idea: domain.Idea{Title: "Автокиновыставка в кинопарке «Москино»", Category: "culture"}}
+	film := store.Idea{Idea: domain.Idea{Title: "Кино в «Октябре»: премьера", Category: "culture"}}
+	if fitsKinds(park, []string{"кино"}) || !fitsKinds(film, []string{"кино"}) {
+		t.Error("кино: only the film")
 	}
 }

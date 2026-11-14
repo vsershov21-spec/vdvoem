@@ -13,7 +13,7 @@ test('E43 колода на главной: свайп, совпадение, в
   const card = p.getByTestId('triage-card')
   await expect(card).toContainText('Музей Темноты') // the partner's marked one first
   await expect(p.getByLabel('Добавить идею')).toBeVisible() // «add» is the plus of the ask bar
-  await expect(p.locator('#tab-ai')).toHaveCount(0) // four tabs, the assistant is the bar
+  await expect(p.locator('#tab-ai')).toBeVisible() // the assistant: its own tab and the bar on the main screen
   await shot(p, 'E43-deck')
   await p.getByRole('button', { name: 'Хочу', exact: true }).click()
   await expect(p.getByTestId('match-sheet')).toBeVisible()
