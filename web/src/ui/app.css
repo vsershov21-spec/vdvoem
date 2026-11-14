@@ -793,3 +793,12 @@ button.island{border:0;font:inherit;padding:0;display:block;text-align:left}
 .props__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .props__main b{font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .props__main span{font-size:12.5px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* choosing what for the common time: our matches as rows */
+.pickrow{display:flex;align-items:center;gap:10px;padding:6px 10px 6px 6px;border-radius:18px;background:var(--surface);box-shadow:var(--shadow-card)}
+.pickrow.is-mine{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 55%,transparent),var(--shadow-card)}
+.pickrow__open{appearance:none;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0;padding:0}
+.pickrow__img{width:72px;flex:none;border-radius:13px;overflow:hidden}
+.pickrow__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pickrow__main b{font-size:15px;font-weight:650;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pickrow__main span{font-size:12.5px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pickrow__tag{align-self:flex-start;opacity:1!important;color:var(--accent);font-weight:650}

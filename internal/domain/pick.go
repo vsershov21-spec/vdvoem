@@ -216,3 +216,38 @@ func whyBase(has func(string) bool) string {
 	}
 	return "Подходит по времени."
 }
+
+// PickForTime: what to choose from once the common time is known — first everything both already want that
+// fits it (up to max), then the best of the rest so there are at least three. The blind vote for a triple is
+// gone: the list is the couple's own matches, picked in the open.
+func PickForTime(in PickInput, max int) []Scored {
+	base := PickTriple(in)
+	if len(base) == 0 {
+		return nil
+	}
+	want := func(w Wish) bool { return w == WishWant || w == WishVery }
+	var out []Scored
+	used := map[int64]bool{}
+	var both []Scored
+	for _, i := range in.Ideas {
+		if !want(i.WishA) || !want(i.WishB) {
+			continue
+		}
+		if w, ok := Eligible(i, in); ok {
+			sc, sig := Score(i, in.Now)
+			both = append(both, Scored{i, sc, sig, w})
+		}
+	}
+	sort.SliceStable(both, func(a, b int) bool { return both[a].Score > both[b].Score })
+	for _, c := range both {
+		if len(out) < max {
+			out, used[c.Idea.ID] = append(out, c), true
+		}
+	}
+	for _, c := range base {
+		if len(out) < 3 && !used[c.Idea.ID] {
+			out, used[c.Idea.ID] = append(out, c), true
+		}
+	}
+	return out
+}

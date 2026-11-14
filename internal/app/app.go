@@ -857,7 +857,7 @@ func (a *App) pick(ctx context.Context, c Couple, r domain.Round, wins []domain.
 	for _, i := range ideas {
 		in.Ideas = append(in.Ideas, i.Idea)
 	}
-	return domain.PickTriple(in), nil
+	return domain.PickForTime(in, 6), nil
 }
 
 func (a *App) fixTime(ctx context.Context, c Couple, r *domain.Round) {
@@ -913,23 +913,21 @@ func (a *App) announceVote(ctx context.Context, c Couple, r domain.Round) {
 		return
 	}
 	var lines []string
-	var btn []tg.Button
+	var rows [][]tg.Button
 	for k, id := range r.Triple {
 		i, err := a.S.Idea(ctx, c.Space.ID, id)
 		if err != nil {
 			continue
 		}
-		mark := ""
-		if k == 0 {
-			mark = " — <i>мой фаворит</i>"
+		lines = append(lines, fmt.Sprintf("%d. <b>%s</b>\n%s", k+1, esc(i.Title), esc(IdeaMeta(i))))
+		if k%3 == 0 {
+			rows = append(rows, nil)
 		}
-		lines = append(lines, fmt.Sprintf("%d. <b>%s</b>%s\n%s", k+1, esc(i.Title), mark, esc(IdeaMeta(i))))
-		btn = append(btn, tg.CB(fmt.Sprintf("За %d", k+1), fmt.Sprintf("v:%d:%d", r.ID, id)))
+		rows[len(rows)-1] = append(rows[len(rows)-1], tg.CB(fmt.Sprintf("%d", k+1), fmt.Sprintf("v:%d:%d", r.ID, id)))
 	}
-	why := a.why(ctx, c, r)
+	rows = append(rows, tg.Row(tg.App("Открыть в приложении", a.appURL(fmt.Sprintf("round/%d", r.ID))), tg.CB("Другие", fmt.Sprintf("rs:%d", r.ID))))
 	for _, m := range a.both(c) {
-		a.send(ctx, m.ChatID, "Я подобрал варианты. "+esc(why)+"\n\n"+strings.Join(lines, "\n\n")+"\n\nГолос партнёра откроется после твоего.",
-			tg.Keyboard(btn, tg.Row(tg.App("Открыть колоду", a.appURL(fmt.Sprintf("round/%d", r.ID))), tg.CB("Другая тройка", fmt.Sprintf("rs:%d", r.ID)))))
+		a.send(ctx, m.ChatID, "Вы оба свободны. Куда идём? Выбери номер — выбор партнёра видно сразу.\n\n"+strings.Join(lines, "\n\n"), tg.Keyboard(rows...))
 	}
 }
 
@@ -994,8 +992,15 @@ func (a *App) Vote(ctx context.Context, c Couple, roundID, ideaID int64) (domain
 	case r.VotedBoth():
 		a.announceMismatch(ctx, c, r)
 	case c.Partner != nil:
-		a.sendQuiet(ctx, c.Partner.ChatID, fmt.Sprintf("%s %s. Твой голос — и узнаете, совпали ли.", esc(c.Me.Name), Past(c.Me.Name, "проголосовал")),
-			tg.Keyboard(tg.Row(tg.App("Открыть колоду", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
+		title := "ни один вариант"
+		if i, err := a.S.Idea(ctx, c.Space.ID, ideaID); err == nil {
+			title = "«" + i.Title + "»"
+		}
+		kb := tg.Keyboard(tg.Row(tg.App("Выбрать другое", a.appURL(fmt.Sprintf("round/%d", r.ID)))))
+		if ideaID > 0 {
+			kb = tg.Keyboard(tg.Row(tg.CB("Идём", fmt.Sprintf("v:%d:%d", r.ID, ideaID))), tg.Row(tg.App("Выбрать другое", a.appURL(fmt.Sprintf("round/%d", r.ID)))))
+		}
+		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s за %s.", esc(c.Me.Name), esc(title)), kb)
 	}
 	return r, nil
 }
@@ -1015,17 +1020,15 @@ func (a *App) Compromise(ctx context.Context, c Couple, r domain.Round) *store.I
 }
 
 func (a *App) announceMismatch(ctx context.Context, c Couple, r domain.Round) {
+	// picks are open and each already got «X за …» with «Идём»: a second message about the difference is noise.
+	// Only the middle ground is worth a word.
 	comp := a.Compromise(ctx, c, r)
+	if comp == nil {
+		return
+	}
 	for _, m := range a.both(c) {
-		rows := [][]tg.Button{tg.Row(tg.CB("Другая тройка", fmt.Sprintf("rs:%d", r.ID)), tg.App("Открыть колоду", a.appURL(fmt.Sprintf("round/%d", r.ID))))}
-		text := "Голоса разошлись."
-		if comp != nil {
-			text += fmt.Sprintf(" Есть вариант, который оба готовы рассмотреть: <b>%s</b>.", esc(comp.Title))
-			rows = append([][]tg.Button{tg.Row(tg.CB("Давай его", fmt.Sprintf("v:%d:%d", r.ID, comp.ID)))}, rows...)
-		} else {
-			text += " Можно переголосовать или взять другую тройку."
-		}
-		a.send(ctx, m.ChatID, text, tg.Keyboard(rows...))
+		a.send(ctx, m.ChatID, fmt.Sprintf("Выбрали разное. Оба не против: <b>%s</b>.", esc(comp.Title)),
+			tg.Keyboard(tg.Row(tg.CB("Идём туда", fmt.Sprintf("v:%d:%d", r.ID, comp.ID))), tg.Row(tg.App("Открыть в приложении", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
 	}
 }
 

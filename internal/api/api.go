@@ -820,7 +820,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	if voteMe != 0 {
 		out["my_vote"] = voteMe
 	}
-	if voteMe != 0 && voteOther != 0 {
+	if voteOther != 0 { // picks are made in the open: the partner's is visible at once
 		out["partner_vote"] = voteOther
 	}
 	if sentMe && sentOther {
