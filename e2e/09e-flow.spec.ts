@@ -42,9 +42,10 @@ test('E45 календарь телефона: баннер уходит пос�
   await expect(p.getByTestId('calsheet')).toContainText('1. Наши встречи → в телефон')
   await expect(p.getByTestId('calsheet')).toContainText('2. Моя занятость ← из телефона')
   await shot(p, 'E45-sheet')
-  const popup = p.waitForEvent('popup').catch(() => null)
+  // the link itself opens the phone's calendar app: in the test it is only recorded
+  await p.evaluate(() => { (window as any).__opened = []; window.open = ((u: string) => { (window as any).__opened.push(u); return null }) as any })
   await p.getByRole('button', { name: /Добавить в (Google Календарь|Календарь iPhone)/ }).click()
-  await (await popup)?.close()
+  expect(await p.evaluate(() => (window as any).__opened.length)).toBe(1)
   await expect(p.getByTestId('calsheet')).toContainText('ждём телефон')
   await p.keyboard.press('Escape')
   await p.reload()
