@@ -2,6 +2,7 @@ import type React from 'react'
 import { useState } from 'react'
 import type { Home as HomeT, Round } from '../lib/types'
 import { go } from '../lib/router'
+import { emit } from '../lib/data'
 import { post, humanError } from '../lib/api'
 import { useOnline } from '../lib/live'
 import { relLeft, ncase, past } from '../lib/format'
@@ -10,7 +11,6 @@ import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, Skel, toast } from '../ui/kit'
 import { answerUrgent, type UrgentAsk } from '../ui/Urgent'
 import { Deck } from '../ui/Deck'
-import { Going } from '../ui/Going'
 import { proposalsFor } from '../ui/Route'
 
 // The main screen is the deck. Order by what matters: who we are → what waits for my answer (one slim row each,
@@ -32,7 +32,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
           <Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} online={partnerHere} />
         </button>
       </header>
-      {!home.paired && <Invite />}
+      {!home.paired && <Invite until={home.invite_until} />}
       <Inbox home={home} />
       {home.paired && <>
         <Deck partner={home.partner} onAdd={onAdd} />
@@ -45,7 +45,6 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
       </>}
       {!home.paired && <AskBar />}
       {home.taste_set === false && <TasteNudge />}
-      {(home.going?.length || 0) > 1 && <Going list={home.going!} />}
     </>
   )
 }
@@ -144,20 +143,27 @@ function NextCard({ r }: { r: Round }) {
   )
 }
 
-function Invite() {
+// alone: the only thing to do is to bring the partner in. Three steps, the current one marked; an invitation
+// already sent shows how long it lives and can be sent again.
+function Invite({ until }: { until?: number }) {
   const [busy, setBusy] = useState(false)
   const share = async () => {
     setBusy(true)
-    try { const { link } = await post<{ link: string }>('/invite'); shareLink(link, 'Давай планировать выходные вместе — в «Вдвоём»') }
+    try { const { link } = await post<{ link: string }>('/invite'); shareLink(link, 'Давай планировать выходные вместе — в «Вдвоём»'); emit('home') }
     catch (e) { toast(humanError(e)) } finally { setBusy(false) }
   }
+  const left = until ? Math.max(1, Math.ceil((until * 1000 - Date.now()) / 36e5)) : 0
   return (
     <section className="hero rise" data-testid="invite">
       <div className="hero__blob" style={{ background: 'var(--person-a)', top: -60, left: -40 }} />
-      <h1 className="display" style={{ maxWidth: 260 }}>Вдвоём интереснее</h1>
-      <p className="callout" style={{ opacity: .85, margin: '8px 0 18px', maxWidth: 290 }}>Пригласи партнёра — у вас будет общая копилка идей, а я буду искать время, когда вы оба свободны.</p>
-      <Btn kind="primary" busy={busy} onClick={share} icon="share">Пригласить</Btn>
-      <p className="caption" style={{ opacity: .7, margin: '12px 0 0' }}>Пока можно складывать идеи — они станут общими.</p>
+      <h1 className="display" style={{ maxWidth: 260 }}>{until ? 'Ждём партнёра' : 'Создай пару'}</h1>
+      <ol className="pairsteps">
+        <li data-done="">Ты в приложении</li>
+        <li data-done={until ? '' : undefined} data-now={until ? undefined : ''}>Отправь ссылку партнёру</li>
+        <li data-now={until ? '' : undefined}>Партнёр открывает её в Telegram</li>
+      </ol>
+      <Btn kind="primary" busy={busy} onClick={share} icon="share">{until ? 'Отправить ещё раз' : 'Пригласить'}</Btn>
+      <p className="caption" style={{ opacity: .7, margin: '12px 0 0' }}>{until ? `Ссылка действует ещё ${left >= 24 ? Math.round(left / 24) + ' дн.' : left + ' ч'} и сработает один раз.` : 'Идеи можно добавлять уже сейчас — они станут общими.'}</p>
     </section>
   )
 }

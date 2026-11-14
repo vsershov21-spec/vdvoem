@@ -214,6 +214,15 @@ func (s *Store) CreateInvite(ctx context.Context, spaceID int64, code string, ex
 	return err
 }
 
+// PendingInvite: when the newest unused invite of the space runs out (zero time — none is waiting)
+func (s *Store) PendingInvite(ctx context.Context, spaceID int64, now time.Time) time.Time {
+	var exp int64
+	if err := s.DB.QueryRowContext(ctx, `SELECT COALESCE(MAX(expires_at),0) FROM invites WHERE space_id=? AND used_at IS NULL AND expires_at>?`, spaceID, now.Unix()).Scan(&exp); err != nil || exp == 0 {
+		return time.Time{}
+	}
+	return time.Unix(exp, 0)
+}
+
 // UseInvite marks the code used and returns its space. Expired or used codes are ErrNotFound.
 func (s *Store) UseInvite(ctx context.Context, code string, now time.Time) (int64, error) {
 	var sp int64

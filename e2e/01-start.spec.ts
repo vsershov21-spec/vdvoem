@@ -18,7 +18,8 @@ test('E02 один в приложении: приглашение, идеи к�
   const [solo] = people('Соло', '-')
   const ctx = await phone(browser)
   const p = await open(ctx, solo)
-  await expect(p.getByTestId('invite')).toBeVisible()
+  await expect(p.getByTestId('invite')).toContainText('Партнёр открывает её в Telegram') // the three steps of making a pair
+  await expect(p.getByTestId('invite').getByRole('button', { name: /Пригласить|Отправить ещё раз/ })).toBeVisible()
   await expect(p.getByTestId('island')).toContainText('ждём партнёра')
   await shot(p, 'E02-solo-home')
   await p.getByLabel('Добавить идею').click()

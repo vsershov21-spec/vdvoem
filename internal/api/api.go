@@ -508,6 +508,11 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	}
 	out["counts"] = map[string]int{"ideas": leisure, "chores": chores, "both_want": both, "unmarked": nUnmarked, "fresh": fresh}
 	out["taste_set"] = !a.App.Taste(ctx, c.Me.ID).Empty()
+	if c.Partner == nil { // alone: is an invitation still waiting to be opened
+		if t := a.App.S.PendingInvite(ctx, c.Space.ID, a.App.Now()); !t.IsZero() {
+			out["invite_until"] = t.Unix()
+		}
+	}
 	out["to_mark"] = unmarked
 	out["urgent"] = a.App.UrgentForMe(ctx, c)
 	out["going"] = a.goingRounds(ctx, c)

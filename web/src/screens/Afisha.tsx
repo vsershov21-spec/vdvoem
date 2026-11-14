@@ -1,6 +1,6 @@
 // «Афиша» — what the scout found: the week ahead and announcements 1–3 months out, ranked by how much
 // you both would like it (each person's own learned taste). Images load straight from the listing sites.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Idea, Wish } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, humanError } from '../lib/api'
@@ -9,6 +9,10 @@ import { haptic } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Btn, Empty, Segmented, Sheet, Skel, SubHeader, toast } from '../ui/kit'
 import { EventCard } from '../ui/EventCard'
+import { MonthGrid, type DayMark } from '../ui/Charts'
+
+const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+const ymdOf = (unix: number) => { const d = new Date(unix * 1000); return `${ym(d)}-${String(d.getDate()).padStart(2, '0')}` }
 
 type KV = { k: string; n: number }
 type Res = { ideas: Idea[]; counts: Record<string, number>; genres: KV[]; cats: KV[] }
@@ -21,6 +25,7 @@ const load = (): F => { try { return { hz: 'all', source: 'all', sort: 'match', 
 export function Afisha({ embedded }: { embedded?: boolean }) {
   const [f, setF] = useState<F>(load)
   const [more, setMore] = useState(false)
+  const [byDay, setByDay] = useState(false)
   const upd = (p: Partial<F>) => { haptic.select(); setF(x => { const n = { ...x, ...p }; try { localStorage.setItem('vd-afisha', JSON.stringify(n)) } catch { /* private */ } return n }) }
   const qs = new URLSearchParams({ horizon: f.hz, source: f.source, sort: f.hz === 'ending' ? 'date' : f.sort, ...(f.fresh ? { fresh: '1' } : {}), ...(f.genre ? { genre: f.genre } : {}), ...(f.cat ? { cat: f.cat } : {}) })
   const res = useLoad<Res>('/afisha?' + qs)
@@ -30,7 +35,7 @@ export function Afisha({ embedded }: { embedded?: boolean }) {
       await post('/ideas/' + i.id + '/wish', { wish: w })
       res.set(r => r && { ...r, ideas: r.ideas.map(x => x.id === i.id ? { ...x, my_wish: w } : x) })
       emit('ideas'); emit('home')
-      if (w !== 'skip') toast(w === 'very' ? 'Очень хочу ✓ — в копилке' : 'Хочу ✓ — в копилке')
+      if (w !== 'skip') toast(w === 'very' ? 'Очень хочу ✓ — в копилке' : 'Хочу ✓ — в наших идеях')
     } catch (e) { toast(humanError(e)) }
   }
   const counts = res.data?.counts || {}
@@ -38,6 +43,10 @@ export function Afisha({ embedded }: { embedded?: boolean }) {
   const extra = (f.source !== 'all' ? 1 : 0) + (f.fresh ? 1 : 0) + (f.sort !== 'match' ? 1 : 0) + (f.genre ? 1 : 0)
   return (<>
     {!embedded && <SubHeader title="Афиша" />}
+    <div className="row" style={{ justifyContent: 'flex-end', margin: '-4px 0 8px' }}>
+      <button className="link" data-testid="afisha-view" onClick={() => { haptic.select(); setByDay(x => !x) }}><Icon n={byDay ? 'folder' : 'cal'} s={14} />{byDay ? 'Списком' : 'По дням'}</button>
+    </div>
+    {byDay ? <AfishaMonth /> : <>
     <div className="wkchips fchips" role="tablist" aria-label="Когда">
       {([['all', 'Всё'], ['week', 'Ближайшие 2 недели'], ['ending', '⏳ Скоро закончатся'], ['later', 'Анонсы']] as [F['hz'], string][]).filter(([k]) => k === 'all' || k === f.hz || counts[k] !== 0).map(([k, l]) =>
         <button key={k} className="wkchip" role="tab" aria-selected={f.hz === k} data-on={f.hz === k || undefined} onClick={() => upd({ hz: k })}>{l}{n(k)}</button>)}
@@ -73,5 +82,44 @@ export function Afisha({ embedded }: { embedded?: boolean }) {
         ? 'Сними фильтр — или скажи помощнику «следи за …», и скаут поищет специально.'
         : 'Скаут приносит события под ваши вкусы, каналы — посты, которые ты пересылаешь боту.'} />
       : <div className="col">{res.data.ideas.map((i, k) => <EventCard key={i.id} i={i} k={k} onMark={mark} />)}</div>}
+    </>}
   </>)
 }
+
+// «По дням»: dots for days with events (the number of them), a tap on a day lists them; «Хочу» takes one
+// into our bank. Only events with a date — exhibitions running for weeks live in the afisha's «Скоро закончатся».
+function AfishaMonth() {
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
+  const today = ymdOf(Date.now() / 1000)
+  const res = useLoad<{ ideas: Idea[] }>('/afisha?sort=date&month=' + ym(month))
+  const [sel, setSel] = useState('')
+  const day = today || ymdOf(Date.now() / 1000)
+  const marks = useMemo(() => {
+    const m: Record<string, DayMark> = {}
+    for (const i of res.data?.ideas || []) if (i.starts_at) { const x = (m[ymdOf(i.starts_at)] ||= {}); x.events = (x.events || 0) + 1 }
+    return m
+  }, [res.data])
+  const list = (res.data?.ideas || []).filter(i => i.starts_at && (sel ? ymdOf(i.starts_at) === sel : ymdOf(i.starts_at) >= day))
+  const mark = async (i: Idea, w: Wish) => {
+    haptic.tap()
+    try {
+      await post('/ideas/' + i.id + '/wish', { wish: w })
+      res.set(r => r && { ...r, ideas: r.ideas.map(x => x.id === i.id ? { ...x, my_wish: w } : x) })
+      emit('ideas'); emit('home')
+      if (w !== 'skip') toast(w === 'very' ? 'Очень хочу ✓ — в наших идеях' : 'Хочу ✓ — в наших идеях')
+    } catch (e) { toast(humanError(e)) }
+  }
+  return (<>
+    {!res.data ? <Skel h={330} r={24} /> : <div className="rise">
+      <MonthGrid month={month} marks={marks} today={today} selected={sel} legend={[['#f0b400', 'события дня']]}
+        onSelect={d => setSel(s => s === d ? '' : d)} onMonth={n => { setSel(''); setMonth(m => new Date(m.getFullYear(), m.getMonth() + n, 1)) }} />
+    </div>}
+    <div className="sec"><h2 className="title"><span className="orange-ind" />{sel ? new Date(sel + 'T12:00').toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Афиша месяца'}</h2>
+      {sel && <button className="link" onClick={() => setSel('')}>Все</button>}</div>
+    {!res.data ? null : list.length === 0
+      ? <div className="card"><Empty title={sel ? 'В этот день событий нет' : 'В этом месяце событий с датой нет'} text="Скаут приносит события каждый день — или спроси помощника «найди новое на …»." /></div>
+      : <div className="col">{list.map((i, k) => <EventCard key={i.id} i={i} k={k} onMark={mark} />)}</div>}
+  </>)
+}
+
+

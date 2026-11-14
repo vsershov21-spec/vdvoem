@@ -33,7 +33,7 @@ export type RouteStop = { id: number; idea: Idea; starts_at: number; ends_at: nu
 export type Home = {
   me: Person; partner?: Person; paired: boolean
   counts: { ideas: number; chores: number; both_want: number; unmarked: number; fresh?: number }
-  taste_set?: boolean
+  taste_set?: boolean; invite_until?: number
   to_mark: Idea[]; round?: Round; next?: Round
   urgent?: { idea_id: number; title: string; note?: string; when?: string; fixed: boolean }[]
   going?: Round[]

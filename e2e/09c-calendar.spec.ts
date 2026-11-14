@@ -38,9 +38,11 @@ test('E42 календарь: «Наше» без чужих событий, «�
 
   const p = await open(await phone(browser), v)
   await tab(p, 'cal')
-  await expect(p.getByRole('tab', { name: 'Наше' })).toHaveAttribute('aria-selected', 'true')
-  await expect(p.locator('.sched__row', { hasText: 'Выставка' })).toHaveCount(0)
-  await p.getByRole('tab', { name: 'Афиша' }).click()
+  await expect(p.locator('.sched__row', { hasText: 'Выставка' })).toHaveCount(0) // «Планы» hold only our meetings
+  await expect(p.getByRole('tab', { name: 'Афиша' })).toHaveCount(0)
+  // the afisha by days lives in «Идеи → Афиша»
+  await p.goto('/app/ideas/scout')
+  await p.getByTestId('afisha-view').click()
   const now = new Date(), [ty, tm] = day(4).split('-').map(Number)
   for (let k = (ty - now.getFullYear()) * 12 + tm - 1 - now.getMonth(); k > 0; k--) await p.getByLabel('Следующий месяц').click()
   const cell = p.getByLabel(day(4).slice(0, 10))
