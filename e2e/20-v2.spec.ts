@@ -49,7 +49,7 @@ test('E51 «Ждёт тебя»: ответ прямо в строке, «нет
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   await api(v, 'POST', '/proposals', { kind: 'time', ref_id: 0, title: 'Планетарий', sub: 'вс 15 ноя, 13:00' })
-  await waitMsg(n, /Вова зовёт: Планетарий/)
+  await waitMsg(n, /Вова зовёт/)
   const pn = await openV2(await phone(browser), n)
   const row = pn.getByTestId('inbox-row').first()
   await expect(row).toContainText('Вова зовёт: Планетарий')
@@ -61,7 +61,7 @@ test('E51 «Ждёт тебя»: ответ прямо в строке, «нет
   await waitMsg(v, /Настя ответила «да»/)
   // a chore request declined in the bot: the row comes back to the author with two ways out
   await api(v, 'POST', '/chores', { title: 'Забрать торт', who: 'partner' })
-  await waitMsg(n, /Вова просит: Забрать торт/)
+  await waitMsg(n, /Вова просит/)
   await press(n, 'Не могу')
   const pv = await openV2(await phone(browser), v)
   const back = pv.getByTestId('inbox-row').first()

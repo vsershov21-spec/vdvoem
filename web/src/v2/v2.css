@@ -281,3 +281,6 @@
 .v2 .fld input,.v2 .fld textarea{padding:0;resize:none;font-size:16px}
 .v2 .fld input::placeholder,.v2 .fld textarea::placeholder{color:var(--a-mute);opacity:.8}
 @media (prefers-reduced-motion:no-preference){.v2 .v2-wrap.t-push{animation:push .34s cubic-bezier(.16,1,.3,1)}}
+/* an open sheet covers the bottom panel: the screen's layer rises above it for that time */
+.v2 .v2-wrap:has(.scrim){z-index:20}
+.v2 .nav{z-index:5}.v2 .toast{z-index:25}
