@@ -85,7 +85,7 @@ test('E19 календарь: встречи и дедлайны на днях, 
   const free = p.locator('.mcal__day:not(.is-past):not(.is-planned):not(.is-today)').last()
   const date = await free.getAttribute('aria-label')
   await free.click()
-  await p.getByRole('button', { name: 'Выбрать вместе на этот день' }).click()
+  await p.getByRole('button', { name: 'Что можно в этот день' }).click()
   await expect(p.getByText('Когда удобно')).toBeVisible()
   const cur = (await api(v, 'GET', '/rounds/current')).round
   expect(cur.days[0]).toBe(date)

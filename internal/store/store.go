@@ -214,6 +214,15 @@ func (s *Store) CreateInvite(ctx context.Context, spaceID int64, code string, ex
 	return err
 }
 
+// PendingInvite: when the newest unused invite of the space runs out (zero time — none is waiting)
+func (s *Store) PendingInvite(ctx context.Context, spaceID int64, now time.Time) time.Time {
+	var exp int64
+	if err := s.DB.QueryRowContext(ctx, `SELECT COALESCE(MAX(expires_at),0) FROM invites WHERE space_id=? AND used_at IS NULL AND expires_at>?`, spaceID, now.Unix()).Scan(&exp); err != nil || exp == 0 {
+		return time.Time{}
+	}
+	return time.Unix(exp, 0)
+}
+
 // UseInvite marks the code used and returns its space. Expired or used codes are ErrNotFound.
 func (s *Store) UseInvite(ctx context.Context, code string, now time.Time) (int64, error) {
 	var sp int64
@@ -633,6 +642,60 @@ func (s *Store) LogAI(ctx context.Context, task, provider, in, out string, ok bo
 }
 
 // DeleteSpace removes every row of a couple (both asked for it).
+// MoveMember: someone who used the app alone joins a pair. The member row itself moves (so sessions, passkeys,
+// chat, memories and taste stay theirs), the ideas they added alone come along with their own mark on their
+// side, and what is left of the solo space is removed.
+func (s *Store) MoveMember(ctx context.Context, memberID, from, to int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM members WHERE space_id=?`, to).Scan(&n); err != nil {
+		return err
+	}
+	if n >= 2 {
+		return ErrFull
+	}
+	color := "a"
+	if n == 1 {
+		if err := tx.QueryRowContext(ctx, `SELECT CASE color WHEN 'a' THEN 'b' ELSE 'a' END FROM members WHERE space_id=?`, to).Scan(&color); err != nil {
+			return err
+		}
+	}
+	// alone the person was «a»; their marks go to the side they take in the pair
+	wish := `wish_b=wish_a, wish_a=''`
+	if color == "a" {
+		wish = `wish_a=wish_a`
+	}
+	steps := []struct {
+		q    string
+		args []any
+	}{
+		{`UPDATE OR IGNORE ideas SET space_id=?, ` + wish + ` WHERE space_id=? AND source=''`, []any{to, from}},
+		{`UPDATE members SET space_id=?, color=? WHERE id=?`, []any{to, color, memberID}},
+		{`UPDATE assistant_messages SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE assistant_actions SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE memories SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE scout_goals SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE scout_questions SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE picks SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`DELETE FROM photos WHERE round_id IN (SELECT id FROM rounds WHERE space_id=?)`, []any{from}},
+		{`DELETE FROM rounds WHERE space_id=?`, []any{from}},
+		{`DELETE FROM urgent WHERE space_id=?`, []any{from}},
+		{`DELETE FROM ideas WHERE space_id=?`, []any{from}},
+		{`DELETE FROM invites WHERE space_id=?`, []any{from}},
+		{`DELETE FROM spaces WHERE id=?`, []any{from}},
+	}
+	for _, st := range steps {
+		if _, err := tx.ExecContext(ctx, st.q, st.args...); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) DeleteSpace(ctx context.Context, spaceID int64) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {

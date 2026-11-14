@@ -998,3 +998,33 @@ func TestAssistantKinoTodayNothing(t *testing.T) {
 		t.Fatalf("no Italian → say so, no other cards: %+v", it)
 	}
 }
+
+// someone who collected ideas alone and then joins by an invitation keeps them: they move into the pair's
+// space with the joiner as the author and their own mark on their side
+func TestJoinKeepsSoloIdeas(t *testing.T) {
+	a, _, _ := setup(t)
+	ctx := context.Background()
+	_, link, _ := a.Start(ctx, app.Profile{TGID: 1, ChatID: 1, Name: "Вова"}, "")
+	solo, _, err := a.Start(ctx, app.Profile{TGID: 2, ChatID: 2, Name: "Настя"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.AddIdea(ctx, solo, "Бранч на Патриках")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.SetWish(ctx, solo, res.Idea.ID, domain.WishVery); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.Start(ctx, app.Profile{TGID: 2, ChatID: 2, Name: "Настя"}, link[strings.Index(link, "inv_"):]); err != nil {
+		t.Fatal(err)
+	}
+	n, _ := a.Couple(ctx, 2)
+	if n.Partner == nil || n.Me.Color != "b" {
+		t.Fatalf("not paired: %+v", n.Me)
+	}
+	ideas, _ := a.S.Ideas(ctx, n.Space.ID, domain.IdeaActive, domain.IdeaDraft)
+	if len(ideas) != 1 || ideas[0].Title != "Бранч на Патриках" || ideas[0].WishB != domain.WishVery || ideas[0].WishA != domain.WishNone || ideas[0].AuthorID != n.Me.ID {
+		t.Fatalf("the solo idea must come along as hers: %+v", ideas)
+	}
+}
