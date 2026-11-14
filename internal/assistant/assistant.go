@@ -1167,6 +1167,12 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			rep.Text = "Добавил в копилку. Сейчас разберу подробности и пришлю карточку."
 		}
 	case "plan":
+		if as.App.UsesV2(ctx, c.Me.ID) { // the new interface: a meeting without a time, the time is a proposal
+			if rep.Text, err = as.App.CallWords(ctx, c, p.IdeaID); err != nil {
+				return rep, err
+			}
+			break
+		}
 		_, err := as.App.GoWith(ctx, c, p.IdeaID)
 		switch {
 		case errors.Is(err, app.ErrNotPaired):
@@ -1179,6 +1185,12 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			rep.Text = "Отправил вам обоим: осталось отметить время."
 		}
 	case "book":
+		if as.App.UsesV2(ctx, c.Me.ID) { // the time of the event goes to the partner as a proposal
+			if rep.Text, err = as.App.CallWords(ctx, c, p.IdeaID); err != nil {
+				return rep, err
+			}
+			break
+		}
 		_, err := as.App.BookFixed(ctx, c, p.IdeaID)
 		if errors.Is(err, app.ErrNoTime) {
 			if _, err = as.App.GoWith(ctx, c, p.IdeaID); err == nil {
@@ -1197,6 +1209,10 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			rep.Text = "Позвал " + app.NameAcc(c.PartnerName()) + ". Как только подтвердит — событие придёт вам обоим в календарь."
 		}
 	case "round":
+		if as.App.UsesV2(ctx, c.Me.ID) && c.Partner != nil { // no choice by slots: a meeting starts from an idea
+			rep.Text = "Что совпало, лежит во вкладке «Идеи». Нажми «Идём» у идеи: партнёр получит приглашение."
+			break
+		}
 		if _, err := as.App.Go(ctx, c); errors.Is(err, app.ErrNotPaired) {
 			rep.Text = "Сначала пригласи партнёра."
 		} else if err != nil {

@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext } from '@playwright/test'
-import { people, pair, phone, api, addIdeas, shot, waitMsg, press, say, TOKEN, BASE, type U } from './lib'
+import { people, pair, phone, api, addIdeas, shot, waitMsg, noMsg, press, say, TOKEN, BASE, type U } from './lib'
 
 // Вдвоём 2.0 lives next to the current screens and opens with ?v2=1. These tests follow the accepted
 // scenarios (docs/v2/PROJECT.md): the home screen with the swipe deck, «Ждёт тебя», and going back by steps.

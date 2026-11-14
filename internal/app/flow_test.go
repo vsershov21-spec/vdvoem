@@ -1576,3 +1576,40 @@ func TestCallDatedEvent(t *testing.T) {
 		t.Fatalf("one open meeting at a time: %v", err)
 	}
 }
+
+// «Идём» from a chat (the assistant's button, the bot) in the new interface: the same meeting without a time,
+// and words for the one who called instead of «отметьте время»
+func TestCallWords(t *testing.T) {
+	a, f, _ := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	_ = a.SetUI(ctx, n.Me.ID, 2)
+	one, _ := a.AddIdea(ctx, v, "Музей космонавтики")
+	two, _ := a.AddIdea(ctx, v, "Кофе на Патриках")
+	start := f.n()
+	w, err := a.CallWords(ctx, v, one.Idea.ID)
+	if err != nil || !strings.Contains(w, "Предложи время в карточке встречи, Настя ответит") {
+		t.Fatalf("%q %v", w, err)
+	}
+	if tx, keys := f.since(start, 2); !strings.Contains(tx, "Вова зовёт: <b>Музей космонавтики</b>. Время ещё не выбрано.") || strings.Contains(keys, "|ts:") {
+		t.Fatalf("the partner is called: %q %q", tx, keys)
+	}
+	if w, _ := a.CallWords(ctx, n, one.Idea.ID); !strings.Contains(w, "уже есть") {
+		t.Fatalf("the same meeting is not made twice: %q", w)
+	}
+	if w, _ := a.CallWords(ctx, n, two.Idea.ID); !strings.Contains(w, "встреча без времени") {
+		t.Fatalf("one open meeting at a time, said in words: %q", w)
+	}
+	// the weekly «время планировать» has nothing to open in the new interface
+	sp, _ := a.S.Space(ctx, v.Space.ID)
+	r, _ := a.S.OpenRound(ctx, v.Space.ID)
+	_, _ = a.Cancel(ctx, v, r.ID)
+	start = f.n()
+	if err := a.ScheduledGo(ctx, sp); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.S.OpenRound(ctx, v.Space.ID); err == nil || f.n() != start {
+		t.Fatal("no round by slots is opened for the new interface")
+	}
+}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"vdvoem/internal/domain"
@@ -129,4 +130,23 @@ func (a *App) Rate(ctx context.Context, c Couple, roundID int64, k string) error
 		return err
 	}
 	return ErrBadInput
+}
+
+// CallWords: Call from a chat (the assistant, the bot) — and what to say to the one who called
+func (a *App) CallWords(ctx context.Context, c Couple, ideaID int64) (string, error) {
+	r, err := a.Call(ctx, c, ideaID)
+	switch {
+	case errors.Is(err, ErrNotPaired):
+		return "Сначала пригласи партнёра.", nil
+	case errors.Is(err, ErrRoundOpen) && r.Chosen == ideaID:
+		return "Эта встреча уже есть: она в «Планах».", nil
+	case errors.Is(err, ErrRoundOpen):
+		return "У вас уже есть встреча без времени. Выберите ей время или отмените её, потом позови на эту.", nil
+	case err != nil:
+		return "", err
+	}
+	if a.MeetProposals(ctx, c, r.ID)[domain.ProposalTime] != nil {
+		return "Встреча создана. " + c.PartnerName() + " получит предложение со временем.", nil
+	}
+	return "Встреча создана. Предложи время в карточке встречи, " + c.PartnerName() + " ответит.", nil
 }

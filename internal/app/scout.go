@@ -307,6 +307,10 @@ func (a *App) scoutDigest(ctx context.Context, ms []store.Member, top, later, go
 	}
 	rows = append(rows, tg.Row(tg.App("Афиша недели", a.appURL("ideas/scout"))))
 	for _, m := range ms {
+		if a.usesV2(ctx, m.ID) { // the new interface has a setting for the scout's finds in the bot (off unless asked)
+			a.tell(ctx, m, loc, "notify.scout", b.String(), tg.Keyboard(rows...))
+			continue
+		}
 		a.send(ctx, m.ChatID, b.String(), tg.Keyboard(rows...))
 	}
 }

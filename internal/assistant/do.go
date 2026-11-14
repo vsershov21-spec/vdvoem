@@ -561,6 +561,12 @@ func (r *run) book(ctx context.Context, in Intent) Reply {
 		return Reply{Text: "Не нашёл «" + short(in.Q, 40) + "». Пришли ссылку — добавлю и сразу позову " + app.NameAcc(r.c.PartnerName()) + "."}
 	}
 	r.addCard(ideaCard(i, ""))
+	if r.as.App.UsesV2(ctx, r.c.Me.ID) { // the new interface: the partner answers a proposal
+		if t, err := r.as.App.CallWords(ctx, r.c, i.ID); err == nil {
+			return Reply{Text: t}
+		}
+		return Reply{Text: "Не получилось. Попробуй ещё раз."}
+	}
 	_, err := r.as.App.BookFixed(ctx, r.c, i.ID)
 	if errors.Is(err, app.ErrNoTime) {
 		_, err = r.as.App.GoWith(ctx, r.c, i.ID)
