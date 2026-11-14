@@ -1,98 +1,11 @@
-import type React from 'react'
-import { useEffect, useState } from 'react'
-import { motion, useMotionValue, useTransform } from 'framer-motion'
-import type { Idea, Person } from '../lib/types'
-import { useLoad, emit } from '../lib/data'
-import { post, del, humanError } from '../lib/api'
-import { back, go } from '../lib/router'
-import { haptic } from '../lib/tg'
-import { past } from '../lib/format'
-import { Icon } from '../ui/icons'
-import { Btn, Cover, Empty, Skel, SubHeader, toast } from '../ui/kit'
+import type { Person } from '../lib/types'
+import { SubHeader } from '../ui/kit'
+import { Deck } from '../ui/Deck'
 
-// «Разобрать всё»: every unmarked idea and event, one card at a time — soonest dates first, so nothing
-// that is about to sell out waits at the bottom of a long list.
+// «Разобрать всё» as its own screen (from the bot and old links): the same deck as on the main screen
 export function Triage({ partner }: { partner?: Person }) {
-  const { data } = useLoad<{ ideas: Idea[]; total: number }>('/triage')
-  const [k, setK] = useState(0)
-  const [done, setDone] = useState(0)
-  const [busy, setBusy] = useState(false)
-  // the deck is fixed when it opens: marks made here (and the partner's live updates) must not reshuffle it
-  const [list, setList] = useState<Idea[] | null>(null)
-  useEffect(() => { if (data && !list) setList(data.ideas) }, [data])
-  if (!list) return <><SubHeader title="Разбор" /><Skel h={360} r={26} /><Skel h={60} /></>
-  const i = list[k]
-  const next = () => { setK(x => x + 1); setBusy(false) }
-  const act = async (f: () => Promise<unknown>, ok?: string) => {
-    if (busy || !i) return
-    setBusy(true)
-    try { await f(); haptic.select(); setDone(d => d + 1); if (ok) toast(ok); next() } catch (e) { toast(humanError(e)); setBusy(false) }
-  }
-  const wish = (w: 'very' | 'want' | 'skip') => act(() => post(`/ideas/${i.id}/wish`, { wish: w }))
-  const urgent = () => act(() => post(`/ideas/${i.id}/urgent`, {}), `${partner?.name || 'Партнёр'} получит просьбу ответить`)
-  const archive = () => act(() => del('/ideas/' + i.id))
-  if (!i) return (<>
-    <SubHeader title="Разбор" />
-    <div className="card rise"><Empty title={list.length ? 'Всё разобрали' : 'Разбирать нечего'} text={done ? `Отмечено: ${done}. Совпадения — в «Хотите оба», скоро помощник предложит лучшее.` : 'Все идеи и события уже с отметкой.'}>
-      <Btn kind="primary" sm onClick={() => { emit('home'); emit('ideas'); back('') }}>Готово</Btn>
-      {done > 0 && <Btn kind="soft" sm onClick={() => go('ideas/both')}>Хотите оба</Btn>}
-    </Empty></div>
-  </>)
-  const when = i.starts_at ? new Date(i.starts_at * 1000).toLocaleString('ru', { weekday: 'short', day: 'numeric', month: 'long', ...(new Date(i.starts_at * 1000).getHours() ? { hour: '2-digit', minute: '2-digit' } : {}) }) : ''
   return (<>
-    <SubHeader title={`Разбор · ${k + 1} из ${list.length}`} />
-    <div className="progress rise" style={{ ['--p' as any]: `${Math.round(100 * k / list.length)}%` }}><i /></div>
-    {k === 0 && <p className="caption muted" style={{ margin: '0 2px 8px', textAlign: 'center' }}>Можно свайпом: вправо — хочу · вверх — очень · влево — пропущу</p>}
-    <Swipe key={i.id} onSwipe={d => wish(d === 'right' ? 'want' : d === 'up' ? 'very' : 'skip')}>
-    <div className="card" data-testid="triage-card" style={{ padding: 8 }}>
-      <Cover idea={i} h={220} big>
-        <span>{when && <span className="pill pill--glass"><Icon n="cal" s={12} w={2.2} />{when}</span>}</span>
-        <div className="cover__title" style={{ fontSize: 22, lineHeight: '26px' }}>{i.title}</div>
-      </Cover>
-      <div className="col" style={{ gap: 8, padding: '12px 8px 6px' }}>
-        {i.meta && <p className="caption muted" style={{ margin: 0 }}>{i.meta}</p>}
-        {!!i.info?.genres?.length && <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>{i.info.genres.map(g => <span key={g} className="pill">{g}</span>)}</div>}
-        {i.info?.about && <p className="callout" style={{ margin: 0 }}>{i.info.about}</p>}
-        {i.why && <p className="acard__why" style={{ margin: 0 }}>{i.why}</p>}
-        {i.match?.note && <p className="caption acard__note" style={{ margin: 0 }}>Совпадение {i.match.both}% · {i.match.note}</p>}
-        {i.partner_marked && <p className="caption muted" style={{ margin: 0 }}>{partner?.name || 'Партнёр'} уже {past(partner?.name, 'отметил')} — увидишь после своей отметки</p>}
-      </div>
-    </div>
-    </Swipe>
-    <div className="triage__acts rise" style={{ ['--d' as any]: 1 }}>
-      {/* the three marks in one row, the same size; the rest quiet below */}
-      <div className="row" style={{ gap: 8 }}>
-        <Btn kind="surface" block icon="x" onClick={() => wish('skip')}>Пропущу</Btn>
-        <Btn kind="soft" block icon="check" onClick={() => wish('want')}>Хочу</Btn>
-        <Btn kind="accent" block icon="heart" onClick={() => wish('very')}>Очень хочу</Btn>
-      </div>
-      <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
-        {partner && <Btn kind="ghost" sm icon="flame" onClick={urgent}>Важно</Btn>}
-        <Btn kind="ghost" sm icon="clock" onClick={() => { haptic.select(); next() }}>Потом</Btn>
-        <Btn kind="ghost" sm icon="trash" onClick={archive}>Убрать</Btn>
-      </div>
-    </div>
+    <SubHeader title="Выбрать" />
+    <Deck partner={partner} />
   </>)
-}
-
-// a card you can throw: right — хочу, up — очень, left — пропущу (the buttons below do the same)
-function Swipe({ children, onSwipe }: { children: React.ReactNode; onSwipe: (d: 'left' | 'right' | 'up') => void }) {
-  const x = useMotionValue(0), y = useMotionValue(0)
-  const rotate = useTransform(x, [-200, 200], [-12, 12])
-  const like = useTransform(x, [30, 120], [0, 1]), nope = useTransform(x, [-120, -30], [1, 0]), very = useTransform(y, [-120, -30], [1, 0])
-  return (
-    <motion.div className="swipe" style={{ x, y, rotate, touchAction: 'none' }} drag dragSnapToOrigin dragElastic={0.9}
-      initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-      onDragEnd={(_, info) => {
-        const { offset: o, velocity: v } = info
-        if (o.y < -110 || v.y < -700) onSwipe('up')
-        else if (o.x > 110 || v.x > 700) onSwipe('right')
-        else if (o.x < -110 || v.x < -700) onSwipe('left')
-      }}>
-      <motion.span className="swipe__tag swipe__tag--like" style={{ opacity: like }}>Хочу</motion.span>
-      <motion.span className="swipe__tag swipe__tag--nope" style={{ opacity: nope }}>Пропущу</motion.span>
-      <motion.span className="swipe__tag swipe__tag--very" style={{ opacity: very }}>Очень!</motion.span>
-      {children}
-    </motion.div>
-  )
 }

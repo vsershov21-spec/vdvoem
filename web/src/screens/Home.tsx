@@ -1,86 +1,56 @@
 import { useState } from 'react'
-import type { Home as HomeT, Idea, Round, Stats, Wish } from '../lib/types'
+import type { Home as HomeT, Round } from '../lib/types'
 import { go } from '../lib/router'
 import { post, humanError } from '../lib/api'
-import { emit, useLoad, useOn } from '../lib/data'
 import { useOnline } from '../lib/live'
-import { relLeft, plural, money, ncase, past } from '../lib/format'
+import { relLeft, ncase, past } from '../lib/format'
 import { shareLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
-import { Avatar, Btn, Cover, CountUp, Empty, Skel, WishPicker, toast } from '../ui/kit'
-import { AreaChart, Bars, Gauge, Metric, Pulse } from '../ui/Charts'
+import { Avatar, Btn, Cover, Skel, toast } from '../ui/kit'
 import { UrgentList } from '../ui/Urgent'
+import { Deck } from '../ui/Deck'
 import { Going } from '../ui/Going'
 
+// The main screen is the deck: swipe ideas and events, a match goes straight to picking the time. Above it only
+// what needs you now (an answer, a meeting in progress, the next date); the assistant and «add» live in one bar.
 export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null; onAdd: () => void; onSurprise: (m: 'random' | 'best') => void; onStart: () => void }) {
-  const stats = useLoad<Stats>('/stats', 60000)
   const partnerHere = useOnline(home?.partner?.color)
-  useOn('home', stats.refresh)
-  if (!home) return (<><Skel h={44} /><Skel h={190} r={36} /><Skel h={84} /><Skel h={200} /></>)
+  if (!home) return (<><Skel h={44} /><Skel h={52} /><Skel h={430} r={32} /></>)
   const hour = new Date().getHours()
   const hello = hour < 5 ? 'Доброй ночи' : hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер'
   return (
     <>
-      <header className="hdr" style={{ height: 'auto', margin: '4px 0 14px' }}>
+      <header className="hdr" style={{ height: 'auto', margin: '4px 0 12px' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 className="title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} /* one line from the first frame, whatever the font: no jump when it loads */>{hello}, {home.me.name} 👋</h1>
+          <h1 className="title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hello}, {home.me.name}</h1>
           <p className="caption muted" style={{ margin: '2px 0 0' }}>{home.partner ? (partnerHere ? <span className="here">{home.partner.name} сейчас здесь</span> : `Планируем вдвоём с ${ncase(home.partner.name, 'ins')}`) : 'Пригласи партнёра — и начнём'}</p>
         </div>
         <button className="pairava" style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer' }} onClick={() => go('us')} aria-label="Мы">
           <Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} online={partnerHere} />
         </button>
       </header>
+      <div className="askbar rise">
+        <button id="ask-bar" className="askbar__q" onClick={() => go('assistant')}><Icon n="spark" s={19} /><span>Спроси или вставь ссылку</span></button>
+        <button className="askbar__plus" aria-label="Добавить идею" onClick={onAdd}><Icon n="plus" s={20} w={2.3} /></button>
+      </div>
       {!!home.urgent?.length && <div style={{ marginBottom: 12 }}><UrgentList items={home.urgent} partner={home.partner?.name || 'Партнёр'} /></div>}
-      {!home.paired ? <Invite /> : home.round ? <RoundCard r={home.round} home={home} /> : home.next ? <NextCard r={home.next} /> : <Hero home={home} onStart={onStart} />}
-      {home.paired && (
-        <div className="row rise" style={{ ['--d' as any]: 1, marginTop: 12, gap: 8 }}>
-          <Btn kind="surface" block icon="dice" onClick={() => onSurprise('random')}>Удиви нас</Btn>
-          <Btn kind="surface" block icon="spark" onClick={() => onSurprise('best')}>Лучшее для нас</Btn>
-        </div>
-      )}
+      {!home.paired ? <Invite /> : home.round ? <RoundCard r={home.round} home={home} /> : home.next ? <NextCard r={home.next} /> : null}
       {home.paired && <Now home={home} />}
+      {home.paired && <>
+        {/* no section title: the deck is the screen; matches so far — one quiet link */}
+        <div className="row" style={{ margin: home.round || home.next || home.urgent?.length ? '14px 2px 8px' : '0 2px 8px', minHeight: 20 }}>
+          <span className="caption muted">Свайпни: вправо — хочу, влево — нет</span><span className="spacer" />
+          {home.counts.both_want > 0 && <button className="link" onClick={() => go('ideas/both')}>Совпало · {home.counts.both_want}</button>}
+        </div>
+        <Deck partner={home.partner} />
+        <div className="row" style={{ gap: 8, marginTop: 14 }}>
+          <Btn kind="surface" block icon="dice" onClick={() => onSurprise('random')}>Удиви нас</Btn>
+          {!home.round && <Btn kind="surface" block icon="cal" onClick={onStart}>Выбрать вместе</Btn>}
+        </div>
+      </>}
       {home.taste_set === false && <TasteNudge />}
       {(home.going?.length || 0) > 1 && <Going list={home.going!} />}
-      <ToMark ideas={home.to_mark || []} total={home.counts.unmarked} onAdd={onAdd} />
-      {/* numbers mean something after a few meetings; before that they are zeros next to a planned date */}
-      {stats.data && stats.data.meetings >= 3 && <Dashboard s={stats.data} home={home} />}
     </>
-  )
-}
-
-function Dashboard({ s, home }: { s: Stats | null; home: HomeT }) {
-  // the same frame while the numbers load: heading, four tiles of the final height, the chart card — nothing below jumps
-  const months = s ? s.months.map(m => m.done + m.planned) : []
-  return (<>
-    <div className="sec"><h2 className="title"><span className="orange-ind" />Наша статистика</h2></div>
-    <div className="metrics">
-      {!s ? [0, 1, 2, 3].map(k => <Skel key={k} h={116} mb={0} />) : <>
-        <Metric label="Встречи" icon="cal" tone="orange" value={<CountUp to={s.meetings} />} unit={`${s.this_month} в этом мес.`} graph={<Bars values={months} tone="orange" />} onClick={() => go('calendar')} />
-        <Metric label="Совпадение" icon="heart" tone="pink" value={<><CountUp to={s.match} />%</>} unit={`${s.both_want} хотите оба`} graph={<Gauge value={s.match} tone="pink" />} onClick={() => go('ideas/both')} />
-        <Metric label="Идеи" icon="folder" tone="green" value={<CountUp to={s.ideas} />} unit={s.unmarked ? `${s.unmarked} без отметки` : 'все отмечены'} graph={s.week.some(Boolean) ? <Bars values={s.week} tone="green" /> : <Pulse tone="green" />} onClick={() => go('ideas')} />
-        <Metric label="Вместе" icon="clock" tone="blue" value={<CountUp to={Math.round(s.hours)} />} unit={s.spent ? `ч · ${money(s.spent)}` : 'часов'} graph={<Bars values={s.months.map(m => m.done)} tone="blue" />} onClick={() => go('us')} />
-      </>}
-    </div>
-    <div className="chartcard rise" style={{ ['--d' as any]: 3, marginTop: 10 }}>
-      <div className="chartcard__head"><h3>Наши встречи</h3><span className="chip-filter">6 месяцев</span></div>
-      <div className="chartcard__body">
-        {!s ? <Skel h={150} mb={0} /> : months.some(Boolean) ? <AreaChart labels={s.months.map(m => m.label)} values={months} peakLabel={v => `${v} ${plural(v, 'встреча', 'встречи', 'встреч')}`} />
-          : <Empty title="Пока без встреч" text={home.paired ? 'Первая встреча появится на графике, как только вы её запланируете.' : 'Пригласи партнёра, чтобы начать.'} />}
-      </div>
-    </div>
-  </>)
-}
-
-function Hero({ home, onStart }: { home: HomeT; onStart: () => void }) {
-  return (
-    <section className="hero rise">
-      <div className="hero__blob" style={{ background: 'var(--person-a)', top: -60, left: -40 }} />
-      <div className="hero__blob" style={{ background: 'var(--person-b)', bottom: -70, right: -30, animationDelay: '-4s' }} />
-      <p className="micro" style={{ opacity: .8, margin: '0 0 8px' }}>{home.me.name} и {home.partner?.name}</p>
-      <h1 className="display" style={{ maxWidth: 260 }}>Куда сходим на выходных?</h1>
-      <p className="callout" style={{ opacity: .85, margin: '8px 0 18px', maxWidth: 280 }}>Отметьте время — я найду, когда вы оба свободны, и предложу три варианта.</p>
-      <Btn kind="primary" shine onClick={onStart} icon="cal">Выбрать вместе</Btn>
-    </section>
   )
 }
 
@@ -126,7 +96,6 @@ function Now({ home }: { home: HomeT }) {
   if (r?.state === 'vote' && !r.voted) rows.push({ k: 'vote', icon: 'heart', title: 'Выбери из трёх вариантов', sub: 'Голос партнёра откроется после твоего', go: 'round/' + r.id, hot: true })
   if (r?.state === 'confirm' && !r.confirmed) rows.push({ k: 'conf', icon: 'check', title: 'Подтверди встречу', sub: r.chosen?.title || '', go: 'round/' + r.id, hot: true })
   for (const g of home.going || []) if (g.state === 'planned' && g.book && !g.tickets) rows.push({ k: 'tk' + g.id, icon: 'wallet', title: g.book.label, sub: [g.chosen?.title, g.when].filter(Boolean).join(' · '), go: 'round/' + g.id })
-  if ((home.counts.fresh || 0) > 0) rows.push({ k: 'fresh', icon: 'spark', title: `🆕 ${home.counts.fresh} новых от скаута и каналов`, sub: 'Сверху — то, что понравится вам обоим', go: 'ideas/scout' })
   if (!rows.length) return null
   return (<>
     <div className="sec"><h2 className="title"><span className="orange-ind" />Сейчас</h2></div>
@@ -147,21 +116,17 @@ function Who({ p, done, color }: { p: string; done: boolean; color: string }) {
   )
 }
 
+// the next date as one slim row: the deck below stays on the first screen
 function NextCard({ r }: { r: Round }) {
   if (!r.chosen || !r.starts_at) return null
   const ms = r.starts_at * 1000 - Date.now(), d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5)
+  const left = ms <= 0 ? 'уже сейчас' : d > 0 ? `через ${d} д ${h} ч` : `через ${h} ч ${Math.floor((ms % 36e5) / 6e4)} мин`
   return (
-    <div className="ticket rise card--tap" onClick={() => go('round/' + r.id)} data-testid="next-card">
-      <Cover idea={r.chosen} h={176}>
-        <span className="pill pill--glass" style={{ alignSelf: 'flex-start' }}><Icon n="cal" s={13} w={2.2} />Запланировано</span>
-        <div><div className="cover__title" style={{ fontSize: 22, lineHeight: '26px' }}>{r.chosen.title}</div>
-          <div className="caption" style={{ opacity: .9, marginTop: 4 }}>{r.when}</div></div>
-      </Cover>
-      <div className="row" style={{ padding: '12px 16px', gap: 16 }}>
-        <span className="caption muted">До встречи</span><span className="spacer" />
-        <b className="headline">{ms <= 0 ? 'уже сейчас' : d > 0 ? `${d} д ${h} ч` : `${h} ч ${Math.floor((ms % 36e5) / 6e4)} мин`}</b>
-      </div>
-    </div>
+    <button className="nextrow rise" onClick={() => go('round/' + r.id)} data-testid="next-card">
+      <span className="nextrow__img"><Cover idea={r.chosen} h={56}><span /><span /></Cover></span>
+      <span className="nextrow__main"><small>Ближайшая встреча · {left}</small><b>{r.chosen.title}</b><span>{r.when}</span></span>
+      <Icon n="chev" s={16} w={2.4} />
+    </button>
   )
 }
 
@@ -183,35 +148,6 @@ function Invite() {
   )
 }
 
-function ToMark({ ideas, total, onAdd }: { ideas: Idea[]; total: number; onAdd: () => void }) {
-  const [gone, setGone] = useState<Record<number, boolean>>({})
-  const mark = async (i: Idea, w: Wish) => {
-    if (!w) return
-    setTimeout(() => setGone(g => ({ ...g, [i.id]: true })), w === 'very' ? 650 : 150)
-    try { await post(`/ideas/${i.id}/wish`, { wish: w }); setTimeout(() => emit('home'), 1100) } catch (e) { toast(humanError(e)) }
-  }
-  return (<>
-    <div className="sec"><h2 className="title"><span className="orange-ind" />Отметь, чего хочется</h2>{ideas.length > 0 && <button className="link" onClick={() => go('ideas/unmarked')}>Все</button>}</div>
-    {total > 3 && <button className="triage-cta rise" data-testid="triage-open" onClick={() => go('triage')}>
-      <Icon n="folder" s={20} /><span><b>Разобрать всё · {total}</b><small>По одной карточке, сначала то, что скоро. Минут на пять.</small></span><Icon n="chev" s={16} w={2.4} /></button>}
-    {ideas.length === 0 ? (
-      <div className="card"><Empty title="Всё отмечено" text="Кидай в бота ссылки на места и события — или добавь идею здесь."><Btn kind="primary" sm icon="plus" onClick={onAdd}>Добавить идею</Btn></Empty></div>
-    ) : (
-      <div className="rail">
-        {ideas.map((i, k) => (
-          <div key={i.id} className="icard" data-testid="mark-card" style={{ width: 268, ['--d' as any]: k, transition: 'opacity .4s, transform .45s var(--ease-out)', opacity: gone[i.id] ? 0 : 1, transform: gone[i.id] ? 'translateY(-12px) scale(.95)' : undefined }}
-            onClick={() => go('idea/' + i.id)}>
-            <Cover idea={i} h={140}><span /><div className="cover__title">{i.title}</div></Cover>
-            <div style={{ padding: '0 4px' }}><p className="caption muted" style={{ margin: '0 0 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.meta}</p>
-              <WishPicker small value={i.my_wish} onChange={w => mark(i, w)} /></div>
-          </div>
-        ))}
-      </div>
-    )}
-  </>)
-}
-
-// the first open, like a music app: a minute about yourself and the picks fit from the start; dismissable
 function TasteNudge() {
   const [gone, setGone] = useState(() => { try { return localStorage.getItem('vd-taste-nudge') === '1' } catch { return false } })
   if (gone) return null

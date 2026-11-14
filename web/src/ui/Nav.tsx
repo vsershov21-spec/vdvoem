@@ -8,10 +8,10 @@ import { relLeft } from '../lib/format'
 
 export const TABS = [
   { path: '', id: 'home', label: 'Главная', icon: 'home' },
-  { path: 'ideas', id: 'bank', label: 'Куда пойти', icon: 'folder' },
-  { path: 'calendar', id: 'cal', label: 'Календарь', icon: 'cal' },
-  { path: 'assistant', id: 'ai', label: 'Помощник', icon: 'spark' },
+  { path: 'ideas', id: 'bank', label: 'Идеи', icon: 'folder' },
+  { path: 'calendar', id: 'cal', label: 'Планы', icon: 'cal' },
   { path: 'us', id: 'us', label: 'Мы', icon: 'user' },
+  // the assistant is the bar on the main screen («Спроси или вставь ссылку»), «add» is its plus
 ]
 
 // the donor's icon pop: squash → overshoot → settle, with a small tilt
@@ -25,7 +25,7 @@ function TabIcon({ icon, active }: { icon: string; active: boolean }) {
   )
 }
 
-export function PillNav({ current, badge, onPlus, hidden }: { current: string; badge?: number; onPlus: () => void; hidden?: boolean }) {
+export function PillNav({ current, badge, onPlus, hidden }: { current: string; badge?: number; onPlus?: () => void; hidden?: boolean }) {
   return (
     <motion.nav className="pnav" aria-label="Разделы" initial={false} animate={{ y: hidden ? 120 : 0, opacity: hidden ? 0 : 1 }} transition={{ type: 'spring', stiffness: 380, damping: 32 }}>
       <div className="pnav__bar" role="tablist">
@@ -48,9 +48,9 @@ export function PillNav({ current, badge, onPlus, hidden }: { current: string; b
           )
         })}
       </div>
-      <motion.button className="pnav__plus" aria-label="Добавить идею" whileTap={{ scale: 0.88, rotate: 90 }} onClick={() => { haptic.heavy(); onPlus() }}>
+      {onPlus && <motion.button className="pnav__plus" aria-label="Добавить идею" whileTap={{ scale: 0.88, rotate: 90 }} onClick={() => { haptic.heavy(); onPlus() }}>
         <Icon n="plus" s={26} w={2.4} />
-      </motion.button>
+      </motion.button>}
     </motion.nav>
   )
 }
