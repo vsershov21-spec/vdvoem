@@ -86,6 +86,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("POST /api/proposals/{id}/withdraw", a.withdrawProposal)
 	h("POST /api/proposals/{id}/seen", a.seenProposal)
 	h("POST /api/proposals/{id}/remind", a.remindProposal)
+	h("POST /api/ideas/{id}/enrich", a.enrichIdea)
 	h("POST /api/ideas/{id}/urgent", a.markUrgent)
 	h("DELETE /api/ideas/{id}/urgent", a.cancelUrgent)
 	h("POST /api/ideas/{id}/urgent/{answer}", a.answerUrgent)
@@ -605,7 +606,55 @@ func (a *API) idea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	if i.Kind == domain.KindLeisure {
 		v = withMatch(v, a.App.Tastes(r.Context(), c), i, c.PartnerName())
 	}
-	return map[string]any{"idea": v, "urgent": a.App.UrgentView(r.Context(), c, i.ID)}, nil
+	filled, enriching := a.filled(r.Context(), c, i)
+	return map[string]any{"idea": v, "urgent": a.App.UrgentView(r.Context(), c, i.ID), "filled": filled, "enriching": enriching}, nil
+}
+
+// filled: for every field of the card that has a value — who it came from: me | partner | scout.
+// enriching: the scout was asked to fill the gaps less than an hour ago and some are still empty.
+func (a *API) filled(ctx context.Context, c app.Couple, i store.Idea) (map[string]string, bool) {
+	edits := a.App.S.IdeaEdits(ctx, i.ID)
+	who := func(id int64) string {
+		if id == c.Me.ID {
+			return "me"
+		}
+		return "partner"
+	}
+	auto := i.Source == "scout" || i.Parsed
+	has := map[string]bool{"when": i.StartsAt != nil, "where": i.Address != "", "price": i.PriceMin > 0 || i.PriceMax > 0, "about": i.Info.About != "", "note": i.Note != ""}
+	out := map[string]string{}
+	gaps := false
+	for f, ok := range has {
+		switch e, edited := edits[f]; {
+		case !ok:
+			gaps = gaps || f == "where" || f == "price"
+		case edited:
+			out[f] = who(e.MemberID)
+		case auto && f != "note":
+			out[f] = "scout"
+		default:
+			out[f] = who(i.AuthorID)
+		}
+	}
+	e, asked := edits["_enrich"]
+	return out, asked && gaps && a.App.Now().Sub(e.At) < time.Hour
+}
+
+// enrichIdea: «Попросить скаута» — the page behind the idea is read again to fill what is missing
+func (a *API) enrichIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	now := a.App.Now()
+	_ = a.App.S.MarkIdeaEdit(r.Context(), id, "_enrich", c.Me.ID, now)
+	_ = a.App.S.Enqueue(r.Context(), "parse", now, map[string]any{"idea": i.ID, "text": strings.TrimSpace(i.Title + " " + i.URL)}, fmt.Sprintf("parse:%d:%d", i.ID, now.Unix()))
+	a.App.Kick()
+	return map[string]any{"enriching": true}, nil
 }
 
 func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -627,6 +676,8 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 		PriceMin    *int64  `json:"price_min"`
 		PriceMax    *int64  `json:"price_max"`
 		DurationMin *int    `json:"duration_min"`
+		StartsAt    *int64  `json:"starts_at"`
+		About       *string `json:"about"` // the programme: what is included, when to gather
 		EndsAt      *int64  `json:"ends_at"`
 		Deadline    *int64  `json:"deadline"`
 		Assignee    *string `json:"assignee"`
@@ -676,6 +727,16 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 		t := time.Unix(*p, 0)
 		return &t
 	}
+	if in.StartsAt != nil {
+		cur.StartsAt = tm(in.StartsAt)
+	}
+	if in.About != nil {
+		t := strings.TrimSpace(*in.About)
+		if rs := []rune(t); len(rs) > 600 {
+			t = string(rs[:600])
+		}
+		cur.Info.About = t
+	}
 	if in.EndsAt != nil {
 		cur.EndsAt = tm(in.EndsAt)
 	}
@@ -694,6 +755,13 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	cur.Fingerprint = domain.Fingerprint(cur.URL, cur.Title)
 	if err := a.App.S.UpdateIdea(r.Context(), cur, a.App.Now()); err != nil {
 		return nil, err
+	}
+	// who filled what: the card shows it next to every field
+	for f, set := range map[string]bool{"title": in.Title != nil, "when": in.StartsAt != nil, "where": in.Address != nil,
+		"price": in.PriceMin != nil || in.PriceMax != nil, "about": in.About != nil, "note": in.Note != nil} {
+		if set {
+			_ = a.App.S.MarkIdeaEdit(r.Context(), id, f, c.Me.ID, a.App.Now())
+		}
 	}
 	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
 	return map[string]any{"idea": viewIdea(c, i)}, err

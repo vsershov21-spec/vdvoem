@@ -3,11 +3,10 @@ import './v2.css'
 import { useRoute, back, navDir } from '../lib/router'
 import { setBack } from '../lib/tg'
 import { useLoad, useOn } from '../lib/data'
-import { AddSheet } from '../screens/AddSheet'
-import { emit } from '../lib/data'
 import type { HomeV2 } from './types'
 import { Nav, Toast, TABS, Empty } from './ui'
 import { Home } from './Home'
+import { Ideas, IdeaCard, AddIdea } from './Ideas'
 import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
@@ -51,18 +50,20 @@ export function Shell() {
   const ch = home.data?.chore_summary
   let screen
   if (top === '') screen = <Home home={home.data} onAddIdea={() => setAdding(true)} />
+  else if (top === 'ideas') screen = <Ideas home={home.data} onAdd={() => setAdding(true)} />
+  else if (top === 'idea') screen = <IdeaCard id={Number(route[1])} home={home.data} from={from} />
   else screen = (
-    <div className={'scr ' + anim} data-testid={'v2-' + top}>
+    <div className="scr" data-testid={'v2-' + top}>
       {nested ? <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{NAMES[top] || ''}</b><span /></div> : <h2>{NAMES[top]}</h2>}
       <Empty title="Экран собирается"><p className="m">Шаг {STEP[top] || 7} из 7. Сервер под него уже готов.</p></Empty>
     </div>)
   return (
     <div className={'v2' + (dark ? ' dark' : '')} data-testid="v2">
-      <div key={key} className={top === '' ? 'v2-wrap ' + anim : 'v2-wrap'}>{screen}</div>
+      <div key={key} className={'v2-wrap ' + anim}>{screen}</div>
       <Nav tab={rootTab} counts={{ '': hot, chores: ch ? ch.today + ch.overdue : 0 }} />
       <Toast />
       <Splash />
-      <AddSheet open={adding} onClose={() => setAdding(false)} onAdded={() => { emit('ideas'); emit('home') }} />
+      <AddIdea open={adding} onClose={() => setAdding(false)} />
     </div>)
 }
 

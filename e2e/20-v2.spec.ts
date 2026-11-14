@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext } from '@playwright/test'
-import { people, pair, phone, api, addIdeas, shot, waitMsg, press, TOKEN, type U } from './lib'
+import { people, pair, phone, api, addIdeas, shot, waitMsg, press, TOKEN, BASE, type U } from './lib'
 
 // Вдвоём 2.0 lives next to the current screens and opens with ?v2=1. These tests follow the accepted
 // scenarios (docs/v2/PROJECT.md): the home screen with the swipe deck, «Ждёт тебя», and going back by steps.
@@ -88,4 +88,72 @@ test('E52 вложенный экран: «‹ Главная» возвраща
   await p.getByTestId('tab-chores').click()
   await expect(p.getByTestId('v2-chores')).toBeVisible()
   await expect(p.getByTestId('tab-chores')).toHaveAttribute('aria-current', 'page')
+})
+
+test('E53 идеи: новая по названию, автор дописывает цену и программу, видно кто заполнил; партнёр отмечает — «Совпало» и «Идём»', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const p = await openV2(await phone(browser), v, 'ideas')
+  await p.getByTestId('add-idea').click()
+  await p.getByTestId('add-sheet').locator('input').fill('Каток на ВДНХ')
+  await p.getByTestId('add-save').click()
+  await expect(p.getByTestId('v2-idea')).toContainText('Каток на ВДНХ')
+  await expect(p.getByRole('button', { name: 'Назад' })).toContainText('Идеи')
+  await expect(p.getByTestId('v2-idea')).toContainText('Не хватает')
+  // the author fills in the price and the programme: the sheet opens with the current values
+  await p.getByTestId('edit-idea').click()
+  const sheet = p.getByTestId('edit-sheet')
+  await expect(sheet.locator('input').first()).toHaveValue('Каток на ВДНХ')
+  await sheet.getByPlaceholder('например, 3000').fill('1500')
+  await sheet.getByPlaceholder('что входит, во сколько сбор').fill('Прокат на месте, 1,5 часа')
+  await p.getByTestId('save-idea').click()
+  await expect(p.getByTestId('toast')).toContainText('Сохранено')
+  const fields = p.getByTestId('fields')
+  await expect(fields).toContainText('1 500')
+  await expect(fields).toContainText('Прокат на месте')
+  await expect(fields.locator('.by').first()).toHaveText('я')
+  await shot(p, 'E53-card')
+  await p.getByRole('button', { name: '♥ Хочу' }).click()
+  // the partner: the idea is in «Наши» as Вова's, the field is marked with his name; «Хочу» makes a match
+  const id = (await api(v, 'GET', '/ideas')).ideas.find((i: any) => i.title === 'Каток на ВДНХ').id
+  const q = await openV2(await phone(browser), n, 'ideas')
+  await expect(q.getByTestId('idea-card').first()).toContainText('от Вовы')
+  await q.getByTestId('idea-card').first().click()
+  await expect(q.getByTestId('fields').locator('.by').first()).toHaveText('Вова')
+  await expect(q.getByTestId('edit-idea')).toHaveCount(0)
+  await q.getByRole('button', { name: '♥ Хочу' }).click()
+  await expect(q.getByTestId('toast')).toContainText('Совпало')
+  await q.getByRole('button', { name: 'Назад' }).click()
+  await q.getByRole('tab', { name: /Совпало · 1/ }).click()
+  await shot(q, 'E53-both')
+  await q.getByTestId('match-row').getByRole('button', { name: 'Идём' }).click()
+  await expect(q).toHaveURL(/\/app\/meet\/\d+/)
+  expect((await api(n, 'GET', '/rounds/current')).round.chosen.id).toBe(id)
+})
+
+test('E54 афиша: список, фильтр и дни; у события поля от скаута и «Позвать»', async ({ browser }) => {
+  test.setTimeout(90_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const space = (await api(v, 'GET', '/me')).space.id
+  const today = new Date((await api(v, 'GET', '/calendar')).today + 'T12:00')
+  const at = (k: number) => { const d = new Date(today.getTime() + k * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T19:00` }
+  const picks = [['Органный концерт при свечах', 'culture'], ['Ужин в грузинском ресторане', 'food']].map(([title, category], k) =>
+    ({ title, category, starts: at(k + 1), price_rub: 3000, why: 'под ваши вкусы', score: 7, url: `https://afisha.example/e54/${space}/${k}`, image: '', address: 'Малая Грузинская, 27' }))
+  await fetch(BASE + '/agent/picks', { method: 'POST', body: JSON.stringify({ space, picks }) })
+  const p = await openV2(await phone(browser), v, 'ideas')
+  await p.getByRole('tab', { name: 'Афиша' }).click()
+  await expect(p.getByTestId('afisha-row')).toHaveCount(2)
+  await p.getByRole('button', { name: 'Еда' }).click()
+  await expect(p.getByTestId('afisha-row')).toHaveCount(1)
+  await p.getByRole('button', { name: 'Всё' }).click()
+  await p.getByRole('button', { name: 'По дням' }).click()
+  await expect(p.locator('.cal .d').first()).toBeVisible()
+  await shot(p, 'E54-days')
+  await p.getByRole('button', { name: 'Списком' }).click()
+  await p.getByTestId('afisha-row').filter({ hasText: 'Органный' }).click()
+  await expect(p.getByTestId('fields').locator('.by').first()).toHaveText('скаут')
+  await expect(p.getByTestId('go-meet')).toContainText('Позвать Настю')
+  await shot(p, 'E54-event')
 })
