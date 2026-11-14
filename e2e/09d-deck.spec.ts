@@ -30,5 +30,7 @@ test('E43 колода на главной: свайп, совпадение, в
   await q.getByRole('button', { name: 'Пропущу' }).click()
   await expect(q.getByTestId('match-sheet')).toHaveCount(0)
   await expect(q.getByTestId('triage-card')).toHaveCount(1) // the thrown card has flown off
+  // the card that flies away is still in the page for a moment: wait for one card, then look at it
+  await expect(q.getByTestId('triage-card')).toHaveCount(1)
   await expect(q.getByTestId('triage-card')).not.toContainText(first.split('\n')[0])
 })

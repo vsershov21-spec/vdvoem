@@ -1028,3 +1028,336 @@ func TestJoinKeepsSoloIdeas(t *testing.T) {
 		t.Fatalf("the solo idea must come along as hers: %+v", ideas)
 	}
 }
+
+// One mechanism for everything that needs the partner: proposed by one, answered by the other — in the app
+// or in the bot — and a «нет» comes back to the author instead of vanishing.
+func TestProposals(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	effects := 0
+	a.OnProposal(domain.ProposalChore, func(_ context.Context, _ app.Couple, _ domain.Proposal, yes bool) error {
+		if yes {
+			effects++
+		}
+		return nil
+	})
+	p, err := a.Propose(ctx, v, domain.ProposalChore, 0, "Забрать торт", "до сб 21 ноя", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(2), "Вова просит") || !strings.Contains(f.last(2), "Забрать торт") {
+		t.Fatalf("the partner is told in the bot: %q", f.last(2))
+	}
+	if rows := a.Inbox(ctx, n); len(rows) != 1 || rows[0].Role != "answer" || rows[0].Title != "Вова просит: забрать торт" {
+		t.Fatalf("partner inbox: %+v", rows)
+	}
+	if rows := a.Inbox(ctx, v); len(rows) != 1 || rows[0].Role != "waiting" || rows[0].Hot {
+		t.Fatalf("author inbox: %+v", rows)
+	}
+	if _, err := a.AnswerProposal(ctx, v, p.ID, true); !errors.Is(err, domain.ErrOwnProposal) {
+		t.Fatalf("the author cannot answer: %v", err)
+	}
+	// a day of silence: one reminder, not two
+	ck.t = ck.t.Add(25 * time.Hour)
+	a.Tick(ctx)
+	a.Tick(ctx)
+	if c := f.count(2, "Напоминаю. Вова просит"); c != 1 {
+		t.Fatalf("reminders: %d", c)
+	}
+	// «не могу»: back to the author, on the home screen until seen
+	if _, err := a.AnswerProposal(ctx, n, p.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(1), "«нет»") {
+		t.Fatalf("the author is told: %q", f.last(1))
+	}
+	rows := a.Inbox(ctx, v)
+	if len(rows) != 1 || rows[0].Role != "declined" || rows[0].Title != "Настя не может: забрать торт" {
+		t.Fatalf("declined row: %+v", rows)
+	}
+	if len(a.Inbox(ctx, n)) != 0 {
+		t.Fatal("answered — gone from the partner's inbox")
+	}
+	if _, err := a.AnswerProposal(ctx, n, p.ID, true); !errors.Is(err, domain.ErrProposalClosed) {
+		t.Fatalf("a second answer is refused: %v", err)
+	}
+	if err := a.SeenProposal(ctx, v, p.ID); err != nil || len(a.Inbox(ctx, v)) != 0 {
+		t.Fatalf("seen — the row leaves: %v", err)
+	}
+	// a new offer about the same thing replaces the waiting one; «да» runs the effect
+	p1, _ := a.Propose(ctx, v, domain.ProposalTime, 7, "Планетарий", "вс 15 ноя, 13:00", "")
+	p2, _ := a.Propose(ctx, n, domain.ProposalTime, 7, "Планетарий", "сб 21 ноя, 19:00", "")
+	if rows := a.Inbox(ctx, v); len(rows) != 1 || rows[0].ProposalID != p2.ID || rows[0].Title != "Настя зовёт: Планетарий" {
+		t.Fatalf("the counter-offer replaces the first: %+v (first was %d)", rows, p1.ID)
+	}
+	p3, _ := a.Propose(ctx, v, domain.ProposalChore, 0, "Купить цветы", "", "")
+	if _, err := a.AnswerProposal(ctx, n, p3.ID, true); err != nil || effects != 1 {
+		t.Fatalf("yes runs the effect: %v, %d", err, effects)
+	}
+	if err := a.WithdrawProposal(ctx, v, p2.ID); !errors.Is(err, app.ErrNotYours) {
+		t.Fatalf("only the author withdraws: %v", err)
+	}
+	if err := a.WithdrawProposal(ctx, n, p2.ID); err != nil || len(a.Inbox(ctx, v)) != 0 {
+		t.Fatalf("withdrawn — gone for both: %v", err)
+	}
+}
+
+// Chores: every state has a place, a request is answered by the partner, a «не могу» comes back,
+// a repeating chore brings its next occurrence, and done ones end up in the history.
+func TestChores(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	find := func(c app.Couple, title string) *app.ChoreView {
+		list, _, err := a.Chores(ctx, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k := range list {
+			if list[k].Title == title {
+				return &list[k]
+			}
+		}
+		return nil
+	}
+	today := ck.t
+	// mine, for today: in the summary of the home screen, ticked by me only
+	mine, err := a.AddChore(ctx, v, app.ChoreIn{Title: "Купить билеты на поезд", Who: "me", Due: &today})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := a.ChoreSummary(ctx, v); s.Today != 1 || s.Titles[0] != "Купить билеты на поезд" {
+		t.Fatalf("summary: %+v", s)
+	}
+	if s := a.ChoreSummary(ctx, n); s.Today != 0 {
+		t.Fatalf("the partner's chore is not in my line: %+v", s)
+	}
+	if _, err := a.ChoreAct(ctx, n, mine.ID, "done"); !errors.Is(err, app.ErrChoreState) {
+		t.Fatalf("a chore is not ticked for the partner: %v", err)
+	}
+	if x := find(n, "Купить билеты на поезд"); x == nil || x.Who != "partner" || x.Actions[0] != "nudge" {
+		t.Fatalf("the partner sees «Напомнить / Забрать себе»: %+v", x)
+	}
+	// a request: the partner answers; «не могу» returns it to the asker
+	ask, err := a.AddChore(ctx, v, app.ChoreIn{Title: "Забрать торт", Who: "partner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(2), "Вова просит") {
+		t.Fatalf("the bot tells the partner: %q", f.last(2))
+	}
+	if x := find(n, "Забрать торт"); x == nil || x.Section != "ask" || x.Actions[0] != "take" {
+		t.Fatalf("asked chore for the partner: %+v", x)
+	}
+	if _, err := a.ChoreAct(ctx, n, ask.ID, "decline"); err != nil {
+		t.Fatal(err)
+	}
+	x := find(v, "Забрать торт")
+	if x == nil || x.State != "declined" || x.Actions[0] != "self" || x.Actions[1] != "any" {
+		t.Fatalf("declined — back with the asker: %+v", x)
+	}
+	if rows := a.Inbox(ctx, v); len(rows) != 1 || rows[0].Role != "declined" {
+		t.Fatalf("and on the asker's home screen: %+v", rows)
+	}
+	if _, err := a.ChoreAct(ctx, v, ask.ID, "any"); err != nil {
+		t.Fatal(err)
+	}
+	if x := find(n, "Забрать торт"); x == nil || x.Who != "any" || x.State != "open" || len(a.Inbox(ctx, v)) != 0 {
+		t.Fatalf("left to anyone, the «нет» row is gone: %+v", x)
+	}
+	if _, err := a.ChoreAct(ctx, n, ask.ID, "take"); err != nil {
+		t.Fatal(err)
+	}
+	if x := find(n, "Забрать торт"); x.Who != "me" {
+		t.Fatalf("taken: %+v", x)
+	}
+	// «Беру» on a request puts the chore into the taker's list
+	ask2, _ := a.AddChore(ctx, n, app.ChoreIn{Title: "Вынести ёлку", Who: "partner"})
+	if _, err := a.ChoreAct(ctx, v, ask2.ID, "take"); err != nil {
+		t.Fatal(err)
+	}
+	if x := find(v, "Вынести ёлку"); x == nil || x.Who != "me" || x.State != "open" {
+		t.Fatalf("«Беру»: %+v", x)
+	}
+	// a repeating chore: ticked — the next occurrence is there, the done one keeps its day
+	rep, _ := a.AddChore(ctx, v, app.ChoreIn{Title: "Оплатить интернет", Who: "me", Due: &today, Repeat: "month"})
+	if _, err := a.ChoreAct(ctx, v, rep.ID, "done"); err != nil {
+		t.Fatal(err)
+	}
+	list, _, _ := a.Chores(ctx, v)
+	var open, done int
+	for _, c := range list {
+		if c.Title == "Оплатить интернет" {
+			if c.State == "open" && c.Repeat == "month" && c.Due != nil && *c.Due > today.Unix() {
+				open++
+			}
+			if c.State == "done" && c.DoneBy == "Вова" {
+				done++
+			}
+		}
+	}
+	if open != 1 || done != 1 {
+		t.Fatalf("repeat: %d open, %d done in %+v", open, done, list)
+	}
+	// done chores leave the tab after the kept days and stay in the history, searchable
+	if _, err := a.ChoreAct(ctx, v, mine.ID, "done"); err != nil {
+		t.Fatal(err)
+	}
+	ck.t = ck.t.AddDate(0, 0, 8)
+	if find(v, "Купить билеты на поезд") != nil {
+		t.Fatal("after a week a done chore is only in the history")
+	}
+	h, _ := a.ChoreHistory(ctx, v, "билеты", "")
+	if len(h) != 1 || h[0].DoneBy != "Вова" {
+		t.Fatalf("history search: %+v", h)
+	}
+	if h, _ := a.ChoreHistory(ctx, v, "", "partner"); len(h) != 0 {
+		t.Fatalf("history by who: %+v", h)
+	}
+	// delete and bring back
+	if _, err := a.ChoreAct(ctx, v, ask2.ID, "delete"); err != nil || find(v, "Вынести ёлку") != nil {
+		t.Fatalf("deleted chores are nowhere: %v", err)
+	}
+	if _, err := a.ChoreAct(ctx, v, ask2.ID, "restore"); err != nil || find(v, "Вынести ёлку") == nil {
+		t.Fatalf("«Вернуть»: %v", err)
+	}
+}
+
+func TestSettingsAndQuietBot(t *testing.T) {
+	a, f, _ := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	view := a.SettingsView(ctx, v)
+	if view["me"].(map[string]string)["notify.proposals"] != "1" || view["pair"].(map[string]string)["meet.budget"] != "5000" {
+		t.Fatalf("defaults: %+v", view)
+	}
+	if err := a.SetSetting(ctx, v, "meet.budget", "100500"); !errors.Is(err, app.ErrBadInput) {
+		t.Fatalf("unknown values are refused: %v", err)
+	}
+	// a shared setting: either changes it, the other is told on the home screen
+	if err := a.SetSetting(ctx, v, "meet.budget", "3000"); err != nil {
+		t.Fatal(err)
+	}
+	if a.SettingsView(ctx, n)["pair"].(map[string]string)["meet.budget"] != "3000" {
+		t.Fatal("the couple's setting is one for both")
+	}
+	rows := a.Inbox(ctx, n)
+	if len(rows) != 1 || rows[0].Role != "notice" || !strings.Contains(rows[0].Title, "Вова изменил настройку «Бюджет на встречу»") || rows[0].Sub != "до 3 000 ₽" {
+		t.Fatalf("the partner is told: %+v", rows)
+	}
+	if _, err := a.AnswerProposal(ctx, n, rows[0].ProposalID, true); err != nil || len(a.Inbox(ctx, n)) != 0 {
+		t.Fatalf("«Понятно» closes the notice: %v", err)
+	}
+	// mine: with proposals switched off the bot stays silent, the home screen still shows the row
+	if err := a.SetSetting(ctx, n, "notify.proposals", "0"); err != nil {
+		t.Fatal(err)
+	}
+	before := f.count(2, "")
+	if _, err := a.Propose(ctx, v, domain.ProposalTime, 1, "Планетарий", "вс 15 ноя, 13:00", ""); err != nil {
+		t.Fatal(err)
+	}
+	if f.count(2, "") != before {
+		t.Fatal("the bot must not write what the member switched off")
+	}
+	if rows := a.Inbox(ctx, n); len(rows) != 1 || rows[0].Role != "answer" {
+		t.Fatalf("the home screen shows everything regardless: %+v", rows)
+	}
+}
+
+// The meeting of the new interface: a time is offered and accepted (never set by one), a move is a new
+// offer, a stop comes into the route only after «да», and a cancel is seen by the other one.
+func TestMeetProposals(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	res, _ := a.AddIdea(ctx, n, "Планетарий на Баррикадной")
+	id := res.Idea.ID
+	_, _ = a.SetWish(ctx, n, id, domain.WishWant)
+	_, _ = a.SetWish(ctx, v, id, domain.WishWant)
+	r, err := a.GoWith(ctx, v, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := ck.t.Add(48 * time.Hour).Truncate(time.Hour)
+	if _, err := a.ProposeTime(ctx, v, r.ID, ck.t.Add(-time.Hour)); !errors.Is(err, app.ErrBadTime) {
+		t.Fatalf("a time in the past is refused: %v", err)
+	}
+	p, err := a.ProposeTime(ctx, v, r.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); rd.State == domain.StatePlanned {
+		t.Fatal("an offer alone plans nothing")
+	}
+	if rows := a.Inbox(ctx, n); len(rows) != 1 || rows[0].Title != "Вова зовёт: Планетарий на Баррикадной" {
+		t.Fatalf("partner inbox: %+v", rows)
+	}
+	if mp := a.MeetProposals(ctx, v, r.ID)["time"]; mp == nil || !mp.Mine || mp.State != "wait" || mp.Start != at.Unix() {
+		t.Fatalf("the author sees «ждём»: %+v", mp)
+	}
+	if _, err := a.AnswerProposal(ctx, n, p.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	rd, _ := a.S.Round(ctx, v.Space.ID, r.ID)
+	if rd.State != domain.StatePlanned || !rd.StartsAt.Equal(at) {
+		t.Fatalf("«да» plans the meeting at the offered time: %s %v", rd.State, rd.StartsAt)
+	}
+	// a move: the old time stands until the other says yes
+	at2 := at.Add(24 * time.Hour)
+	p2, _ := a.ProposeTime(ctx, n, r.ID, at2)
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); !rd.StartsAt.Equal(at) {
+		t.Fatal("a move waits for the answer")
+	}
+	if _, err := a.AnswerProposal(ctx, v, p2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); !rd.StartsAt.Equal(at2) || rd.State != domain.StatePlanned {
+		t.Fatalf("moved: %v", rd.StartsAt)
+	}
+	// a stop: «нет» comes back to the one who offered; «да» puts it into the route
+	s1, err := a.ProposeStop(ctx, v, r.ID, 0, "Кафе у Патриарших")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ex, _ := a.S.Extras(ctx, r.ID); len(ex) != 0 {
+		t.Fatal("an offered stop is not in the route yet")
+	}
+	_, _ = a.AnswerProposal(ctx, n, s1.ID, false)
+	if mp := a.MeetProposals(ctx, v, r.ID)["stop"]; mp == nil || mp.State != "no" {
+		t.Fatalf("the «нет» is shown to the author: %+v", mp)
+	}
+	if a.MeetProposals(ctx, n, r.ID)["stop"] != nil {
+		t.Fatal("the one who said no has nothing to see")
+	}
+	s2, _ := a.ProposeStop(ctx, v, r.ID, 0, "Ресторан Хачапури и вино")
+	if _, err := a.AnswerProposal(ctx, n, s2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if ex, _ := a.S.Extras(ctx, r.ID); len(ex) != 1 || ex[0].State != "accepted" {
+		t.Fatalf("accepted stop in the route: %+v", ex)
+	}
+	// cancel: a row for the other one
+	if err := a.CancelMeet(ctx, v, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	rows := a.Inbox(ctx, n)
+	if len(rows) != 1 || rows[0].Role != "notice" || rows[0].Title != "Вова отменил встречу: Планетарий на Баррикадной" {
+		t.Fatalf("cancel notice: %+v", rows)
+	}
+	// free windows and busy days
+	day := ck.t.In(v.Loc()).AddDate(0, 0, 1).Format("2006-01-02")
+	_ = a.SetFreeSlot(ctx, v, day, 1, true)
+	if f := a.Free(ctx, n); len(f["common"].([]string)) != 0 || len(f["partner"].([]string)) != 1 {
+		t.Fatalf("one mark is not a common window: %+v", f)
+	}
+	_ = a.SetFreeSlot(ctx, n, day, 1, true)
+	_ = a.SetBusyDay(ctx, n, day, true)
+	f := a.Free(ctx, v)
+	if c := f["common"].([]string); len(c) != 1 || c[0] != day+":1" {
+		t.Fatalf("common window: %+v", f)
+	}
+	if b := f["partner_busy"].([]string); len(b) != 1 || b[0] != day {
+		t.Fatalf("the partner's busy day: %+v", f)
+	}
+}

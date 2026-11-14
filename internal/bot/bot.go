@@ -570,6 +570,37 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>"+html.EscapeString(msg)+"</i>", nil)
 			}
 		}
+	case "cx": // a chore ticked from the morning message or a reminder: cx:<id>
+		_, err = b.App.ChoreAct(ctx, c, id(1), "done")
+		switch {
+		case errors.Is(err, app.ErrChoreState):
+			toast, err = "Уже сделано или дело не твоё", nil
+		case err == nil:
+			toast = "Сделано ✓"
+			if q.Message != nil {
+				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>✓ Сделано</i>", nil)
+			}
+		}
+	case "pr": // a proposal answered from the chat: pr:<id>:yes|no — the same answer the app gives
+		var p domain.Proposal
+		p, err = b.App.AnswerProposal(ctx, c, id(1), arg(2) == "yes")
+		switch {
+		case errors.Is(err, domain.ErrProposalClosed), errors.Is(err, store.ErrNotFound):
+			toast, err = "Уже отвечено", nil
+			if q.Message != nil {
+				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>Уже отвечено</i>", nil)
+			}
+		case errors.Is(err, domain.ErrOwnProposal):
+			toast, err = "Это твоё предложение — ждём ответа", nil
+		case err == nil:
+			toast = map[bool]string{true: "Да ✓", false: "Нет"}[arg(2) == "yes"]
+			if p.Kind == domain.ProposalChore {
+				toast = map[bool]string{true: "Беру ✓", false: "Не могу"}[arg(2) == "yes"]
+			}
+			if q.Message != nil {
+				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>Твой ответ: "+strings.ToLower(strings.TrimSuffix(toast, " ✓"))+"</i>", nil)
+			}
+		}
 	case "ex": // «А потом?»: the partner answers a proposed next stop
 		_, err = b.App.AnswerExtra(ctx, c, id(1), arg(2) == "y")
 		if errors.Is(err, app.ErrExtraOwn) {

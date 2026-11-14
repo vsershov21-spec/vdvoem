@@ -41,6 +41,8 @@ type App struct {
 	Log       *slog.Logger
 	NoKick    bool      // tests drive jobs through Tick
 	Live      *live.Hub // open apps refresh in real time (nil = off)
+
+	effects map[string]ProposalEffect // what an answered proposal does, by kind (proposals.go)
 }
 
 var (
@@ -49,6 +51,7 @@ var (
 	ErrBadTime   = errors.New("bad_time")
 	ErrForbidden = errors.New("forbidden")
 	ErrNoRound   = errors.New("no_round")
+	ErrBadInput  = errors.New("bad_input")
 )
 
 func (a *App) now() time.Time { return a.Now() }
@@ -240,6 +243,9 @@ func (a *App) AddIdea(ctx context.Context, c Couple, text string) (AddResult, er
 	i, err := a.S.CreateIdea(ctx, store.Idea{Idea: domain.Idea{SpaceID: c.Space.ID, AuthorID: c.Me.ID, Title: title, URL: link, Kind: kind, Category: cat}}, now)
 	if err != nil {
 		return AddResult{}, err
+	}
+	if kind == domain.KindChore { // the «Дела» tab of the new interface has its own table: the chore is there at once
+		_ = a.S.MirrorChore(ctx, i.ID, c.Space.ID, c.Me.ID, i.Title, now)
 	}
 	res := AddResult{Idea: i}
 	if sim := a.similar(ctx, c.Space.ID, i); sim != nil {
@@ -1436,6 +1442,8 @@ func (a *App) Tick(ctx context.Context) {
 		}
 	}
 	a.urgentTick(ctx, now)
+	a.proposalTick(ctx, now)
+	a.choreDigest(ctx, now)
 	spaces, _ := a.S.Spaces(ctx)
 	for _, sp := range spaces {
 		l := now.In(sp.Loc())
