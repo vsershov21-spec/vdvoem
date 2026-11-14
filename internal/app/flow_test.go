@@ -370,6 +370,13 @@ func TestExtras(t *testing.T) {
 	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Прогулка по Арбату"); err != nil {
 		t.Fatal(err)
 	}
+	// a stop made inside the route is not an idea of the bank: no card in the deck, nothing for the assistant
+	all, _ := a.S.Ideas(ctx, v.Space.ID, domain.IdeaActive, domain.IdeaDraft)
+	for _, i := range all {
+		if i.Title == "Прогулка по Арбату" {
+			t.Fatalf("a route stop leaked into the bank: %+v", i.Title)
+		}
+	}
 	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Кино"); !errors.Is(err, app.ErrExtraLimit) {
 		t.Fatalf("limit: %v", err)
 	}

@@ -285,7 +285,7 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		thin := len(in.G) > 0 && found < 3
 		if askNewRe.MatchString(strings.ToLower(text)) && !in.Scout || thin { // «что нового нашёл скаут» asks about finds, not for a search
 			if r.askScout(ctx, "Найти новое: "+what, 0) == nil {
-				t += "\n🔭 Попросил скаута поискать новое — " + short(what, 40) + ". Принесёт утром, пришлю сюда и в бот."
+				t += "\n🔭 Попросил скаута поискать новое — " + short(what, 40) + ". Обычно в течение часа — пришлю сюда и в бот."
 			}
 		} else if r.fresh(ctx, events) < 2 {
 			r.propose(ctx, "scout_ask", map[string]any{"text": "Найти новое: " + what}, "🔭 Поискать новое")
@@ -351,7 +351,7 @@ func (r *run) miss(ctx context.Context, pt Turn) Reply {
 	what := strings.TrimSpace(firstNonEmpty(pt.Text, describe(pt.In)))
 	t := "Понял, мимо — записал как промах, на таких доучиваю себя."
 	if pt.In.I == "find" && what != "" && r.askScout(ctx, "Найти новое: "+what, 0) == nil {
-		t += "\n🔭 Попросил скаута поискать «" + short(what, 50) + "» — принесёт утром, пришлю сюда и в бот."
+		t += "\n🔭 Попросил скаута поискать «" + short(what, 50) + "» — обычно в течение часа, пришлю сюда и в бот."
 	}
 	t += "\nСкажи одним-двумя словами, что именно хотелось: например «кино», «стендап», «ужин в грузинском»."
 	return Reply{Text: t}
@@ -447,7 +447,7 @@ func (r *run) noneOfKind(ctx context.Context, in Intent, cond, text string) Repl
 	t += " в вашей афише и банке сейчас нет."
 	what := strings.TrimSpace(firstNonEmpty(cond, in.Q, text))
 	if r.askScout(ctx, "Найти новое: "+what, 0) == nil {
-		t += "\n🔭 Попросил скаута найти именно это — пришлю сюда и в бот, как только принесёт."
+		t += "\n🔭 Попросил скаута найти именно это — обычно в течение часа, пришлю сюда и в бот."
 	}
 	r.lookNow(ctx, in)
 	r.catalogButtons(ctx, in, 2)
