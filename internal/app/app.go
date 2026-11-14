@@ -182,20 +182,24 @@ func (a *App) join(ctx context.Context, p Profile, cd string, solo *Couple) (Cou
 	if err != nil {
 		return Couple{}, "", ErrInviteUsed
 	}
-	var moved []int64
+	var m store.Member
 	if solo != nil {
 		if solo.Space.ID == spaceID {
 			return *solo, "", nil
 		}
-		// leave the solo space; what was collected there alone comes along
-		moved, _ = a.S.MoveSoloIdeas(ctx, solo.Space.ID, spaceID)
-		_ = a.S.DeleteSpace(ctx, solo.Space.ID)
+		// the person moves into the pair as they are: their logins, memory, taste and the ideas they added alone
+		// come along (deleting and re-adding the member would wipe all of it)
+		if err := a.S.MoveMember(ctx, solo.Me.ID, solo.Space.ID, spaceID); err != nil {
+			return Couple{}, "", err
+		}
+		m = solo.Me
+		m.SpaceID, m.Color = spaceID, "b"
+	} else {
+		var err error
+		if m, err = a.S.AddMember(ctx, store.Member{SpaceID: spaceID, TGUserID: p.TGID, ChatID: p.ChatID, Name: p.Name, PhotoURL: p.Photo}, now); err != nil {
+			return Couple{}, "", err
+		}
 	}
-	m, err := a.S.AddMember(ctx, store.Member{SpaceID: spaceID, TGUserID: p.TGID, ChatID: p.ChatID, Name: p.Name, PhotoURL: p.Photo}, now)
-	if err != nil {
-		return Couple{}, "", err
-	}
-	a.S.SetAuthor(ctx, moved, m.ID)
 	c, err := a.coupleOf(ctx, m)
 	if err == nil && c.Partner != nil {
 		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("<b>%s с тобой.</b> Теперь у вас общая копилка. Пришли ссылку на место или напиши, куда хочется.", esc(c.Me.Name)),

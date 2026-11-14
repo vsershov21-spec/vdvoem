@@ -642,29 +642,58 @@ func (s *Store) LogAI(ctx context.Context, task, provider, in, out string, ok bo
 }
 
 // DeleteSpace removes every row of a couple (both asked for it).
-// MoveSoloIdeas: someone who collected ideas alone joins a pair — what they added themselves moves into the
-// pair's space (their own mark becomes the second person's), instead of vanishing with the solo space.
-// Returns the moved ids; the author is set once the new member exists (SetAuthor).
-func (s *Store) MoveSoloIdeas(ctx context.Context, from, to int64) ([]int64, error) {
-	rows, err := s.DB.QueryContext(ctx, `UPDATE OR IGNORE ideas SET space_id=?, wish_b=wish_a, wish_a='' WHERE space_id=? AND source='' RETURNING id`, to, from)
+// MoveMember: someone who used the app alone joins a pair. The member row itself moves (so sessions, passkeys,
+// chat, memories and taste stay theirs), the ideas they added alone come along with their own mark on their
+// side, and what is left of the solo space is removed.
+func (s *Store) MoveMember(ctx context.Context, memberID, from, to int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM members WHERE space_id=?`, to).Scan(&n); err != nil {
+		return err
+	}
+	if n >= 2 {
+		return ErrFull
+	}
+	color := "a"
+	if n == 1 {
+		if err := tx.QueryRowContext(ctx, `SELECT CASE color WHEN 'a' THEN 'b' ELSE 'a' END FROM members WHERE space_id=?`, to).Scan(&color); err != nil {
+			return err
 		}
 	}
-	return ids, rows.Err()
-}
-
-func (s *Store) SetAuthor(ctx context.Context, ids []int64, memberID int64) {
-	for _, id := range ids {
-		_, _ = s.DB.ExecContext(ctx, `UPDATE ideas SET author_id=? WHERE id=?`, memberID, id)
+	// alone the person was «a»; their marks go to the side they take in the pair
+	wish := `wish_b=wish_a, wish_a=''`
+	if color == "a" {
+		wish = `wish_a=wish_a`
 	}
+	steps := []struct {
+		q    string
+		args []any
+	}{
+		{`UPDATE OR IGNORE ideas SET space_id=?, ` + wish + ` WHERE space_id=? AND source=''`, []any{to, from}},
+		{`UPDATE members SET space_id=?, color=? WHERE id=?`, []any{to, color, memberID}},
+		{`UPDATE assistant_messages SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE assistant_actions SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE memories SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE scout_goals SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE scout_questions SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`UPDATE picks SET space_id=? WHERE member_id=?`, []any{to, memberID}},
+		{`DELETE FROM photos WHERE round_id IN (SELECT id FROM rounds WHERE space_id=?)`, []any{from}},
+		{`DELETE FROM rounds WHERE space_id=?`, []any{from}},
+		{`DELETE FROM urgent WHERE space_id=?`, []any{from}},
+		{`DELETE FROM ideas WHERE space_id=?`, []any{from}},
+		{`DELETE FROM invites WHERE space_id=?`, []any{from}},
+		{`DELETE FROM spaces WHERE id=?`, []any{from}},
+	}
+	for _, st := range steps {
+		if _, err := tx.ExecContext(ctx, st.q, st.args...); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteSpace(ctx context.Context, spaceID int64) error {
