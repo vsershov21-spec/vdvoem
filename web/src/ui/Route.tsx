@@ -161,3 +161,28 @@ export function StopPicker({ open, k, r, replace, onClose, onRound }: { open: bo
   )
 }
 
+
+// what the partner proposed for this meeting and I have not answered: a short summary on top of the meeting,
+// answered in place. The same items are the «Ждёт тебя» rows of the main screen.
+export const proposalsFor = (r: Round) => (r.route || []).filter(s => s.state === 'proposed' && !s.mine)
+export function ProposalsBar({ r, home, onRound }: { r: Round; home: Home; onRound: (x: R) => void }) {
+  const [busy, setBusy] = useState(0)
+  const list = proposalsFor(r)
+  if (!list.length) return null
+  const partner = home.partner?.name || 'Партнёр'
+  const answer = async (s: RouteStop, ok: boolean) => {
+    setBusy(s.id); haptic.tap()
+    try { onRound(await post<R>(`/extras/${s.id}/${ok ? 'accept' : 'decline'}`)); emit('home') } catch (e) { fail(e) } finally { setBusy(0) }
+  }
+  return (
+    <div className="props rise" data-testid="proposals">
+      <b className="props__h">{partner} предлагает</b>
+      {list.map(s => (
+        <div key={s.id} className="props__row">
+          <span className="props__main"><b>{s.idea.title}</b><span>после «{r.chosen?.title}» · {hm(s.starts_at)}–{hm(s.ends_at)}</span></span>
+          <button className="btn btn--accent btn--sm" disabled={busy === s.id} onClick={() => answer(s, true)}>Да</button>
+          <button className="btn btn--ghost btn--sm" disabled={busy === s.id} onClick={() => answer(s, false)}>Нет</button>
+        </div>))}
+    </div>
+  )
+}
