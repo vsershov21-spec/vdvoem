@@ -21,7 +21,7 @@ let inflight: Promise<unknown> | null = null
 const addMsg = (m: ChatMsg) => patch<Chat>('/assistant', d => ({ ...(d || { ai: false }), messages: [...(d?.messages || []), m] }))
 
 export function Assistant({ home }: { home: Home | null }) {
-  const { data, set } = useLoad<{ messages: ChatMsg[]; ai: boolean; voice?: boolean }>('/assistant')
+  const { data, set, refresh } = useLoad<{ messages: ChatMsg[]; ai: boolean; voice?: boolean }>('/assistant')
   const [text, setTextRaw] = useState(() => { try { return localStorage.getItem('vd-draft') || '' } catch { return '' } })
   const setText = (t: string) => { setTextRaw(t); try { t ? localStorage.setItem('vd-draft', t) : localStorage.removeItem('vd-draft') } catch { /* private mode */ } }
   const [failed, setFailed] = useState<Record<number, string>>({}) // my message id → its text, to retry
@@ -68,18 +68,22 @@ export function Assistant({ home }: { home: Home | null }) {
     if (retry) setFailed(f => { const n = { ...f }; delete n[retry]; return n })
     else addMsg({ id, role: 'user', at: Date.now() / 1000, reply: { text: q } })
     setBusy(true); setAtBottom(true)
-    const p = post<{ reply: Reply }>('/assistant', { text: q }).then(r => { say(r.reply); haptic.soft() })
+    // then the server's list: a first load that landed after my message (a quick ask on opening) must not lose it
+    const p = post<{ reply: Reply }>('/assistant', { text: q }).then(r => { say(r.reply); haptic.soft(); refresh() })
     inflight = p.finally(() => { if (inflight === p2) inflight = null })
     const p2 = inflight
     try { await p } catch (e) { setFailed(f => ({ ...f, [id]: q })); toast(humanError(e)) } finally { setBusy(false) }
   }
   const say = (r: Reply) => addMsg({ id: Date.now() + 1, role: 'assistant', at: Date.now() / 1000, reply: r })
+  // a ready question from the main screen: ask it as soon as the chat is here
+  useEffect(() => { let q = ''; try { q = sessionStorage.getItem('vd-ask') || ''; sessionStorage.removeItem('vd-ask') } catch { /* private */ } if (q) setTimeout(() => ask(q), 50) }, [])
   // came back while an answer is on its way: show «печатает…» until it lands
   useEffect(() => { if (inflight) { setBusy(true); inflight.catch(() => {}).finally(() => setBusy(false)) } }, [])
   const press = async (a: ActionBtn) => {
     // just a way to a screen (older buttons carry no path: known by their label)
     const way = a.kind === 'open' ? a.path || (/вкус/i.test(a.label) ? 'taste' : /афиш/i.test(a.label) ? 'ideas/scout' : '') : ''
     if (way) { haptic.soft(); go(way); return }
+    if (a.kind === 'link' && a.url) { haptic.soft(); openLink(a.url); return }
     if (done[a.id] || busy) return
     if (a.kind === 'clarify') setBusy(true) // the other reading answers as a new message
     try {

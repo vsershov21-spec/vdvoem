@@ -1,3 +1,4 @@
+import type React from 'react'
 import { useState } from 'react'
 import type { Home as HomeT, Round } from '../lib/types'
 import { go } from '../lib/router'
@@ -7,12 +8,12 @@ import { relLeft, ncase, past } from '../lib/format'
 import { shareLink } from '../lib/tg'
 import { Icon } from '../ui/icons'
 import { Avatar, Btn, Cover, Skel, toast } from '../ui/kit'
-import { UrgentList } from '../ui/Urgent'
+import { answerUrgent, type UrgentAsk } from '../ui/Urgent'
 import { Deck } from '../ui/Deck'
 import { Going } from '../ui/Going'
 
-// The main screen is the deck: swipe ideas and events, a match goes straight to picking the time. Above it only
-// what needs you now (an answer, a meeting in progress, the next date); the assistant and «add» live in one bar.
+// The main screen is the deck. Order by what matters: who we are → what waits for my answer (one slim row each,
+// never a wall) → the deck (ours first, then the scout's afisha) → the assistant with ready questions.
 export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null; onAdd: () => void; onSurprise: (m: 'random' | 'best') => void; onStart: () => void }) {
   const partnerHere = useOnline(home?.partner?.color)
   if (!home) return (<><Skel h={44} /><Skel h={52} /><Skel h={430} r={32} /></>)
@@ -25,32 +26,76 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
           <h1 className="title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hello}, {home.me.name}</h1>
           <p className="caption muted" style={{ margin: '2px 0 0' }}>{home.partner ? (partnerHere ? <span className="here">{home.partner.name} сейчас здесь</span> : `Планируем вдвоём с ${ncase(home.partner.name, 'ins')}`) : 'Пригласи партнёра — и начнём'}</p>
         </div>
+        <button className="iconbtn" aria-label="Добавить идею" onClick={onAdd}><Icon n="plus" s={20} w={2.3} /></button>
         <button className="pairava" style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer' }} onClick={() => go('us')} aria-label="Мы">
           <Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} online={partnerHere} />
         </button>
       </header>
-      <div className="askbar rise">
-        <button id="ask-bar" className="askbar__q" onClick={() => go('assistant')}><Icon n="spark" s={19} /><span>Спроси или вставь ссылку</span></button>
-        <button className="askbar__plus" aria-label="Добавить идею" onClick={onAdd}><Icon n="plus" s={20} w={2.3} /></button>
-      </div>
-      {!!home.urgent?.length && <div style={{ marginBottom: 12 }}><UrgentList items={home.urgent} partner={home.partner?.name || 'Партнёр'} /></div>}
-      {!home.paired ? <Invite /> : home.round ? <RoundCard r={home.round} home={home} /> : home.next ? <NextCard r={home.next} /> : null}
-      {home.paired && <Now home={home} />}
+      {!home.paired && <Invite />}
+      <Inbox home={home} />
       {home.paired && <>
-        {/* no section title: the deck is the screen; matches so far — one quiet link */}
-        <div className="row" style={{ margin: home.round || home.next || home.urgent?.length ? '14px 2px 8px' : '0 2px 8px', minHeight: 20 }}>
-          <span className="caption muted">Свайпни: вправо — хочу, влево — нет</span><span className="spacer" />
-          {home.counts.both_want > 0 && <button className="link" onClick={() => go('ideas/both')}>Совпало · {home.counts.both_want}</button>}
-        </div>
-        <Deck partner={home.partner} />
-        <div className="row" style={{ gap: 8, marginTop: 14 }}>
+        <Deck partner={home.partner} onAdd={onAdd} />
+        {home.counts.both_want > 0 && <button className="matchlink" onClick={() => go('ideas/both')}><Icon n="heart" s={15} w={2.4} />Совпало у вас · {home.counts.both_want}<Icon n="chev" s={14} w={2.4} /></button>}
+        <AskBar />
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
           <Btn kind="surface" block icon="dice" onClick={() => onSurprise('random')}>Удиви нас</Btn>
           {!home.round && <Btn kind="surface" block icon="cal" onClick={onStart}>Выбрать вместе</Btn>}
         </div>
       </>}
+      {!home.paired && <AskBar />}
       {home.taste_set === false && <TasteNudge />}
       {(home.going?.length || 0) > 1 && <Going list={home.going!} />}
     </>
+  )
+}
+
+// the assistant on the main screen: one tap to ask, and ready questions people really ask
+function AskBar() {
+  const ask = (q: string) => { try { sessionStorage.setItem('vd-ask', q) } catch { /* private */ } go('assistant') }
+  return (
+    <div className="askbox rise">
+      <button id="ask-bar" className="askbar__q" onClick={() => go('assistant')}><Icon n="spark" s={19} /><span>Спроси помощника или вставь ссылку</span></button>
+      <div className="askbox__chips">
+        {['Что в кино в выходные?', 'Куда сходить поужинать', 'Чем заняться сегодня вечером'].map(q => <button key={q} className="wkchip" onClick={() => ask(q)}>{q}</button>)}
+      </div>
+    </div>
+  )
+}
+
+// «Ждёт тебя»: every open loop as one slim row — an answer the partner asked for, the choice in progress,
+// tickets to buy, the next date. Two rows show; the rest fold under «ещё N».
+function Inbox({ home }: { home: HomeT }) {
+  const [all, setAll] = useState(false)
+  const pn = home.partner?.name || 'Партнёр'
+  const rows: React.ReactNode[] = []
+  for (const u of home.urgent || []) rows.push(<UrgentRow key={'u' + u.idea_id} u={u} partner={pn} />)
+  if (home.round) rows.push(<RoundRow key="r" r={home.round} home={home} />)
+  for (const g of home.going || []) if (g.state === 'planned' && g.book && !g.tickets) rows.push(
+    <button key={'t' + g.id} className="inrow" onClick={() => go('round/' + g.id)}>
+      <span className="inrow__ic"><Icon n="wallet" s={17} /></span>
+      <span className="inrow__main"><b>{g.book.label}</b><span>{[g.chosen?.title, g.when].filter(Boolean).join(' · ')}</span></span><Icon n="chev" s={15} w={2.2} />
+    </button>)
+  if (!home.round && home.next) rows.push(<NextCard key="n" r={home.next} />)
+  if (!rows.length) return null
+  const shown = all ? rows : rows.slice(0, 2)
+  return (
+    <div className="inbox rise" data-testid="now">
+      {shown}
+      {rows.length > 2 && <button className="link inbox__more" onClick={() => setAll(a => !a)}>{all ? 'Свернуть' : `Ещё ${rows.length - 2}`}</button>}
+    </div>
+  )
+}
+
+function UrgentRow({ u, partner }: { u: UrgentAsk; partner: string }) {
+  return (
+    <div className="inrow inrow--hot" data-testid="urgent-home">
+      <span className="inrow__ic"><Icon n="flame" s={17} /></span>
+      <button className="inrow__main" onClick={() => go('idea/' + u.idea_id)}><b>{partner} просит ответить: {u.title}</b><span>{[u.when, u.note && `«${u.note}»`].filter(Boolean).join(' · ') || 'Важно для партнёра'}</span></button>
+      <span className="inrow__acts">
+        <Btn kind="accent" sm onClick={async () => { await answerUrgent(u.idea_id, 'yes') }}>Идём</Btn>
+        <button className="iconbtn iconbtn--sm" aria-label="Не смогу" onClick={async () => { await answerUrgent(u.idea_id, 'no') }}><Icon n="x" s={14} /></button>
+      </span>
+    </div>
   )
 }
 
@@ -60,59 +105,20 @@ const stageText: Record<string, [string, string]> = {
   confirm: ['Совпало!', 'Осталось подтвердить обоим'],
 }
 
-function RoundCard({ r, home }: { r: Round; home: HomeT }) {
+// the choice in progress, as one row: what step, whose move
+function RoundRow({ r, home }: { r: Round; home: HomeT }) {
   const [t, sub] = stageText[r.state] || ['Идёт выбор', '']
-  const mine = r.state === 'time' ? !r.sent : r.state === 'vote' ? !r.voted : r.state === 'confirm' ? !r.confirmed : false
-  const theirs = r.state === 'time' ? !r.partner_sent : r.state === 'vote' ? !r.partner_voted : !r.partner_confirmed
-  const step = ({ time: 1, vote: 2, confirm: 3 } as Record<string, number>)[r.state] || 1
-  return (
-    <div className="frame rise" onClick={() => go('round/' + r.id)} style={{ cursor: 'pointer' }} data-testid="round-card">
-      <div className="frame__in">
-        <div className="row" style={{ marginBottom: 12 }}>
-          <span className="pill pill--accent"><span className="dot dot--pulse" />шаг {step} из 3</span>
-          <span className="spacer" /><span className="caption muted">{relLeft(r.expires_at)}</span>
-        </div>
-        <h2 className="title">{r.chosen && r.state === 'time' ? r.chosen.title : t}</h2>
-        <p className="callout muted" style={{ margin: '4px 0 14px' }}>{r.chosen && r.state === 'time' ? 'Осталось найти время' : sub}</p>
-        <div className="hatch" style={{ marginBottom: 14 }}><i style={{ ['--p' as any]: `${(step - 1 + (mine ? 0 : .5) + (theirs ? 0 : .5)) / 3 * 100}%` }} /></div>
-        <div className="row">
-          <Who p="Ты" done={!mine} color={home.me.color} />
-          <Who p={home.partner?.name || ''} done={!theirs} color={home.partner?.color || 'b'} />
-          <span className="spacer" />
-          <Btn sm kind={mine ? 'accent' : 'soft'}>{mine ? 'Твой ход' : 'Открыть'}</Btn>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// «Что сделать сейчас»: every open loop as one row with one tap — answers, tickets, marks, news from the scout
-function Now({ home }: { home: HomeT }) {
   const pn = home.partner?.name || 'Партнёр'
-  const rows: { k: string; icon: string; title: string; sub: string; go: string; hot?: boolean }[] = []
-  const r = home.round
-  if (r?.state === 'time' && r.partner_sent && !r.sent) rows.push({ k: 'time', icon: 'clock', title: `${pn} ${past(pn, 'предложил')} время`, sub: 'Выбери подходящее или предложи своё', go: 'round/' + r.id, hot: true })
-  if (r?.state === 'time' && !r.partner_sent && !r.sent) rows.push({ k: 'time0', icon: 'clock', title: 'Отметь, когда тебе удобно', sub: r.chosen ? r.chosen.title : 'Выбираем, куда пойти', go: 'round/' + r.id, hot: true })
-  if (r?.state === 'vote' && !r.voted) rows.push({ k: 'vote', icon: 'heart', title: 'Выбери из трёх вариантов', sub: 'Голос партнёра откроется после твоего', go: 'round/' + r.id, hot: true })
-  if (r?.state === 'confirm' && !r.confirmed) rows.push({ k: 'conf', icon: 'check', title: 'Подтверди встречу', sub: r.chosen?.title || '', go: 'round/' + r.id, hot: true })
-  for (const g of home.going || []) if (g.state === 'planned' && g.book && !g.tickets) rows.push({ k: 'tk' + g.id, icon: 'wallet', title: g.book.label, sub: [g.chosen?.title, g.when].filter(Boolean).join(' · '), go: 'round/' + g.id })
-  if (!rows.length) return null
-  return (<>
-    <div className="sec"><h2 className="title"><span className="orange-ind" />Сейчас</h2></div>
-    <div className="list rise" data-testid="now">
-      {rows.slice(0, 5).map(x => <button key={x.k} className="li" onClick={() => go(x.go)}>
-        <span className="li__ico" style={x.hot ? { background: 'color-mix(in srgb, var(--accent) 16%, transparent)', color: 'var(--accent)' } : undefined}><Icon n={x.icon} s={18} /></span>
-        <span className="li__main"><b>{x.title}</b>{x.sub && <span>{x.sub}</span>}</span><Icon n="chev" s={15} w={2.2} /></button>)}
-    </div>
-  </>)
-}
-
-function Who({ p, done, color }: { p: string; done: boolean; color: string }) {
+  const mine = r.state === 'time' ? !r.sent : r.state === 'vote' ? !r.voted : r.state === 'confirm' ? !r.confirmed : false
+  const step = ({ time: 1, vote: 2, confirm: 3 } as Record<string, number>)[r.state] || 1
+  const title = r.chosen ? r.chosen.title : t
+  const line = r.state === 'time' && r.partner_sent && !r.sent ? `${pn} ${past(pn, 'предложил')} время — выбери` : r.chosen && r.state === 'time' ? 'Осталось найти время' : sub
   return (
-    <span className="row caption" style={{ gap: 6, marginRight: 8 }}>
-      <span className="dot" style={{ ['--c' as any]: `var(--person-${color})`, opacity: done ? 1 : .35 }} />
-      {p}: <b style={{ fontWeight: 650 }}>{done ? 'готово' : 'ждём'}</b>
-    </span>
+    <button className={'inrow' + (mine ? ' inrow--hot' : '')} onClick={() => go('round/' + r.id)} data-testid="round-card">
+      <span className="inrow__ic"><Icon n={r.state === 'time' ? 'clock' : r.state === 'vote' ? 'heart' : 'check'} s={17} /></span>
+      <span className="inrow__main"><b>{title}</b><span>Шаг {step} из 3 · {line} · {relLeft(r.expires_at)}</span></span>
+      <span className={'pill' + (mine ? ' pill--accent' : '')}>{mine ? 'Твой ход' : 'Ждём ' + ncase(pn, 'acc')}</span>
+    </button>
   )
 }
 

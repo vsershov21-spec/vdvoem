@@ -14,6 +14,10 @@ export function go(path: string, replace = false) {
 }
 const depth = () => (history.state?.d as number) || 0
 export const canBack = () => depth() > 0
+// the tab a sub-screen was opened from: its name is the back button's label, like iOS («‹ Идеи»)
+let fromTab = ''
+export const setFromTab = (t: string) => { fromTab = t }
+export const backLabel = () => fromTab
 export function back(fallback = '') {
   if (canBack()) { dir = 'back'; history.back() } else go(fallback, true)
 }

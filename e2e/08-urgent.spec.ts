@@ -43,7 +43,7 @@ test('E36 колода на главной: всё без отметки по о
   await p.getByRole('button', { name: 'Пропущу' }).click()
   await p.getByRole('button', { name: 'Потом' }).click()
   await p.getByRole('button', { name: 'Хочу', exact: true }).click()
-  await expect(p.getByText('Всё разобрали')).toBeVisible()
+  await expect(p.getByTestId('deck-empty')).toContainText('Наши разобраны')
   const ideas = (await api(v, 'GET', '/ideas')).ideas
   expect(ideas.filter((i: any) => i.my_wish).length).toBe(3)
 })

@@ -5,7 +5,7 @@ import { CATS } from '../lib/format'
 import { haptic } from '../lib/tg'
 import { Icon } from './icons'
 import { Heart } from './Heart'
-import { back as backNav } from '../lib/router'
+import { back as backNav, backLabel } from '../lib/router'
 
 // ---------- Cover: photo with fade-in, or category gradient with a big glyph ----------
 // covers without a picture: the same category, but each its own angle and glyph turn — two plays never look alike
@@ -217,15 +217,15 @@ export function EmptyArt() {
   )
 }
 
-// Sub-screen header. Inside Telegram the native BackButton is used, so ours shows only in a browser.
-export function SubHeader({ title, right }: { title?: string; right?: ReactNode }) {
-  const inTG = !!(window as any).Telegram?.WebApp?.initData
+// Sub-screen header, the same on every inner screen as in a native app: «‹ Идеи» on the left (where you came
+// from), the screen's name in the middle. Telegram's own BackButton does the same from its header.
+export function SubHeader({ title, right, back }: { title?: string; right?: ReactNode; back?: string }) {
+  const label = back || backLabel() || 'Главная'
   return (
-    <header className="hdr">
-      {!inTG && <button className="iconbtn" onClick={() => backNav('')} aria-label="Назад"><Icon n="back" /></button>}
-      {title && <span className="hdr__title">{title}</span>}
-      <span className="spacer" />
-      {right}
+    <header className="hdr subhdr">
+      <button className="subhdr__back" onClick={() => backNav('')} aria-label="Назад"><Icon n="back" s={18} w={2.6} /><span>{label}</span></button>
+      <span className="hdr__title subhdr__title">{title}</span>
+      <span className="subhdr__right">{right}</span>
     </header>
   )
 }

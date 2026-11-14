@@ -90,7 +90,9 @@ export function Ideas({ home, folder }: { home: Home | null; folder?: string }) 
         <div style={{ marginTop: 14 }}>{found.length === 0 ? <Empty title="Ничего не нашёл" text="Попробуй другое слово — или добавь эту идею." /> :
           <div className="grid">{found.map((i, k) => <IdeaTile key={i.id} idea={i} me={home.me} d={k} onOpen={() => go('idea/' + i.id)} />)}</div>}</div>
       ) : ideas.length === 0 ? (
-        <Empty title="Копилка пуста" text="Пришли боту ссылку на ресторан, выставку или просто напиши идею — она появится здесь." />
+        <Empty title="Своих идей пока нет" text="Пришли боту ссылку на ресторан, выставку или просто напиши идею — она появится здесь. А пока — что нашёл скаут.">
+          {(all.data?.ideas.length || 0) > 0 && <Btn kind="primary" icon="spark" onClick={() => { haptic.select(); setView('afisha') }}>{`Смотреть афишу · ${all.data!.ideas.length}`}</Btn>}
+        </Empty>
       ) : active ? (
         filtered.length === 0 ? <Empty title="Пусто" text={active.empty} /> :
           <div className="grid" key={active.id}>{filtered.map((i, k) => <IdeaTile key={i.id} idea={i} me={home.me} d={k} onOpen={() => go('idea/' + i.id)} />)}</div>

@@ -13,6 +13,7 @@ import { Places } from '../ui/Places'
 import { useOnline } from '../lib/live'
 import { RouteBlock } from '../ui/Route'
 import { openLink } from '../lib/tg'
+import { CalSheet } from '../ui/CalLink'
 
 type R = { round: Round }
 
@@ -172,7 +173,8 @@ function TimeStage({ r, act, partner, here }: { r: Round; act: Act; partner: str
         ] })}
       </motion.div>
       {(myBusy.size > 0 || pBusy.size > 0) ? <p className="caption" style={{ margin: 0 }}><span className="busy-key" /> занято по твоему календарю{pBusy.size > 0 && <> · <span className="pbusy-key" /> у {ncase(partner, 'gen')} занято</>}</p>
-        : <button className="wkchip" style={{ alignSelf: 'flex-start' }} onClick={() => go('calendar')}><Icon n="cal" s={14} />Подключи свой календарь — занятое отметится само</button>}
+        : r.my_busy ? <p className="caption muted" style={{ margin: 0 }}><Icon n="check" s={13} /> Твой календарь подключён — на эти две недели занятого нет</p>
+        : <BusyChip />}
       {weekSel.length > 0 && <div className="card col rise" data-testid="exact-slots" style={{ gap: 8 }}>
         <span className="caption muted">Точнее, во сколько? Необязательно — по умолчанию весь отрезок</span>
         {weekSel.map(k => { const L = dayLabel(k.slice(0, 10)); const p = +k.slice(11); return (
@@ -443,4 +445,13 @@ function Closed({ r }: { r: Round }) {
       <Btn kind="primary" icon="cal" onClick={again}>Начать заново</Btn>
     </Empty>
   )
+}
+
+// no busy times yet: connect right here, without leaving the time step (the slots refresh by themselves)
+function BusyChip() {
+  const [open, setOpen] = useState(false)
+  return (<>
+    <button className="wkchip" style={{ alignSelf: 'flex-start' }} data-testid="busy-chip" onClick={() => setOpen(true)}><Icon n="clock" s={14} />Показать мою занятость из календаря</button>
+    <CalSheet open={open} start="busy" onClose={() => setOpen(false)} />
+  </>)
 }

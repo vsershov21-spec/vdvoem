@@ -426,6 +426,10 @@ func (b *Bot) reply(ctx context.Context, chat int64, rep assistant.Reply) {
 		rows = append(rows, tg.Row(tg.App(fmt.Sprintf("📋 Вся подборка · %d", rep.Pick.N), strings.TrimRight(b.App.PublicURL, "/")+fmt.Sprintf("/app/pick/%d", rep.Pick.ID))))
 	}
 	for _, a := range rep.Actions {
+		if a.Kind == "link" {
+			rows = append(rows, tg.Row(tg.Link(a.Label, a.URL)))
+			continue
+		}
 		rows = append(rows, tg.Row(tg.CB(a.Label, "aa:"+a.ID)))
 	}
 	rows = append(rows, tg.Row(tg.App("Продолжить в приложении", strings.TrimRight(b.App.PublicURL, "/")+"/app/assistant")))
