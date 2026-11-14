@@ -18,7 +18,7 @@ test('E27 вместе в приложении: изменения партнё�
   await tab(vp, 'bank')
   await say(n, 'Каток в Парке Горького')
   await waitMsg(n, /Сохранил в копилку/)
-  await expect(vp.locator('.wkchip, .pill', { hasText: /3 идеи/ })).toBeVisible({ timeout: 2500 })
+  await expect(vp.locator('.icard', { hasText: 'Каток в Парке Горького' })).toBeVisible({ timeout: 2500 })
 
   // the round: Вова waits, Настя answers in her app — Вова's screen moves on by itself
   const { round } = await api(v, 'POST', '/rounds')
