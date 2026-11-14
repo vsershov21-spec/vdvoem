@@ -1102,3 +1102,165 @@ func TestProposals(t *testing.T) {
 		t.Fatalf("withdrawn — gone for both: %v", err)
 	}
 }
+
+// Chores: every state has a place, a request is answered by the partner, a «не могу» comes back,
+// a repeating chore brings its next occurrence, and done ones end up in the history.
+func TestChores(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	find := func(c app.Couple, title string) *app.ChoreView {
+		list, _, err := a.Chores(ctx, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k := range list {
+			if list[k].Title == title {
+				return &list[k]
+			}
+		}
+		return nil
+	}
+	today := ck.t
+	// mine, for today: in the summary of the home screen, ticked by me only
+	mine, err := a.AddChore(ctx, v, app.ChoreIn{Title: "Купить билеты на поезд", Who: "me", Due: &today})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := a.ChoreSummary(ctx, v); s.Today != 1 || s.Titles[0] != "Купить билеты на поезд" {
+		t.Fatalf("summary: %+v", s)
+	}
+	if s := a.ChoreSummary(ctx, n); s.Today != 0 {
+		t.Fatalf("the partner's chore is not in my line: %+v", s)
+	}
+	if _, err := a.ChoreAct(ctx, n, mine.ID, "done"); !errors.Is(err, app.ErrChoreState) {
+		t.Fatalf("a chore is not ticked for the partner: %v", err)
+	}
+	if x := find(n, "Купить билеты на поезд"); x == nil || x.Who != "partner" || x.Actions[0] != "nudge" {
+		t.Fatalf("the partner sees «Напомнить / Забрать себе»: %+v", x)
+	}
+	// a request: the partner answers; «не могу» returns it to the asker
+	ask, err := a.AddChore(ctx, v, app.ChoreIn{Title: "Забрать торт", Who: "partner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(2), "Вова просит") {
+		t.Fatalf("the bot tells the partner: %q", f.last(2))
+	}
+	if x := find(n, "Забрать торт"); x == nil || x.Section != "ask" || x.Actions[0] != "take" {
+		t.Fatalf("asked chore for the partner: %+v", x)
+	}
+	if _, err := a.ChoreAct(ctx, n, ask.ID, "decline"); err != nil {
+		t.Fatal(err)
+	}
+	x := find(v, "Забрать торт")
+	if x == nil || x.State != "declined" || x.Actions[0] != "self" || x.Actions[1] != "any" {
+		t.Fatalf("declined — back with the asker: %+v", x)
+	}
+	if rows := a.Inbox(ctx, v); len(rows) != 1 || rows[0].Role != "declined" {
+		t.Fatalf("and on the asker's home screen: %+v", rows)
+	}
+	if _, err := a.ChoreAct(ctx, v, ask.ID, "any"); err != nil {
+		t.Fatal(err)
+	}
+	if x := find(n, "Забрать торт"); x == nil || x.Who != "any" || x.State != "open" || len(a.Inbox(ctx, v)) != 0 {
+		t.Fatalf("left to anyone, the «нет» row is gone: %+v", x)
+	}
+	if _, err := a.ChoreAct(ctx, n, ask.ID, "take"); err != nil {
+		t.Fatal(err)
+	}
+	if x := find(n, "Забрать торт"); x.Who != "me" {
+		t.Fatalf("taken: %+v", x)
+	}
+	// «Беру» on a request puts the chore into the taker's list
+	ask2, _ := a.AddChore(ctx, n, app.ChoreIn{Title: "Вынести ёлку", Who: "partner"})
+	if _, err := a.ChoreAct(ctx, v, ask2.ID, "take"); err != nil {
+		t.Fatal(err)
+	}
+	if x := find(v, "Вынести ёлку"); x == nil || x.Who != "me" || x.State != "open" {
+		t.Fatalf("«Беру»: %+v", x)
+	}
+	// a repeating chore: ticked — the next occurrence is there, the done one keeps its day
+	rep, _ := a.AddChore(ctx, v, app.ChoreIn{Title: "Оплатить интернет", Who: "me", Due: &today, Repeat: "month"})
+	if _, err := a.ChoreAct(ctx, v, rep.ID, "done"); err != nil {
+		t.Fatal(err)
+	}
+	list, _, _ := a.Chores(ctx, v)
+	var open, done int
+	for _, c := range list {
+		if c.Title == "Оплатить интернет" {
+			if c.State == "open" && c.Repeat == "month" && c.Due != nil && *c.Due > today.Unix() {
+				open++
+			}
+			if c.State == "done" && c.DoneBy == "Вова" {
+				done++
+			}
+		}
+	}
+	if open != 1 || done != 1 {
+		t.Fatalf("repeat: %d open, %d done in %+v", open, done, list)
+	}
+	// done chores leave the tab after the kept days and stay in the history, searchable
+	if _, err := a.ChoreAct(ctx, v, mine.ID, "done"); err != nil {
+		t.Fatal(err)
+	}
+	ck.t = ck.t.AddDate(0, 0, 8)
+	if find(v, "Купить билеты на поезд") != nil {
+		t.Fatal("after a week a done chore is only in the history")
+	}
+	h, _ := a.ChoreHistory(ctx, v, "билеты", "")
+	if len(h) != 1 || h[0].DoneBy != "Вова" {
+		t.Fatalf("history search: %+v", h)
+	}
+	if h, _ := a.ChoreHistory(ctx, v, "", "partner"); len(h) != 0 {
+		t.Fatalf("history by who: %+v", h)
+	}
+	// delete and bring back
+	if _, err := a.ChoreAct(ctx, v, ask2.ID, "delete"); err != nil || find(v, "Вынести ёлку") != nil {
+		t.Fatalf("deleted chores are nowhere: %v", err)
+	}
+	if _, err := a.ChoreAct(ctx, v, ask2.ID, "restore"); err != nil || find(v, "Вынести ёлку") == nil {
+		t.Fatalf("«Вернуть»: %v", err)
+	}
+}
+
+func TestSettingsAndQuietBot(t *testing.T) {
+	a, f, _ := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	view := a.SettingsView(ctx, v)
+	if view["me"].(map[string]string)["notify.proposals"] != "1" || view["pair"].(map[string]string)["meet.budget"] != "5000" {
+		t.Fatalf("defaults: %+v", view)
+	}
+	if err := a.SetSetting(ctx, v, "meet.budget", "100500"); !errors.Is(err, app.ErrBadInput) {
+		t.Fatalf("unknown values are refused: %v", err)
+	}
+	// a shared setting: either changes it, the other is told on the home screen
+	if err := a.SetSetting(ctx, v, "meet.budget", "3000"); err != nil {
+		t.Fatal(err)
+	}
+	if a.SettingsView(ctx, n)["pair"].(map[string]string)["meet.budget"] != "3000" {
+		t.Fatal("the couple's setting is one for both")
+	}
+	rows := a.Inbox(ctx, n)
+	if len(rows) != 1 || rows[0].Role != "notice" || !strings.Contains(rows[0].Title, "Вова изменил настройку «Бюджет на встречу»") || rows[0].Sub != "до 3 000 ₽" {
+		t.Fatalf("the partner is told: %+v", rows)
+	}
+	if _, err := a.AnswerProposal(ctx, n, rows[0].ProposalID, true); err != nil || len(a.Inbox(ctx, n)) != 0 {
+		t.Fatalf("«Понятно» closes the notice: %v", err)
+	}
+	// mine: with proposals switched off the bot stays silent, the home screen still shows the row
+	if err := a.SetSetting(ctx, n, "notify.proposals", "0"); err != nil {
+		t.Fatal(err)
+	}
+	before := f.count(2, "")
+	if _, err := a.Propose(ctx, v, domain.ProposalTime, 1, "Планетарий", "вс 15 ноя, 13:00", ""); err != nil {
+		t.Fatal(err)
+	}
+	if f.count(2, "") != before {
+		t.Fatal("the bot must not write what the member switched off")
+	}
+	if rows := a.Inbox(ctx, n); len(rows) != 1 || rows[0].Role != "answer" {
+		t.Fatalf("the home screen shows everything regardless: %+v", rows)
+	}
+}

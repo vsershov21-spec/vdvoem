@@ -570,6 +570,17 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>"+html.EscapeString(msg)+"</i>", nil)
 			}
 		}
+	case "cx": // a chore ticked from the morning message or a reminder: cx:<id>
+		_, err = b.App.ChoreAct(ctx, c, id(1), "done")
+		switch {
+		case errors.Is(err, app.ErrChoreState):
+			toast, err = "Уже сделано или дело не твоё", nil
+		case err == nil:
+			toast = "Сделано ✓"
+			if q.Message != nil {
+				_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>✓ Сделано</i>", nil)
+			}
+		}
 	case "pr": // a proposal answered from the chat: pr:<id>:yes|no — the same answer the app gives
 		var p domain.Proposal
 		p, err = b.App.AnswerProposal(ctx, c, id(1), arg(2) == "yes")

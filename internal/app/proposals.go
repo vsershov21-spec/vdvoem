@@ -40,7 +40,7 @@ func (a *App) Propose(ctx context.Context, c Couple, kind string, ref int64, tit
 	if err != nil {
 		return p, err
 	}
-	a.send(ctx, c.Partner.ChatID, a.proposalText(p, c.Me.Name, false), a.proposalKeys(p))
+	a.tell(ctx, *c.Partner, c.Loc(), "notify.proposals", a.proposalText(p, c.Me.Name, false), a.proposalKeys(p))
 	a.Live.From(ctx, c.Space.ID)
 	return p, nil
 }
@@ -56,7 +56,8 @@ func (a *App) AnswerProposal(ctx context.Context, c Couple, id int64, yes bool) 
 		return p, err
 	}
 	st := domain.ProposalNo
-	if yes || p.Kind == domain.ProposalCancel { // a notice has only «понятно»
+	notice := p.Kind == domain.ProposalCancel || p.Kind == domain.ProposalNote
+	if yes || notice { // a notice has only «понятно»
 		st = domain.ProposalYes
 	}
 	if err = a.S.CloseProposal(ctx, c.Space.ID, id, st, a.now()); err != nil {
@@ -66,12 +67,16 @@ func (a *App) AnswerProposal(ctx context.Context, c Couple, id int64, yes bool) 
 		return p, err
 	}
 	p.State = st
-	if f := a.effects[p.Kind]; f != nil {
+	f := a.effects[p.Kind]
+	if f == nil && p.Kind == domain.ProposalChore {
+		f = a.choreAnswered // the built-in effect: the chore goes to the one who took it
+	}
+	if f != nil {
 		if err = f(ctx, c, p, yes); err != nil {
 			return p, err
 		}
 	}
-	if c.Partner != nil && p.Kind != domain.ProposalCancel {
+	if c.Partner != nil && !notice {
 		word := "«да»"
 		if !yes {
 			word = "«нет»"
@@ -188,6 +193,8 @@ func (a *App) proposalText(p domain.Proposal, author string, again bool) string 
 		return fmt.Sprintf("%s%s зовёт: <b>%s</b>%s", head, esc(author), esc(p.Title), subLine(p.Sub))
 	case domain.ProposalStop:
 		return fmt.Sprintf("%s%s предлагает после встречи: <b>%s</b>%s", head, esc(author), esc(p.Title), subLine(p.Sub))
+	case domain.ProposalNote:
+		return esc(p.Title) + subLine(p.Sub)
 	case domain.ProposalCancel:
 		return fmt.Sprintf("%s %s встречу: <b>%s</b>%s", esc(author), Past(author, "отменил"), esc(p.Title), subLine(p.Sub))
 	default:
@@ -198,7 +205,7 @@ func (a *App) proposalText(p domain.Proposal, author string, again bool) string 
 func (a *App) proposalKeys(p domain.Proposal) *tg.Markup {
 	open := tg.Row(tg.App("Открыть", a.appURL(proposalPath(p))))
 	switch p.Kind {
-	case domain.ProposalCancel:
+	case domain.ProposalCancel, domain.ProposalNote:
 		return tg.Keyboard(tg.Row(tg.CB("Понятно", fmt.Sprintf("pr:%d:yes", p.ID))), open)
 	case domain.ProposalChore:
 		return tg.Keyboard(tg.Row(tg.CB("Беру", fmt.Sprintf("pr:%d:yes", p.ID)), tg.CB("Не могу", fmt.Sprintf("pr:%d:no", p.ID))), open)
@@ -213,6 +220,9 @@ func (a *App) proposalKeys(p domain.Proposal) *tg.Markup {
 func proposalPath(p domain.Proposal) string {
 	if p.Kind == domain.ProposalChore {
 		return "chores"
+	}
+	if p.Kind == domain.ProposalNote {
+		return "settings"
 	}
 	if p.RefID > 0 {
 		return fmt.Sprintf("round/%d", p.RefID)

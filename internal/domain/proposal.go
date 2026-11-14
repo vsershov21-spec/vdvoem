@@ -24,6 +24,7 @@ const (
 	ProposalStop   = "stop"   // a place after the meeting
 	ProposalChore  = "chore"  // «Вова просит: забрать торт»
 	ProposalCancel = "cancel" // a cancelled meeting: nothing to answer, only to see
+	ProposalNote   = "note"   // a plain notice for the partner: «Вова изменил бюджет на встречу»
 )
 
 const (
@@ -46,7 +47,7 @@ type Proposal struct {
 }
 
 func ValidProposalKind(k string) bool {
-	return k == ProposalTime || k == ProposalStop || k == ProposalChore || k == ProposalCancel
+	return k == ProposalTime || k == ProposalStop || k == ProposalChore || k == ProposalCancel || k == ProposalNote
 }
 
 // CanAnswer: only the other one, and only while it waits
@@ -93,12 +94,15 @@ func (p Proposal) Row(me int64, author, partner string, now time.Time) (InboxRow
 	r := InboxRow{ProposalID: p.ID, Kind: p.Kind, RefID: p.RefID, Sub: p.Sub, CreatedUnix: p.CreatedAt.Unix()}
 	mine := p.AuthorID == me
 	switch {
-	case p.Kind == ProposalCancel:
+	case p.Kind == ProposalCancel || p.Kind == ProposalNote:
 		if mine || p.State != ProposalWait {
 			return r, false
 		}
 		r.Role, r.Hot, r.Actions = "notice", true, []string{"ok"}
-		r.Title = author + " " + pastVerb(author, "отменил") + " встречу: " + p.Title
+		r.Title = p.Title
+		if p.Kind == ProposalCancel {
+			r.Title = author + " " + pastVerb(author, "отменил") + " встречу: " + p.Title
+		}
 	case p.State == ProposalWait && !mine:
 		r.Role, r.Hot = "answer", true
 		switch p.Kind {

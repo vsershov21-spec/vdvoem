@@ -61,7 +61,7 @@ func (s *Store) LiveProposals(ctx context.Context, spaceID int64) ([]domain.Prop
 
 // WaitingProposals: across all spaces, for the reminder tick
 func (s *Store) WaitingProposals(ctx context.Context) ([]domain.Proposal, error) {
-	return s.proposals(ctx, `SELECT `+proposalCols+` FROM proposals WHERE state='wait' AND reminded=0 AND kind<>'cancel' ORDER BY id`)
+	return s.proposals(ctx, `SELECT `+proposalCols+` FROM proposals WHERE state='wait' AND reminded=0 AND kind NOT IN ('cancel','note') ORDER BY id`)
 }
 
 func (s *Store) proposals(ctx context.Context, q string, args ...any) ([]domain.Proposal, error) {

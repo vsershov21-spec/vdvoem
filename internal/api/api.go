@@ -74,6 +74,13 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("POST /api/ideas/{id}/wish", a.wish)
 	h("POST /api/ideas/{id}/merge", a.merge)
 	h("GET /api/inbox", a.inbox)
+	h("GET /api/chores", a.chores)
+	h("POST /api/chores", a.addChore)
+	h("GET /api/chores/history", a.choreHistory)
+	h("PATCH /api/chores/{id}", a.editChore)
+	h("POST /api/chores/{id}/{act}", a.choreAct)
+	h("GET /api/prefs", a.prefsV2)
+	h("PUT /api/prefs", a.setPrefV2)
 	h("POST /api/proposals", a.propose)
 	h("POST /api/proposals/{id}/answer", a.answerProposal)
 	h("POST /api/proposals/{id}/withdraw", a.withdrawProposal)
@@ -335,6 +342,8 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 409, map[string]string{"error": "own_proposal"})
 	case errors.Is(err, domain.ErrProposalClosed):
 		writeJSON(w, 409, map[string]string{"error": "proposal_closed"})
+	case errors.Is(err, app.ErrChoreState):
+		writeJSON(w, 409, map[string]string{"error": "chore_state"})
 	case errors.Is(err, app.ErrBadInput):
 		writeJSON(w, 400, map[string]string{"error": "bad_input"})
 	case errors.Is(err, app.ErrNotPending):
@@ -527,6 +536,8 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	}
 	out["to_mark"] = unmarked
 	out["urgent"] = a.App.UrgentForMe(ctx, c)
+	out["inbox"] = a.App.Inbox(ctx, c)                // «Ждёт тебя»: proposals to answer and their answers
+	out["chore_summary"] = a.App.ChoreSummary(ctx, c) // the one line about chores on the home screen
 	out["going"] = a.goingRounds(ctx, c)
 	if rd, err := a.App.S.OpenRound(ctx, c.Space.ID); err == nil {
 		out["round"] = a.viewRound(ctx, c, rd)
@@ -686,6 +697,104 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	}
 	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
 	return map[string]any{"idea": viewIdea(c, i)}, err
+}
+
+// ---------- chores ----------
+
+type choreIn struct {
+	Title   string `json:"title"`
+	Note    string `json:"note"`
+	Who     string `json:"who"`
+	Due     *int64 `json:"due"` // unix; null clears it (with has_due)
+	HasDue  bool   `json:"has_due"`
+	DueTime bool   `json:"due_time"`
+	Repeat  string `json:"repeat"`
+}
+
+func (in choreIn) app() app.ChoreIn {
+	out := app.ChoreIn{Title: in.Title, Note: in.Note, Who: in.Who, DueTime: in.DueTime, Repeat: in.Repeat}
+	if in.Due != nil {
+		t := time.Unix(*in.Due, 0)
+		out.Due = &t
+	}
+	return out
+}
+
+func (a *API) choresOut(r *http.Request, c app.Couple) (any, error) {
+	list, sum, err := a.App.Chores(r.Context(), c)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"chores": list, "summary": sum}, nil
+}
+
+func (a *API) chores(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.choresOut(r, c)
+}
+
+func (a *API) addChore(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in choreIn
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if _, err := a.App.AddChore(r.Context(), c, in.app()); err != nil {
+		return nil, err
+	}
+	return a.choresOut(r, c)
+}
+
+func (a *API) editChore(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in choreIn
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if _, err := a.App.EditChore(r.Context(), c, id, in.app(), in.HasDue || in.Due != nil); err != nil {
+		return nil, err
+	}
+	return a.choresOut(r, c)
+}
+
+func (a *API) choreAct(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.App.ChoreAct(r.Context(), c, id, r.PathValue("act")); err != nil {
+		return nil, err
+	}
+	return a.choresOut(r, c)
+}
+
+func (a *API) choreHistory(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	list, err := a.App.ChoreHistory(r.Context(), c, r.URL.Query().Get("q"), r.URL.Query().Get("who"))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"chores": list}, nil
+}
+
+// ---------- settings ----------
+
+func (a *API) prefsV2(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.App.SettingsView(r.Context(), c), nil
+}
+
+func (a *API) setPrefV2(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetSetting(r.Context(), c, in.Key, in.Value); err != nil {
+		return nil, err
+	}
+	return a.App.SettingsView(r.Context(), c), nil
 }
 
 // «Ждёт тебя»: everything that waits for my answer, plus what I am waiting for myself
