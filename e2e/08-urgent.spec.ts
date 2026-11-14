@@ -32,13 +32,12 @@ test('E35 «важно»: Настя просит ответить — Вове 
   await shot(pv, 'E35-anytime')
 })
 
-test('E36 разбор копилки: всё без отметки по одной карточке', async ({ browser }) => {
+test('E36 колода на главной: всё без отметки по одной карточке', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   await addIdeas(n, ['Каток в Парке Горького', 'Ужин в грузинском ресторане', 'Музей космонавтики', 'Квиз в баре'])
   const p = await open(await phone(browser), v)
-  await p.getByTestId('triage-open').click()
-  await expect(p.getByTestId('triage-card')).toBeVisible()
+  await expect(p.getByTestId('triage-card')).toBeVisible() // the deck is the main screen
   await shot(p, 'E36-triage')
   await p.getByRole('button', { name: 'Очень хочу' }).click()
   await p.getByRole('button', { name: 'Пропущу' }).click()

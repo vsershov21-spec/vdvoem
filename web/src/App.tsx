@@ -114,7 +114,7 @@ function Main() {
       <main key={key} className={'screen' + (hideIsland ? ' screen--sub' : '') + (anim.current.warm ? ' screen--warm' : '')} data-dir={anim.current.dir}>
         <Suspense fallback={<div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><BridgeLoader /></div>}>{screen}</Suspense>
       </main>
-      {!hideIsland && <PillNav current={tab ? top : '-'} badge={home.data?.counts.unmarked} onPlus={() => setAdding(true)} />}
+      {!hideIsland && <PillNav current={tab ? top : '-'} />}
       <AddSheet open={adding} onClose={() => setAdding(false)} onAdded={() => { emit('ideas'); emit('home') }} />
       {surprise && <Suspense fallback={null}><SurpriseSheet mode={surprise} onClose={() => setSurprise('')} /></Suspense>}
     </div>

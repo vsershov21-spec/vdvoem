@@ -296,7 +296,12 @@ func (a *API) triage(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 		}
 		rows = append(rows, row{v, soon})
 	}
+	// the main screen's deck: what the partner already marked comes first (each swipe there can be a match),
+	// then what is soon, then the best match
 	sort.SliceStable(rows, func(x, y int) bool {
+		if rows[x].v.PartnerMarked != rows[y].v.PartnerMarked {
+			return rows[x].v.PartnerMarked
+		}
 		if rows[x].soon != rows[y].soon {
 			return rows[x].soon < rows[y].soon
 		}

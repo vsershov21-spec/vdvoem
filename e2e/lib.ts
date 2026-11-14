@@ -109,7 +109,12 @@ export async function open(ctx: BrowserContext, u: U | null, path = '', intro = 
   if (u && !intro) await expect(p.locator('main.screen')).toBeVisible({ timeout: 10000 })
   return p
 }
-export const tab = (p: Page, id: 'home' | 'bank' | 'cal' | 'ai' | 'us') => p.locator('#tab-' + id).click()
+// four tabs; the assistant is the bar on the main screen («Спроси или вставь ссылку»)
+export const tab = async (p: Page, id: 'home' | 'bank' | 'cal' | 'ai' | 'us') => {
+  if (id !== 'ai') return p.locator('#tab-' + id).click()
+  await p.locator('#tab-home').click()
+  await p.locator('#ask-bar').click()
+}
 
 // ---------- a fake Telegram client (served instead of telegram-web-app.js) ----------
 // platform 'ios' + bio:true = an iPhone with Face ID; 'tdesktop' + bio:false = the desktop app (no sensor)
