@@ -51,6 +51,7 @@ type Button struct {
 	Label string `json:"label"`
 	Kind  string `json:"kind"`
 	Path  string `json:"path,omitempty"` // kind "open": the screen the button opens — the app goes there, nothing to run
+	URL   string `json:"url,omitempty"`  // kind "link": a page outside (today's schedule) — opened, nothing to run
 }
 
 type Reply struct {
@@ -118,6 +119,7 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 	}
 	prev, _ := as.App.S.Chat(ctx, c.Me.ID, history)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "user", Reply{Text: text}, as.now())
+	text = fixTypos(text) // the chat keeps what was written; the reading gets the words right
 
 	start := time.Now()
 	run := &run{as: as, c: c}
@@ -627,6 +629,11 @@ func (r *run) propose(ctx context.Context, kind string, payload map[string]any, 
 	}
 	r.seen[key] = true
 	act := store.Action{ID: token(), SpaceID: r.c.Space.ID, MemberID: r.c.Me.ID, Kind: kind, Payload: b}
+	if kind == "link" { // nothing to run: the button is the link itself
+		u, _ := payload["url"].(string)
+		r.buttons = append(r.buttons, Button{ID: "link-" + token()[:6], Label: label, Kind: kind, URL: u})
+		return map[string]string{"status": "button shown to the user"}
+	}
 	if r.dry {
 		r.buttons = append(r.buttons, Button{ID: "dry", Label: label, Kind: kind})
 		return map[string]string{"status": "button shown to the user; nothing changed yet"}
@@ -1282,6 +1289,7 @@ func (as *Assistant) Try(ctx context.Context, c app.Couple, texts []string, foll
 	var out []TryStep
 	var pt Turn
 	for _, text := range texts {
+		text = fixTypos(text)
 		start := time.Now()
 		run := &run{as: as, c: c, dry: true}
 		if !follow {

@@ -17,8 +17,15 @@ import { Btn, Cover, Empty, Sheet, Skel, burst, toast } from './kit'
 // ids marked in this session: a deck reopened from the cache must not show them again
 const marked = new Set<number>()
 
-export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.ReactNode }) {
+// Two piles in one deck: «Наши» — what one of us added or wants, «Афиша» — the scout's finds. Ours go first;
+// when there is nothing of ours (a new couple) the deck says so and offers the scout's afisha.
+type Src = 'ours' | 'afisha'
+let lastSrc: Src | '' = ''
+
+export function Deck({ partner, onEmpty, onAdd }: { partner?: Person; onEmpty?: React.ReactNode; onAdd?: () => void }) {
   const { data, refresh } = useLoad<{ ideas: Idea[]; total: number }>('/triage')
+  const [src, setSrcS] = useState<Src | ''>(lastSrc)
+  const setSrc = (x: Src) => { haptic.select(); lastSrc = x; setSrcS(x); setK(0) }
   const [k, setK] = useState(0)
   const [done, setDone] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -27,7 +34,10 @@ export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.R
   const [list, setList] = useState<Idea[] | null>(null)
   useEffect(() => { if (data && !list) setList(data.ideas.filter(x => !marked.has(x.id))) }, [data])
   if (!list) return <div className="sdeck"><Skel h={430} r={32} mb={0} /></div>
-  const i = list[k], nx = list[k + 1]
+  const ours = list.filter(x => x.ours), afisha = list.filter(x => !x.ours)
+  const cur: Src = src || 'ours' // ours first; none yet — the empty pile says so and offers the afisha
+  const pile = cur === 'ours' ? ours : afisha
+  const i = pile[k], nx = pile[k + 1]
   const pn = partner?.name || 'Партнёр'
   const next = () => { setK(x => x + 1); setBusy(false) }
   const wish = async (w: Exclude<Wish, ''>) => {
@@ -48,20 +58,37 @@ export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.R
   }
   const restart = () => { setList(null); setK(0); refresh(); emit('home') }
   const sheet = <MatchSheet idea={match} partner={pn} onClose={() => setMatch(null)} />
-  if (!i) return (<>
-    <div className="sdeck sdeck--empty card rise">
-      <Empty title={list.length ? 'Всё разобрали' : 'Свайпать пока нечего'} text={done ? `Отмечено: ${done}. Совпадения — в «Идеи → Хотите оба». Скаут принесёт новое утром.` : 'Все идеи и события уже с отметкой. Добавь идею или спроси помощника.'}>
-        <div className="row" style={{ gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Btn kind="soft" sm icon="heart" onClick={() => go('ideas/both')}>Хотите оба</Btn>
-          <Btn kind="ghost" sm icon="history" onClick={restart}>Обновить</Btn>
-        </div>
-      </Empty>
-      {onEmpty}
-    </div>
-    {sheet}
-  </>)
+  const tabs = <div className="sdeck__src" role="tablist" aria-label="Что свайпать">
+    {([['ours', 'Наши', ours.length], ['afisha', 'Афиша скаута', afisha.length]] as [Src, string, number][]).map(([x, l, n]) =>
+      <button key={x} role="tab" aria-selected={cur === x} className={'sdeck__tab' + (cur === x ? ' is-on' : '')} onClick={() => cur !== x && setSrc(x)}>{l}<small>{Math.max(0, n - (cur === x ? k : 0))}</small></button>)}
+  </div>
+  if (!i) {
+    const other = cur === 'ours' ? afisha.length : ours.length
+    const [title, text] = cur === 'ours'
+      ? (ours.length ? ['Наши разобраны', `Отмечено: ${done}. Дальше — что нашёл скаут.`] : ['Своих идей пока нет', 'Добавь, куда давно хотели, — или посмотри, что нашёл скаут.'])
+      : (afisha.length ? ['Афиша разобрана', `Отмечено: ${done}. Скаут принесёт новое утром.`] : ['Скаут ещё ничего не принёс', 'Новое приходит каждое утро. А пока спроси помощника: «что в кино в субботу».'])
+    return (<>
+      {tabs}
+      <div className="sdeck sdeck--empty card rise" data-testid="deck-empty">
+        <Empty title={title} text={text}>
+          <div className="col" style={{ gap: 8, alignItems: 'stretch', width: '100%', maxWidth: 300, margin: '0 auto' }}>
+            {other > 0 && <Btn kind="primary" block icon={cur === 'ours' ? 'spark' : 'folder'} onClick={() => setSrc(cur === 'ours' ? 'afisha' : 'ours')}>{cur === 'ours' ? `Смотреть афишу скаута · ${other}` : `К нашим идеям · ${other}`}</Btn>}
+            {cur === 'ours' && onAdd && <Btn kind={other ? 'soft' : 'primary'} block icon="plus" onClick={onAdd}>Добавить идею</Btn>}
+            {cur === 'afisha' && <Btn kind="soft" block icon="spark" onClick={() => go('assistant')}>Спросить помощника</Btn>}
+            <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
+              {done > 0 && <button className="link" onClick={() => go('ideas/both')}>Хотите оба</button>}
+              <button className="link" onClick={restart}>Обновить</button>
+            </div>
+          </div>
+        </Empty>
+        {onEmpty}
+      </div>
+      {sheet}
+    </>)
+  }
   const when = i.starts_at ? new Date(i.starts_at * 1000).toLocaleString('ru', { weekday: 'short', day: 'numeric', month: 'long', ...(new Date(i.starts_at * 1000).getHours() ? { hour: '2-digit', minute: '2-digit' } : {}) }) : ''
   return (<>
+    {tabs}
     <div className="sdeck" data-testid="deck">
       {nx && <div className="sdeck__peek" aria-hidden="true"><Cover idea={nx} h={230} big><span /><span /></Cover></div>}
       <AnimatePresence initial={false}>
@@ -76,7 +103,8 @@ export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.R
             </Cover>
             <div className="sdeck__body">
               {i.meta && <p className="callout" style={{ margin: 0, fontWeight: 600 }}>{i.meta}</p>}
-              {i.why ? <p className="caption muted sdeck__why">{i.why}</p> : i.info?.about ? <p className="caption muted sdeck__why">{i.info.about}</p> : i.match?.note ? <p className="caption muted sdeck__why">{i.match.note}</p> : null}
+              {(i.info?.about || i.note) && <p className="caption sdeck__about">{i.info?.about || i.note}</p>}
+              {(i.why || i.match?.note) && <p className="caption muted sdeck__why"><Icon n="spark" s={12} /> {i.why || i.match?.note}</p>}
             </div>
           </div>
         </Swipe>
@@ -88,7 +116,7 @@ export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.R
       <button className="sdeck__btn sdeck__btn--yes" aria-label="Хочу" onClick={() => wish('want')} disabled={busy}><Icon n="heart" s={26} w={2.4} /></button>
     </div>
     <div className="sdeck__more">
-      <span className="caption muted">{k + 1} из {list.length}</span>
+      <span className="caption muted">{k + 1} из {pile.length}</span>
       <button className="link" onClick={later}>Потом</button>
       {partner && <button className="link" onClick={urgent}>Важно — пусть {pn} ответит</button>}
     </div>

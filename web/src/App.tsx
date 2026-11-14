@@ -1,6 +1,6 @@
 import { BridgeLoader } from './ui/Mark'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useRoute, go, navDir, back } from './lib/router'
+import { useRoute, go, navDir, back, setFromTab } from './lib/router'
 import { scheme, onTheme, setBack, statusBar } from './lib/tg'
 import { useLoad, emit, useOn, prefetch } from './lib/data'
 import { get, post, humanError } from './lib/api'
@@ -74,6 +74,7 @@ function Main() {
   const top = route[0]
   const tab = TABS.find(t => t.path === top)
   const key = route.join('/')
+  if (tab && route.length === 1) setFromTab(tab.label)
   // transitions: tab → tab slides toward the tab's side, push/back slide like iOS; a screen seen before
   // skips its staggered entrance (its data is cached, nothing to «arrive»)
   const prevKey = useRef(key), seen = useRef(new Set<string>()), scrolls = useRef(new Map<string, number>())

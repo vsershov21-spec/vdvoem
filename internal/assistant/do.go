@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 
 	"vdvoem/internal/app"
 	"vdvoem/internal/domain"
+	"vdvoem/internal/leisure"
 	"vdvoem/internal/store"
 )
 
@@ -299,7 +301,9 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		}
 		return Reply{Text: t}
 	}
-	// nothing in the data: ideas of the kind, as buttons to add — and a question to the scout
+	// nothing in the data: where to look right now (a definite kind — today's schedule outside), ideas of the
+	// kind as buttons to add — never of another kind: «кино» gets no «планетарий» — and a question to the scout
+	r.lookNow(ctx, in)
 	n := r.catalogButtons(ctx, in, 3)
 	txt := "В афише и копилке под это ничего нет"
 	if cond != "" {
@@ -418,14 +422,56 @@ func (r *run) catalogButtons(ctx context.Context, in Intent, n int) int {
 		}
 	}
 	k := 0
-	for _, c := range app.CatalogFor(moods, have, in.Max, n) {
-		if len(in.Cats) > 0 && !contains(in.Cats, c.Category) || contains(in.Not, c.Category) {
+	for _, c := range app.CatalogFor(moods, have, in.Max, n+8) {
+		if k >= n {
+			break
+		}
+		if len(in.Cats) > 0 && !contains(in.Cats, c.Category) || contains(in.Not, c.Category) || len(in.G) > 0 && !fitsAny(in.G, c.Title) {
 			continue
 		}
 		r.propose(ctx, "add_idea", map[string]any{"text": c.Title}, "+ "+short(c.Title, 30))
 		k++
 	}
 	return k
+}
+
+func fitsAny(kinds []string, title string) bool {
+	for _, g := range kinds {
+		if leisure.Fits(g, title) {
+			return true
+		}
+	}
+	return false
+}
+
+// lookNow: a definite kind with nothing in our data — a button to today's schedule outside (Яндекс Афиша for
+// shows, Яндекс Карты for places), so «что сегодня в кино» is answered now, not tomorrow morning
+func (r *run) lookNow(ctx context.Context, in Intent) {
+	if len(in.G) == 0 {
+		return
+	}
+	g := in.G[0]
+	city := strings.TrimSpace(r.c.Space.City)
+	if city == "" {
+		city = "Москва"
+	}
+	when := ""
+	if in.From != "" && in.From == in.To {
+		if d, err := time.Parse("2006-01-02", in.From); err == nil {
+			when = " " + d.Format("02.01")
+		}
+	}
+	q, label := g, "Где идёт: "+g
+	if leisure.CatOf(g) == "food" {
+		u := "https://yandex.ru/maps/?text=" + url.QueryEscape(g+" "+city)
+		r.propose(ctx, "link", map[string]any{"url": u}, "🗺 "+short(g, 22)+" на карте")
+		return
+	}
+	if g == "кино" {
+		q, label = "кино расписание сеансов", "🎬 Сеансы"+when
+	}
+	u := "https://yandex.ru/search/?text=" + url.QueryEscape(q+" "+city+when)
+	r.propose(ctx, "link", map[string]any{"url": u}, short(label, 30))
 }
 
 func contains(l []string, v string) bool {

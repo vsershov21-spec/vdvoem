@@ -963,3 +963,25 @@ func TestAssistantTryLeavesNoTrace(t *testing.T) {
 		t.Fatalf("memory written: %+v", mem)
 	}
 }
+
+// «что сегондя в кино» with no cinema in the data: the typo still reads «today», the answer gives a button to
+// today's sessions outside, and never offers ideas of another kind (no «планетарий» for cinema)
+func TestAssistantKinoTodayNothing(t *testing.T) {
+	a, _, _ := setup(t)
+	ctx := context.Background()
+	v, _ := pair(t, a)
+	as := &assistant.Assistant{App: a, AI: a.AI}
+	rep, _ := as.Ask(ctx, v, "что сегондя в кино?")
+	link := false
+	for _, b := range rep.Actions {
+		if b.Kind == "link" && strings.Contains(b.URL, "yandex") {
+			link = true
+		}
+		if strings.Contains(b.Label, "Планетарий") || strings.Contains(b.Label, "Выставка") || strings.Contains(b.Label, "Джаз") {
+			t.Fatalf("an idea of another kind offered for cinema: %+v", rep.Actions)
+		}
+	}
+	if !link {
+		t.Fatalf("no button to today's sessions: %+v", rep)
+	}
+}

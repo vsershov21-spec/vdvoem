@@ -58,10 +58,10 @@ export function IdeaScreen({ id, me, partner: pp }: { id: number; me?: Person; p
         <WishPicker value={i.my_wish} onChange={wish} />
         <p className="caption muted" style={{ margin: '10px 4px 0' }}>{pn || 'Партнёр'} {partner}.</p>
         <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>{fixed ? 'Идём! Позвать и в календарь' : 'Идём сюда — найти время'}</Btn></div>
-        {pp && !data.urgent && <div style={{ marginTop: 10 }}><AskUrgent ideaId={i.id} partner={pp.name} onDone={reload} /></div>}
+        {pp && !data.urgent && !(i.partner_wish === 'want' || i.partner_wish === 'very') && <div style={{ marginTop: 10 }}><AskUrgent ideaId={i.id} partner={pp.name} onDone={reload} /></div>}
       </>}
       {i.status === 'draft' && i.kind === 'leisure' && fixed && <div style={{ marginTop: 20 }}><Btn kind="accent" block shine icon="cal" onClick={goWith}>Идём! Позвать и в календарь</Btn></div>}
-      {i.status === 'draft' && i.kind === 'leisure' && pp && !data.urgent && <div style={{ marginTop: 10 }}><AskUrgent ideaId={i.id} partner={pp.name} onDone={reload} /></div>}
+      {i.status === 'draft' && i.kind === 'leisure' && pp && !data.urgent && !(i.partner_wish === 'want' || i.partner_wish === 'very') && <div style={{ marginTop: 10 }}><AskUrgent ideaId={i.id} partner={pp.name} onDone={reload} /></div>}
       <div style={{ marginTop: 10 }}>
         {i.status === 'active' ? <Btn kind="ghost" block icon="trash" onClick={archive}>Убрать в архив</Btn> : <Btn kind="soft" block onClick={restore}>Вернуть в копилку</Btn>}
       </div>
