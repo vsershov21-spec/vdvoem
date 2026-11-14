@@ -984,4 +984,10 @@ func TestAssistantKinoTodayNothing(t *testing.T) {
 	if !link {
 		t.Fatalf("no button to today's sessions: %+v", rep)
 	}
+	// a cuisine that is not there: said so, no restaurant of another cuisine in its place
+	a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{{Title: "Ресторан «Китайская грамота»", Category: "food", URL: "https://x.example/kg", Score: 7}})
+	it, _ := as.Ask(ctx, v, "лучшие итальянские рестораны")
+	if len(it.Cards) != 0 || !strings.Contains(it.Text, "нет") {
+		t.Fatalf("no Italian → say so, no other cards: %+v", it)
+	}
 }

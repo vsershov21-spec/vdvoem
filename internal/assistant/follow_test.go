@@ -174,3 +174,14 @@ func TestKindFitsCategory(t *testing.T) {
 		t.Error("кино: only the film")
 	}
 }
+
+// a kind by name or genre beats a mention in the description: an exhibition about cars whose text mentions
+// a film is not «кино» when a real film is there
+func TestKindOfStrength(t *testing.T) {
+	expo := store.Idea{Idea: domain.Idea{Title: "Даешь автомобиль! Выставка", Category: "culture"}, Info: store.Info{About: "кадры кинохроники и фильмы 1930-х"}}
+	film := store.Idea{Idea: domain.Idea{Title: "Фильм «Лето в Бадене»", Category: "culture"}}
+	genre := store.Idea{Idea: domain.Idea{Title: "«Анора» в «Художественном»", Category: "culture"}, Info: store.Info{Genres: []string{"кино"}}}
+	if kindOf(expo, []string{"кино"}) != 1 || kindOf(film, []string{"кино"}) != 2 || kindOf(genre, []string{"кино"}) != 2 {
+		t.Errorf("strength: expo %d film %d genre %d", kindOf(expo, []string{"кино"}), kindOf(film, []string{"кино"}), kindOf(genre, []string{"кино"}))
+	}
+}

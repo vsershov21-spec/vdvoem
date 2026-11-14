@@ -241,21 +241,15 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		res = r.afisha(ctx, q).(map[string]any)
 		events, _ = res["events"].([]map[string]any)
 	}
-	near := ""
 	if len(events) == 0 && len(q.G) > 0 {
-		// nothing of exactly this kind: the closest of the same sort (category, mood, days) — said plainly
-		near = strings.Join(q.G, ", ")
-		q.G = nil
-		res = r.afisha(ctx, q).(map[string]any)
-		events, _ = res["events"].([]map[string]any)
+		// nothing of exactly this kind: say so — no «близкое по духу» cards in its place (a «голубой огонёк» for
+		// «итальянские рестораны» reads as not listening); the closest is one tap away if wanted
+		return r.noneOfKind(ctx, in, cond, text)
 	}
 	found, _ := res["found"].(int)
 	r.found = found
 	if len(events) > 0 {
-		if near != "" {
-			// not what was asked: no «Идём» on something else — offer to watch for the very thing
-			r.proposeAlt(ctx, map[string]any{"intent": Intent{I: "goal", Text: near}, "text": "следи за " + near}, "🔭 Следить: "+short(near, 22))
-		} else if !r.bookButton(ctx, events) {
+		if !r.bookButton(ctx, events) {
 			if id, _ := events[0]["id"].(int64); id != 0 {
 				r.propose(ctx, "plan", map[string]any{"idea_id": id}, "Идём: "+short(fmt.Sprint(events[0]["title"]), 26))
 			}
@@ -284,14 +278,11 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 			return Reply{Text: r.list(events, found, in, cond)}
 		}
 		t := r.talk(events, found, in, cond)
-		if near != "" {
-			t = "Именно «" + near + "» сейчас нет. Близкое по духу — ниже; могу следить, когда появится.\n" + t
-		}
 		// new things come only from the scout: asked for them in words — it searches tomorrow morning; little that is
 		// new among the answers — one tap asks it to
 		what := strings.TrimSpace(firstNonEmpty(cond, in.Q, text))
 		// a definite kind («кино в субботу») with little or nothing of it: the scout looks without being asked
-		thin := near != "" || len(in.G) > 0 && found < 3
+		thin := len(in.G) > 0 && found < 3
 		if askNewRe.MatchString(strings.ToLower(text)) && !in.Scout || thin { // «что нового нашёл скаут» asks about finds, not for a search
 			if r.askScout(ctx, "Найти новое: "+what, 0) == nil {
 				t += "\n🔭 Попросил скаута поискать новое — " + short(what, 40) + ". Принесёт утром, пришлю сюда и в бот."
@@ -442,6 +433,30 @@ func fitsAny(kinds []string, title string) bool {
 		}
 	}
 	return false
+}
+
+// noneOfKind: a definite kind («кино», «грузинская кухня») with nothing of it in the bank and the afisha.
+// The answer says so plainly, asks the scout right away, gives the way to look now, offers ideas of the same
+// kind only, and the closest of the same sort as a button — never as cards in place of the answer.
+func (r *run) noneOfKind(ctx context.Context, in Intent, cond, text string) Reply {
+	kind := strings.Join(in.G, ", ")
+	t := "«" + upperFirst(kind) + "»"
+	if rest := strings.TrimSpace(strings.TrimPrefix(cond, kind)); rest != "" && rest != "," {
+		t += " (" + strings.Trim(rest, ", ") + ")"
+	}
+	t += " в вашей афише и банке сейчас нет."
+	what := strings.TrimSpace(firstNonEmpty(cond, in.Q, text))
+	if r.askScout(ctx, "Найти новое: "+what, 0) == nil {
+		t += "\n🔭 Попросил скаута найти именно это — пришлю сюда и в бот, как только принесёт."
+	}
+	r.lookNow(ctx, in)
+	r.catalogButtons(ctx, in, 2)
+	alt := in
+	alt.G, alt.refined = nil, true
+	if len(alt.Cats) > 0 || len(alt.Moods) > 0 || alt.Date != "" || alt.From != "" || alt.Wknd {
+		r.proposeAlt(ctx, map[string]any{"intent": alt, "text": text}, "Что есть похожего")
+	}
+	return Reply{Text: t}
 }
 
 // lookNow: a definite kind with nothing in our data — a button to today's schedule outside (Яндекс Афиша for
