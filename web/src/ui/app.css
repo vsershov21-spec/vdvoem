@@ -770,9 +770,9 @@ button.island{border:0;font:inherit;padding:0;display:block;text-align:left}
 .inrow__acts{display:flex;align-items:center;gap:6px;flex:none}
 .iconbtn--sm{width:32px;height:32px}
 .inbox__more{align-self:center;font-size:13px}
-.matchlink{appearance:none;border:0;background:none;font:inherit;font-size:14px;font-weight:650;color:var(--accent);display:flex;align-items:center;gap:6px;margin:12px auto 0;cursor:pointer}
+.matchlink{appearance:none;border:0;background:none;font:inherit;font-size:14px;font-weight:650;color:var(--accent);display:flex;align-items:center;gap:6px;margin:8px auto 0;padding:8px 12px;min-height:36px;cursor:pointer}
 .askbox{margin-top:16px;display:flex;flex-direction:column;gap:8px}
-.askbox .askbar__q{width:100%}
+.askbox .askbar__q{width:100%;flex:none}
 .askbox__chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px}
 .askbox__chips::-webkit-scrollbar{display:none}
 .askbox__chips .wkchip{white-space:nowrap;flex:none}

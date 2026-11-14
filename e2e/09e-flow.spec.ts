@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { people, pair, phone, open, shot, api, addIdeas, BASE } from './lib'
 
-const day = (n: number) => { const d = new Date(Date.now() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T19:00` }
+// the server's clock runs ahead in the suite (other tests move it): dates count from the server's «today»
+let base = new Date()
+const day = (n: number) => { const d = new Date(base.getTime() + n * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T19:00` }
 
 // A new couple has no ideas of its own: the deck says so and offers the scout's afisha in one tap;
 // with ideas, ours come first and the afisha is the second pile.
@@ -10,6 +12,7 @@ test('E44 колода: «Наши» и «Афиша скаута»; своих 
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   const space = (await api(v, 'GET', '/me')).space.id
+  base = new Date((await api(v, 'GET', '/calendar')).today + 'T12:00')
   const picks = ['Органный концерт при свечах', 'Квиз в баре', 'Каток на ВДНХ'].map((title, k) => ({ title, category: k ? 'other' : 'culture', starts: day(k + 2), price_rub: 1500, why: 'под ваши вкусы', score: 7, url: `https://afisha.example/e44/${space}/${k}`, image: '' }))
   await fetch(BASE + '/agent/picks', { method: 'POST', body: JSON.stringify({ space, picks }) })
   const p = await open(await phone(browser), v)
