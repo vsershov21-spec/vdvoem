@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useLoad } from '../lib/data'
 import { post, put, humanError } from '../lib/api'
 import { go, back } from '../lib/router'
-import { when as whenText } from '../lib/format'
+import { emit } from '../lib/data'
+import { haptic } from '../lib/tg'
+import { when as whenText, ncase } from '../lib/format'
 import type { Round } from '../lib/types'
 import type { HomeV2 } from './types'
-import { Pic, Empty, say } from './ui'
+import { Pic, Empty, Sheet, say } from './ui'
 import type { Chore } from './Chores'
 
 const Sub = ({ from, title }: { from: string; title: string }) => <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{title}</b><span /></div>
@@ -86,6 +88,8 @@ export function Settings({ section, home, from }: { section?: string; home: Home
   const change = async (key: string, value: string) => {
     try { set(await put<Prefs>('/prefs', { key, value })); if (data?.defs.find(d => d.key === key)?.scope === 'pair' && home?.partner) say(`${home.partner.name} увидит изменение`) } catch (e) { say(humanError(e)) }
   }
+  if (section === 'pair') return <Pair home={home} from={from} />
+  if (section === 'data') return <Data home={home} from={from} />
   if (!data) return <div className="scr"><Sub from={from} title={s?.title || 'Настройки'} /></div>
   if (s) {
     const v = data[s.scope], defs = s.keys.map(k => data.defs.find(d => d.key === k)!).filter(Boolean)
@@ -107,8 +111,86 @@ export function Settings({ section, home, from }: { section?: string; home: Home
     <div className="scr" data-testid="v2-settings">
       <Sub from={from} title="Настройки" />
       <div className="blk"><label>Для меня</label><div className="v-card v-list">{SECTIONS.filter(x => x.scope === 'me').map(row)}</div></div>
-      <div className="blk"><label>Для пары</label><div className="v-card v-list">{SECTIONS.filter(x => x.scope === 'pair').map(row)}</div></div>
+      <div className="blk"><label>Для пары</label><div className="v-card v-list">{SECTIONS.filter(x => x.scope === 'pair').map(row)}
+        <button className="srow" data-testid="sec-pair" onClick={() => go('settings/pair')}><i className="si"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="5" /><circle cx="15" cy="12" r="5" /></svg></i><span className="tx"><b>Пара</b><small>{home?.partner ? home.partner.name : 'партнёра пока нет'}</small></span>›</button></div></div>
       <div className="blk"><label>Вход</label><div className="v-card v-list"><button className="srow" onClick={async () => { try { await post('/security/logout-all'); say('Остальные устройства отключены') } catch (e) { say(humanError(e)) } }}><span className="tx"><b>Выйти на других устройствах</b><small>вход через Telegram останется на этом</small></span>›</button></div></div>
+      <div className="blk"><label>Данные</label><div className="v-card v-list">
+        <button className="srow" data-testid="sec-data" onClick={() => go('settings/data')}><i className="si"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.500 10.500L12 15l4.500-4.500M5 19h14" /></svg></i><span className="tx"><b>Данные</b><small>скачать, удалить</small></span>›</button></div></div>
+    </div>)
+}
+
+// ---------- «Пара»: who the partner is, since when, and the way out — only through the sheet with what it means ----------
+function Pair({ home, from }: { home: HomeV2 | null; from: string }) {
+  const [ask, setAsk] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const p = home?.partner
+  const leave = async () => {
+    setBusy(true)
+    try {
+      const r = await post<{ ideas: number }>('/pair/leave')
+      haptic.ok(); setAsk(false); emit('home'); emit('ideas'); go('', true)
+      say(r.ideas > 0 ? 'Ты больше не в паре. Копия твоих идей с тобой' : 'Ты больше не в паре')
+    } catch (e) { say(humanError(e)) } finally { setBusy(false) }
+  }
+  return (
+    <div className="scr" data-testid="v2-pair">
+      <Sub from={from} title="Пара" />
+      {p ? <>
+        <div className="v-card v-list"><div className="srow"><span className="tx"><b>{p.name}</b>
+          <small>{home?.paired_since ? 'в паре с ' + new Date(home.paired_since * 1000).toLocaleDateString('ru', { day: 'numeric', month: 'long' }) : 'в паре'}</small></span></div></div>
+        <button className="b w red" data-testid="leave" onClick={() => setAsk(true)}>Выйти из пары</button>
+      </> : home && <Empty title="Партнёра пока нет"><button className="b p w" onClick={() => go('', true)}>Пригласить с главной</button></Empty>}
+      <Sheet open={ask && !!p} onClose={() => setAsk(false)} testid="leave-sheet">
+        <h3>Выйти из пары?</h3>
+        <ul className="ul m">
+          <li>Общие идеи, встречи и история останутся у {ncase(p?.name || '', 'gen')}.</li>
+          <li>Ты получишь копию своих идей.</li>
+          <li>Назначенные встречи отменятся, {p?.name} узнает об этом.</li>
+        </ul>
+        <button className="b w red" disabled={busy} data-testid="leave-confirm" onClick={leave}>Выйти из пары</button>
+        <button className="b w" onClick={() => setAsk(false)}>Остаться</button>
+      </Sheet>
+    </div>)
+}
+
+// ---------- «Данные»: my ideas and history as a file in the bot; deleting myself, confirmed by a typed word ----------
+const WORD = 'удалить'
+function Data({ home, from }: { home: HomeV2 | null; from: string }) {
+  const [ask, setAsk] = useState(false)
+  const [word, setWord] = useState('')
+  const [busy, setBusy] = useState(false)
+  const p = home?.partner
+  const file = async () => {
+    setBusy(true)
+    try { await post('/data/export'); say('Файл придёт в бот') } catch (e) { say(humanError(e)) } finally { setBusy(false) }
+  }
+  const wipe = async () => {
+    setBusy(true)
+    try {
+      await post('/data/delete', { confirm: word })
+      go('', true); window.location.reload() // nothing is left of this person: the app starts as for a new one
+    } catch (e) { say(humanError(e)); setBusy(false) }
+  }
+  return (
+    <div className="scr" data-testid="v2-data">
+      <Sub from={from} title="Данные" />
+      <div className="v-card v-list">
+        <button className="srow" disabled={busy} data-testid="data-export" onClick={file}><span className="tx"><b>Скачать мои идеи и историю</b><small>файл придёт в бот</small></span>›</button>
+        <button className="srow red" data-testid="data-delete" onClick={() => { setWord(''); setAsk(true) }}><span className="tx"><b>Удалить мои данные</b><small>вернуть нельзя</small></span>›</button>
+      </div>
+      <Sheet open={ask} onClose={() => setAsk(false)} testid="wipe-sheet">
+        <h3>Удалить мои данные?</h3>
+        <ul className="ul m">
+          {p && <li>Ты выйдешь из пары. Общие идеи, встречи и дела останутся у {ncase(p.name, 'gen')} без твоего имени, отметок и оценок.</li>}
+          <li>Удалятся твои идеи и отметки, вкус, память и переписка с помощником.</li>
+          <li>Удалятся настройки, занятые дни и входы на всех устройствах.</li>
+          <li>Вернуть нельзя.</li>
+        </ul>
+        <label className="fld"><small>Чтобы подтвердить, напиши слово «{WORD}»</small>
+          <input value={word} onChange={e => setWord(e.target.value)} autoCapitalize="off" autoComplete="off" placeholder={WORD} aria-label="Слово для подтверждения" data-testid="wipe-word" /></label>
+        <button className="b w red" disabled={busy || word.trim().toLowerCase() !== WORD} data-testid="wipe-confirm" onClick={wipe}>Удалить навсегда</button>
+        <button className="b w" onClick={() => setAsk(false)}>Отмена</button>
+      </Sheet>
     </div>)
 }
 

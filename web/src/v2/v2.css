@@ -291,3 +291,4 @@
 .v2 .composer input{flex:1;min-width:0}.v2 .composer .b{width:40px;height:40px;padding:0;border-radius:50%;font-size:17px}
 /* the invitation: who calls, on the gradient of the pair */
 .v2 .inv-top{min-height:170px;border-radius:24px;padding:18px;display:flex;align-items:flex-end;flex:none;color:#fff;font-weight:700;font-size:22px;line-height:1.15;letter-spacing:-.01em;background:linear-gradient(150deg,#ef6537,#31408f)}
+.v2 .b:disabled{opacity:.45}

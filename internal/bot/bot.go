@@ -511,7 +511,8 @@ func (b *Bot) invited(ctx context.Context, m *tg.Message, code string) bool {
 	case app.InviteUsed:
 		b.say(ctx, m.Chat.ID, from+" уже в паре. Эта ссылка сработала один раз.", nil)
 	case app.InvitePaired:
-		b.say(ctx, m.Chat.ID, fmt.Sprintf("Ты в паре с %s. Принять другое приглашение нельзя.", html.EscapeString(app.NameIns(v.Partner))), b.openApp(""))
+		b.say(ctx, m.Chat.ID, fmt.Sprintf("Ты в паре с %s. Чтобы принять, выйди из неё в настройках.", html.EscapeString(app.NameIns(v.Partner))),
+			b.openAppAs("В настройки", "settings/pair?v2=1"))
 	case app.InviteOwn:
 		b.say(ctx, m.Chat.ID, "Это твоя ссылка. Отправь её партнёру: пара появится, когда он примет приглашение.", b.openApp(""))
 	default:

@@ -224,7 +224,8 @@ function Solo({ home, onAddIdea }: { home: HomeV2; onAddIdea: () => void }) {
   }
   return (
     <div className="scr" data-testid="v2-solo">
-      <div><h2>Привет, {home.me.name}</h2><p className="m">Партнёра пока нет</p></div>
+      <div className="v-row"><div><h2>Привет, {home.me.name}</h2><p className="m">Партнёра пока нет</p></div><span className="sp" />
+        <button className="b s" aria-label="Профиль" data-testid="solo-profile" onClick={() => go('us')}>{home.me.name[0]}</button></div>
       {(home.inbox || []).filter(r => r.role !== 'waiting').map(r => <InboxLine key={r.id} row={r} />)}
       <div className="v-card" style={{ background: 'linear-gradient(150deg,#ef6537,#31408f)', color: '#fff', gap: 10, padding: 16 }}>
         <h2 style={{ color: '#fff' }}>{invited ? 'Ждём партнёра' : 'Позови партнёра'}</h2>

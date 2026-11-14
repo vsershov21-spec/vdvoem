@@ -124,6 +124,9 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("POST /api/invite", a.invite)
 	h("GET /api/invite/{code}", a.inviteInfo)
 	h("POST /api/invite/{code}/{act}", a.inviteAct)
+	h("POST /api/pair/leave", a.leavePair)
+	h("POST /api/data/export", a.exportData)
+	h("POST /api/data/delete", a.deleteData)
 	h("GET /api/assistant", a.chat)
 	h("POST /api/assistant", a.askAssistant)
 	h("POST /api/assistant/act", a.act)
@@ -360,6 +363,8 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 409, map[string]string{"error": "chore_state"})
 	case errors.Is(err, app.ErrBadInput):
 		writeJSON(w, 400, map[string]string{"error": "bad_input"})
+	case errors.Is(err, app.ErrNotConfirmed):
+		writeJSON(w, 400, map[string]string{"error": "not_confirmed"})
 	case errors.Is(err, app.ErrNotPending):
 		writeJSON(w, 409, map[string]string{"error": "not_pending"})
 	case errors.Is(err, app.ErrNotYours):
@@ -461,6 +466,9 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 	if c.Me.Color == "b" {
 		me, p = i.WishB, i.WishA
 	}
+	if c.Partner == nil { // the marks of a partner who left are kept, but alone there is nobody they belong to
+		p = domain.WishNone
+	}
 	v := ideaView{ID: i.ID, Title: i.Title, Kind: string(i.Kind), Category: i.Category, URL: i.URL, Address: i.Address, Image: i.ImageURL, Note: i.Note,
 		PriceMin: i.PriceMin, PriceMax: i.PriceMax, DurationMin: i.DurationMin, StartsAt: unix(i.StartsAt), EndsAt: unix(i.EndsAt), Deadline: unix(i.Deadline),
 		Assignee: i.Assignee, Status: string(i.Status), MyWish: string(me), PartnerMarked: p != domain.WishNone, Mine: i.AuthorID == c.Me.ID,
@@ -535,7 +543,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 		if toMark(c, i, a.App.Now(), going) && len(unmarked) < 10 {
 			unmarked = append(unmarked, v)
 		}
-		if (i.WishA == domain.WishWant || i.WishA == domain.WishVery) && (i.WishB == domain.WishWant || i.WishB == domain.WishVery) {
+		if c.Partner != nil && (i.WishA == domain.WishWant || i.WishA == domain.WishVery) && (i.WishB == domain.WishWant || i.WishB == domain.WishVery) {
 			both++
 		}
 	}
@@ -562,6 +570,8 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 		if t := a.App.S.PendingInvite(ctx, c.Space.ID, a.App.Now()); !t.IsZero() {
 			out["invite_until"] = t.Unix()
 		}
+	} else if t := a.App.S.PairedSince(ctx, c.Space.ID); !t.IsZero() {
+		out["paired_since"] = t.Unix()
 	}
 	out["to_mark"] = unmarked
 	out["urgent"] = a.App.UrgentForMe(ctx, c)
@@ -1666,6 +1676,38 @@ func (a *API) invite(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 	}
 	link, err := a.App.NewInvite(r.Context(), c)
 	return map[string]string{"link": link}, err
+}
+
+// leavePair: «Выйти из пары» — the pair's things stay with the partner, copies of my ideas come with me
+func (a *API) leavePair(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	_, ideas, err := a.App.LeavePair(r.Context(), c)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "ideas": ideas}, nil
+}
+
+// exportData: «Скачать мои идеи и историю» — the file comes to the bot
+func (a *API) exportData(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	if err := a.App.SendExport(r.Context(), c); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+// deleteData: «Удалить мои данные», confirmed by the typed word. The session ends with the person.
+func (a *API) deleteData(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrNotConfirmed
+	}
+	if err := a.App.ForgetMe(r.Context(), c, in.Confirm); err != nil {
+		return nil, err
+	}
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.secureCookie(), SameSite: http.SameSiteLaxMode})
+	return map[string]any{"ok": true}, nil
 }
 
 // inviteInfo: the «Приглашение» screen — who calls, and whether the link can still be accepted

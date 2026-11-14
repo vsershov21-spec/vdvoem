@@ -44,7 +44,10 @@ export function Invite({ code }: { code: string }) {
     : <div className="v-card stub" data-testid="invite-stop"><h2>Ссылка устарела</h2><p className="m">Приглашение живёт 3 дня и срабатывает один раз.</p>
       <button className="b p w" disabled={busy} data-testid="invite-ask" onClick={ask}>Попросить {ncase(data.from, 'acc')} прислать новую</button></div>
   else if (data.state === 'used') body = <Stop title={data.from + ' уже в паре'} text="Эта ссылка сработала один раз." />
-  else if (data.state === 'paired') body = <Stop title={'Ты в паре с ' + ncase(data.partner || 'партнёром', 'ins')} text="Принять другое приглашение нельзя." />
+  else if (data.state === 'paired') body = <div className="v-card stub" data-testid="invite-stop"><h2>Ты в паре с {data.partner ? ncase(data.partner, 'ins') : 'партнёром'}</h2>
+    <p className="m">Чтобы принять, выйди из неё в настройках.</p>
+    <button className="b p w" data-testid="invite-settings" onClick={() => go('settings/pair')}>В настройки</button>
+    <button className="b ghost w" onClick={() => go('', true)}>На главную</button></div>
   else if (data.state === 'own') body = <Stop title="Это твоя ссылка" text="Отправь её партнёру: пара появится, когда он примет приглашение." />
   else body = <Stop title="Ссылка не работает" text="Попроси партнёра прислать новую." />
   return <div className="scr" data-testid="v2-invite">{body}</div>

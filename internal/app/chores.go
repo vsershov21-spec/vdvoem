@@ -66,6 +66,9 @@ func whoOf(c Couple, id int64) (string, string) {
 	case id == c.Me.ID:
 		return "me", c.Me.Name
 	}
+	if id == store.GoneMember || (c.Partner != nil && id != c.Partner.ID) {
+		return "partner", "прежний партнёр" // somebody who was in the pair before: never the name of the one who is now
+	}
 	return "partner", c.PartnerName()
 }
 

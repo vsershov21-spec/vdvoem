@@ -205,9 +205,18 @@ func (a *App) joinSpace(ctx context.Context, p Profile, cd string, solo *Couple)
 		}
 		// the person moves into the pair as they are: their logins, memory, taste and the ideas they added alone
 		// come along (deleting and re-adding the member would wipe all of it)
-		if err := a.S.MoveMember(ctx, solo.Me.ID, solo.Space.ID, spaceID); err != nil {
+		mover, from, to := solo.Me.ID, solo.Space.ID, spaceID
+		if a.S.HasHistory(ctx, from) && !a.S.HasHistory(ctx, to) {
+			// the one who accepts has what a pair had (a partner left them: meetings, the afisha, the history of
+			// chores) and the one who invites has not: the inviter moves instead, so all of it stays where it is
+			if ms, _ := a.S.Members(ctx, to); len(ms) == 1 {
+				mover, from, to = ms[0].ID, spaceID, solo.Space.ID
+			}
+		}
+		if err := a.S.MoveMember(ctx, mover, from, to); err != nil {
 			return Couple{}, false, err
 		}
+		spaceID = to
 		m = solo.Me
 		m.SpaceID, m.Color = spaceID, "b"
 		if fresh, err := a.S.MemberByID(ctx, solo.Me.ID); err == nil {
@@ -219,6 +228,7 @@ func (a *App) joinSpace(ctx context.Context, p Profile, cd string, solo *Couple)
 			return Couple{}, false, err
 		}
 	}
+	_ = a.S.MarkPaired(ctx, spaceID, now)
 	c, err := a.coupleOf(ctx, m)
 	return c, err == nil, err
 }
