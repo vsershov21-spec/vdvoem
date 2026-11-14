@@ -23,6 +23,14 @@ jobs:
         with: { node-version: 20 }
       - name: Go vet & tests
         run: go vet ./... && go test ./...
+      # The server cannot be built outside CI (its database module is not reachable from the work sandbox):
+      # a pull request publishes its own binary, so the new interface can be run against the branch's server.
+      - name: Server binary of this branch
+        if: always() && github.event_name == 'pull_request'
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_SHA::7}" -o vdvoem-bin/vdvoem ./cmd/vdvoem
+      - uses: actions/upload-artifact@v4
+        if: always() && github.event_name == 'pull_request'
+        with: { name: vdvoem-bin, path: vdvoem-bin/vdvoem, retention-days: 7, if-no-files-found: ignore }
       - name: Twenty couples (report)
         if: always()
         run: PERSONAS_OUT=$PWD/personas.md go test ./internal/app -run TestPersonas -count=1 >/dev/null || true; cat personas.md || true
