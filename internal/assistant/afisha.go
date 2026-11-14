@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,6 +60,7 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 	type hit struct {
 		i store.Idea
 		m app.Match
+		k int // how surely it is the kind asked for: 2 — by its name or genre, 1 — only its description mentions it
 	}
 	var hits, late []hit
 	planned := r.as.App.S.PlannedIdeas(ctx, r.c.Space.ID) // already agreed: it is in «Мы идём», not a new option
@@ -69,8 +71,11 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		if q.Whose == "ours" && !Ours(i) || q.Whose == "new" && Ours(i) {
 			continue
 		}
-		if len(q.G) > 0 && !fitsKinds(i, q.G) {
-			continue
+		kind := 0
+		if len(q.G) > 0 {
+			if kind = kindOf(i, q.G); kind == 0 {
+				continue
+			}
 		}
 		hz := i.Horizon
 		if hz == "" {
@@ -103,10 +108,23 @@ func (r *run) afisha(ctx context.Context, q afishaQ) any {
 		}
 		if len(q.Moods) > 0 && app.MoodFit(i, q.Moods) == 0 && len(hits) >= 0 {
 			// a mood was asked: ideas that don't fit it wait at the end (kept only if nothing fits)
-			late = append(late, hit{i, t.Of(i)})
+			late = append(late, hit{i, t.Of(i), kind})
 			continue
 		}
-		hits = append(hits, hit{i, t.Of(i)})
+		hits = append(hits, hit{i, t.Of(i), kind})
+	}
+	// a kind asked for: when some are surely it (by name or genre), those mentioned only in passing go — an
+	// exhibition whose text says «кинохроника» is not «кино»
+	if len(q.G) > 0 {
+		sure := hits[:0:0]
+		for _, h := range hits {
+			if h.k == 2 {
+				sure = append(sure, h)
+			}
+		}
+		if len(sure) > 0 {
+			hits = sure
+		}
 	}
 	score := func(h hit) float64 {
 		sc := h.m.Both + 0.35*app.MoodFit(h.i, q.Moods)
@@ -233,6 +251,24 @@ func fitsDay(i store.Idea, q afishaQ, now time.Time, loc *time.Location) bool {
 }
 
 // fitsKinds: the event is one of the kinds asked for — by its genres or by its own words
+// kindOf: 2 — the idea is this kind by its name or genres; 1 — only its description or the scout's reason
+// mention it; 0 — not this kind (a cuisine is only ever a place to eat)
+func kindOf(i store.Idea, g []string) int {
+	best := 0
+	for _, k := range g {
+		if leisure.CatOf(k) == "food" && i.Category != "food" {
+			continue
+		}
+		if slices.Contains(i.Info.Genres, k) || leisure.Fits(k, i.Title) {
+			return 2
+		}
+		if leisure.Fits(k, i.Why+" "+i.Info.About+" "+strings.Join(i.Info.Genres, " ")) {
+			best = 1
+		}
+	}
+	return best
+}
+
 func fitsKinds(i store.Idea, g []string) bool {
 	text := i.Title + " " + i.Why + " " + i.Info.About + " " + strings.Join(i.Info.Genres, " ")
 	for _, k := range g {

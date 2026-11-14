@@ -354,6 +354,13 @@ func (s *Store) IdeaAny(ctx context.Context, id int64) (Idea, error) {
 	return scanIdea(s.DB.QueryRowContext(ctx, `SELECT `+ideaCols+` FROM ideas WHERE id=?`, id))
 }
 
+// SetIdeaSource: where an idea came from ("route" — a stop made inside a meeting's route; such ideas are
+// left out of every list, see Ideas)
+func (s *Store) SetIdeaSource(ctx context.Context, spaceID, id int64, src string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE ideas SET source=? WHERE space_id=? AND id=?`, src, spaceID, id)
+	return err
+}
+
 func (s *Store) Ideas(ctx context.Context, spaceID int64, statuses ...domain.IdeaStatus) ([]Idea, error) {
 	if len(statuses) == 0 {
 		statuses = []domain.IdeaStatus{domain.IdeaActive}
@@ -363,7 +370,7 @@ func (s *Store) Ideas(ctx context.Context, spaceID int64, statuses ...domain.Ide
 	for _, st := range statuses {
 		args = append(args, string(st))
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+ideaCols+` FROM ideas WHERE space_id=? AND status IN (`+ph+`) ORDER BY created_at DESC, id DESC`, args...)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+ideaCols+` FROM ideas WHERE space_id=? AND status IN (`+ph+`) AND source<>'route' ORDER BY created_at DESC, id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}

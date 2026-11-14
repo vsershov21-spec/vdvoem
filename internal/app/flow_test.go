@@ -370,6 +370,13 @@ func TestExtras(t *testing.T) {
 	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Прогулка по Арбату"); err != nil {
 		t.Fatal(err)
 	}
+	// a stop made inside the route is not an idea of the bank: no card in the deck, nothing for the assistant
+	all, _ := a.S.Ideas(ctx, v.Space.ID, domain.IdeaActive, domain.IdeaDraft)
+	for _, i := range all {
+		if i.Title == "Прогулка по Арбату" {
+			t.Fatalf("a route stop leaked into the bank: %+v", i.Title)
+		}
+	}
 	if _, err := a.ProposeExtra(ctx, n, r.ID, 0, "Кино"); !errors.Is(err, app.ErrExtraLimit) {
 		t.Fatalf("limit: %v", err)
 	}
@@ -983,5 +990,11 @@ func TestAssistantKinoTodayNothing(t *testing.T) {
 	}
 	if !link {
 		t.Fatalf("no button to today's sessions: %+v", rep)
+	}
+	// a cuisine that is not there: said so, no restaurant of another cuisine in its place
+	a.ScoutPicks(ctx, v.Space.ID, []app.ScoutPick{{Title: "Ресторан «Китайская грамота»", Category: "food", URL: "https://x.example/kg", Score: 7}})
+	it, _ := as.Ask(ctx, v, "лучшие итальянские рестораны")
+	if len(it.Cards) != 0 || !strings.Contains(it.Text, "нет") {
+		t.Fatalf("no Italian → say so, no other cards: %+v", it)
 	}
 }

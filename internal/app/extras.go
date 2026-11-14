@@ -178,6 +178,10 @@ func (a *App) ProposeExtra(ctx context.Context, c Couple, roundID, ideaID int64,
 		ideaID = res.Idea.ID
 		if res.Existing != nil {
 			ideaID = res.Existing.ID
+		} else {
+			// a stop made inside a route («Пообедать рядом с …») lives in that route only: not an idea of the
+			// bank, not a card of the deck, not a find for the assistant
+			_ = a.S.SetIdeaSource(ctx, c.Space.ID, ideaID, "route")
 		}
 		if res.Existing == nil && a.AI.Enabled() { // «поужинать рядом с …»: concrete places to choose from, without asking
 			id := ideaID
