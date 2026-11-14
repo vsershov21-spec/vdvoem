@@ -642,6 +642,31 @@ func (s *Store) LogAI(ctx context.Context, task, provider, in, out string, ok bo
 }
 
 // DeleteSpace removes every row of a couple (both asked for it).
+// MoveSoloIdeas: someone who collected ideas alone joins a pair — what they added themselves moves into the
+// pair's space (their own mark becomes the second person's), instead of vanishing with the solo space.
+// Returns the moved ids; the author is set once the new member exists (SetAuthor).
+func (s *Store) MoveSoloIdeas(ctx context.Context, from, to int64) ([]int64, error) {
+	rows, err := s.DB.QueryContext(ctx, `UPDATE OR IGNORE ideas SET space_id=?, wish_b=wish_a, wish_a='' WHERE space_id=? AND source='' RETURNING id`, to, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
+}
+
+func (s *Store) SetAuthor(ctx context.Context, ids []int64, memberID int64) {
+	for _, id := range ids {
+		_, _ = s.DB.ExecContext(ctx, `UPDATE ideas SET author_id=? WHERE id=?`, memberID, id)
+	}
+}
+
 func (s *Store) DeleteSpace(ctx context.Context, spaceID int64) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {

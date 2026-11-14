@@ -182,17 +182,20 @@ func (a *App) join(ctx context.Context, p Profile, cd string, solo *Couple) (Cou
 	if err != nil {
 		return Couple{}, "", ErrInviteUsed
 	}
+	var moved []int64
 	if solo != nil {
 		if solo.Space.ID == spaceID {
 			return *solo, "", nil
 		}
-		// leave the empty solo space
+		// leave the solo space; what was collected there alone comes along
+		moved, _ = a.S.MoveSoloIdeas(ctx, solo.Space.ID, spaceID)
 		_ = a.S.DeleteSpace(ctx, solo.Space.ID)
 	}
 	m, err := a.S.AddMember(ctx, store.Member{SpaceID: spaceID, TGUserID: p.TGID, ChatID: p.ChatID, Name: p.Name, PhotoURL: p.Photo}, now)
 	if err != nil {
 		return Couple{}, "", err
 	}
+	a.S.SetAuthor(ctx, moved, m.ID)
 	c, err := a.coupleOf(ctx, m)
 	if err == nil && c.Partner != nil {
 		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("<b>%s с тобой.</b> Теперь у вас общая копилка. Пришли ссылку на место или напиши, куда хочется.", esc(c.Me.Name)),
