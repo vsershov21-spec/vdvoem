@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -85,16 +86,28 @@ func (a *App) AnswerProposal(ctx context.Context, c Couple, id int64, yes bool) 
 			return p, err
 		}
 	}
-	if c.Partner != nil && !notice {
+	if c.Partner != nil && !notice && !(yes && a.timePlanned(ctx, c, p)) { // «в планах» to both is the answer itself
 		word := "«да»"
 		if !yes {
 			word = "«нет»"
 		}
-		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("%s %s %s: <b>%s</b>%s", esc(c.Me.Name), Past(c.Me.Name, "ответил"), word, esc(p.Title), subLine(p.Sub)),
+		a.tell(ctx, *c.Partner, c.Loc(), "notify.proposals", fmt.Sprintf("%s %s %s: <b>%s</b>%s", esc(c.Me.Name), Past(c.Me.Name, "ответил"), word, esc(p.Title), subLine(p.Sub)),
 			tg.Keyboard(tg.Row(tg.App("Открыть", a.appURL(proposalPath(p))))))
 	}
 	a.Live.From(ctx, c.Space.ID)
 	return p, nil
+}
+
+// timePlanned: the «да» to an offered time put the meeting into the plans at that time
+func (a *App) timePlanned(ctx context.Context, c Couple, p domain.Proposal) bool {
+	var pl struct {
+		Start int64 `json:"start"`
+	}
+	if p.Kind != domain.ProposalTime || json.Unmarshal([]byte(p.Payload), &pl) != nil || pl.Start == 0 {
+		return false
+	}
+	r, err := a.S.Round(ctx, c.Space.ID, p.RefID)
+	return err == nil && r.State == domain.StatePlanned && r.StartsAt.Unix() == pl.Start
 }
 
 // WithdrawProposal: the author takes the offer back
@@ -136,7 +149,7 @@ func (a *App) RemindProposal(ctx context.Context, c Couple, id int64) error {
 	if p.State != domain.ProposalWait || c.Partner == nil {
 		return domain.ErrProposalClosed
 	}
-	a.send(ctx, c.Partner.ChatID, a.proposalText(p, c.Me.Name, true), a.proposalKeys(p))
+	a.tell(ctx, *c.Partner, c.Loc(), "notify.proposals", a.proposalText(p, c.Me.Name, true), a.proposalKeys(p))
 	return a.S.MarkProposalReminded(ctx, p.ID)
 }
 
@@ -186,7 +199,7 @@ func (a *App) proposalTick(ctx context.Context, now time.Time) {
 			}
 		}
 		if by != nil && to != nil {
-			a.send(ctx, to.ChatID, a.proposalText(p, by.Name, true), a.proposalKeys(p))
+			a.tell(ctx, *to, sp.Loc(), "notify.proposals", a.proposalText(p, by.Name, true), a.proposalKeys(p))
 		}
 		_ = a.S.MarkProposalReminded(ctx, p.ID)
 	}

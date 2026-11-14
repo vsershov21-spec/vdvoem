@@ -76,6 +76,7 @@ function Main() {
   useOn('home', home.refresh)
   useEffect(() => {
     get_me_theme(); startLive()
+    post('/ui', { v: 1 }).catch(() => {}) // these are the old screens: the bot keeps its old messages (a way back from ?v2=1)
     // warm the other tabs, so the first switch to them is instant too
     const m = new Date(), ym = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`
     const t = setTimeout(() => {

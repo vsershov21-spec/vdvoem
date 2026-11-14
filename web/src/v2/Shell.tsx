@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import './v2.css'
-import { useRoute, back, navDir } from '../lib/router'
+import { useRoute, back, navDir, go } from '../lib/router'
+import { post } from '../lib/api'
 import { setBack } from '../lib/tg'
 import { useLoad, useOn } from '../lib/data'
 import type { HomeV2 } from './types'
 import { Nav, Toast, TABS, Empty } from './ui'
 import { Home } from './Home'
-import { Ideas, IdeaCard, AddIdea } from './Ideas'
+import { Ideas, IdeaCard, AddIdea, showIdeas } from './Ideas'
 import { Meet } from './Meet'
 import { Plans, Free } from './Plans'
 import { Chores, ChoreCard } from './Chores'
@@ -20,8 +21,32 @@ import { particles, still } from './particles'
 const NAMES: Record<string, string> = { '': 'Главная', ideas: 'Идеи', assistant: 'Помощник', chores: 'Дела', plans: 'Планы', idea: 'Идея', chore: 'Дело', meet: 'Встреча', us: 'Профиль', settings: 'Настройки', history: 'История', free: 'Общее время', taste: 'Мой вкус' }
 const STEP: Record<string, number> = { assistant: 7 }
 
+// The bot's buttons and old links still name the screens of the previous interface. Each of them opens the
+// screen that took its place: a round is a meeting, the calendar is the plans, the folders of ideas are views
+// of «Идеи», chores have their own tab, the old «Разбор» is the deck on the home screen.
+export function legacy(route: string[]): string | null {
+  const [top, sub] = route
+  if (top === 'round') return Number(sub) > 0 ? 'meet/' + sub : 'plans'
+  if (top === 'calendar') return 'plans'
+  if (top === 'triage') return ''
+  if (top === 'pick') return 'assistant' // a selection is the assistant's answer: it is in the chat
+  if (top === 'ideas' && sub) {
+    if (sub === 'chores') return 'chores'
+    if (sub === 'scout') showIdeas('afisha')
+    else if (sub === 'both') showIdeas('both')
+    return 'ideas'
+  }
+  return null
+}
+let told = false
+
 export function Shell() {
-  const route = useRoute()
+  const raw = useRoute()
+  const old = legacy(raw)
+  const route = old === null ? raw : old ? old.split('/') : ['']
+  useEffect(() => { if (old !== null) go(old, true) }, [old])
+  // the server learns that this person has the new interface: the bot then writes in its flow
+  useEffect(() => { if (!told) { told = true; post('/ui', { v: 2 }).catch(() => { told = false }) } }, [])
   const key = route.join('/')
   const top = route[0]
   const home = useLoad<HomeV2>('/home', 20000)

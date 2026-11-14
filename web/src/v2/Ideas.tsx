@@ -27,6 +27,8 @@ export async function goMeet(i: { id: number }) {
 // ---------- the tab ----------
 type View = 'ours' | 'afisha' | 'both'
 let lastView: View = 'ours'
+// an old link of the bot («Афиша», «Совпало») opens the tab on that view
+export const showIdeas = (v: View) => { lastView = v }
 
 export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void }) {
   const { data, refresh } = useLoad<{ ideas: Idea[] }>('/ideas', 25000)

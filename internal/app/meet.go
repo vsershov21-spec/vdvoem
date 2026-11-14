@@ -33,6 +33,14 @@ func (a *App) ProposeTime(ctx context.Context, c Couple, roundID int64, start ti
 	if err != nil {
 		return domain.Proposal{}, err
 	}
+	if r.State.Open() && r.ExpiresAt.Before(start) { // the meeting waits for the answer as long as the offered time is ahead
+		ver := r.Version
+		r.ExpiresAt = start
+		r.Version++
+		if err := a.save(ctx, r, ver); err != nil {
+			return domain.Proposal{}, err
+		}
+	}
 	pl, _ := json.Marshal(map[string]int64{"start": start.Unix()})
 	l := start.In(c.Loc())
 	return a.Propose(ctx, c, domain.ProposalTime, r.ID, i.Title, ruDate(l)+l.Format(", 15:04"), string(pl))
@@ -67,11 +75,7 @@ func (a *App) timeAnswered(ctx context.Context, c Couple, p domain.Proposal, yes
 		i.Status = domain.IdeaActive
 		_ = a.S.UpdateIdea(ctx, i, a.now())
 	}
-	if moved {
-		a.resendICS(ctx, c, r)
-	} else {
-		a.planned(ctx, c, r, 0)
-	}
+	a.announcePlanned(ctx, c, r, moved) // a move sets the reminder for the new time too
 	return nil
 }
 
@@ -157,15 +161,7 @@ func (a *App) CancelMeet(ctx context.Context, c Couple, roundID int64) error {
 	if _, err = a.Cancel(ctx, c, roundID); err != nil {
 		return err
 	}
-	now := a.now()
-	// what was still waiting about this meeting has nothing to wait for
-	if ps, err := a.S.LiveProposals(ctx, c.Space.ID); err == nil {
-		for _, p := range ps {
-			if p.RefID == r.ID && p.State == domain.ProposalWait && (p.Kind == domain.ProposalTime || p.Kind == domain.ProposalStop) {
-				_ = a.S.CloseProposal(ctx, c.Space.ID, p.ID, domain.ProposalWithdrawn, now)
-			}
-		}
-	}
+	now := a.now()        // what was still waiting about this meeting is withdrawn by Cancel
 	if c.Partner != nil { // the bot has already told them (Cancel does): only the row is added
 		_, _ = a.S.CreateProposal(ctx, domain.Proposal{SpaceID: c.Space.ID, Kind: domain.ProposalCancel, RefID: r.ID, AuthorID: c.Me.ID, Title: title, Sub: when}, now)
 	}

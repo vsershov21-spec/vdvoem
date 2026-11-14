@@ -131,22 +131,24 @@ func (a *App) GoWith(ctx context.Context, c Couple, ideaID int64) (domain.Round,
 	if err != nil {
 		return domain.Round{}, err
 	}
+	return a.goWith(ctx, c, i, true)
+}
+
+func (a *App) goWith(ctx context.Context, c Couple, i store.Idea, announce bool) (domain.Round, error) {
+	if c.Partner == nil {
+		return domain.Round{}, ErrNotPaired
+	}
 	if r, err := a.S.OpenRound(ctx, c.Space.ID); err == nil {
 		return r, ErrRoundOpen
 	}
 	nr := domain.NewRound(c.Space.ID, a.now(), c.Space.BudgetKop)
-	nr.Chosen = ideaID
+	nr.Chosen = i.ID
 	r, err := a.S.CreateRound(ctx, nr, a.now())
 	if err != nil {
 		return r, err
 	}
-	for _, m := range a.both(c) {
-		lead := fmt.Sprintf("Решено: <b>%s</b>.", esc(i.Title))
-		if m.ID != c.Me.ID {
-			lead = fmt.Sprintf("%s хочет: <b>%s</b>.", esc(c.Me.Name), esc(i.Title))
-		}
-		a.send(ctx, m.ChatID, lead+" Осталось найти время — отметь, когда тебе удобно.",
-			tg.Keyboard(tg.Row(tg.App("Отметить время", a.appURL(fmt.Sprintf("round/%d", r.ID)))), tg.Row(tg.CB("Не сейчас", fmt.Sprintf("x:%d", r.ID)))))
+	if announce {
+		a.announceCall(ctx, c, r, i, "")
 	}
 	return r, nil
 }
@@ -177,7 +179,14 @@ func (a *App) SwapIdea(ctx context.Context, c Couple, ideaID int64) (domain.Roun
 	if err := a.save(ctx, r, ver); err != nil {
 		return r, err
 	}
+	a.dropMeetProposals(ctx, c.Space.ID, r.ID) // an offered time was about the previous idea
 	for _, m := range a.both(c) {
+		if a.usesV2(ctx, m.ID) && r.State == domain.StateTime {
+			if m.ID != c.Me.ID {
+				a.tell(ctx, m, c.Loc(), "notify.proposals", fmt.Sprintf("%s зовёт: <b>%s</b> вместо прежней идеи. Время ещё не выбрано.", esc(c.Me.Name), esc(i.Title)), a.meetKeys(r.ID))
+			}
+			continue
+		}
 		lead := fmt.Sprintf("Меняем выбор: <b>%s</b>.", esc(i.Title))
 		if m.ID != c.Me.ID {
 			lead = fmt.Sprintf("%s предлагает вместо этого: <b>%s</b>.", esc(c.Me.Name), esc(i.Title))

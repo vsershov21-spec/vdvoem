@@ -147,9 +147,13 @@ func (a *App) AnswerUrgent(ctx context.Context, c Couple, ideaID int64, answer s
 			return "", err
 		}
 		var rerr error
-		if a.fixed(i, now) {
+		v2 := a.usesV2(ctx, c.Me.ID) // the new interface: a meeting and, for a dated event, a proposal of its time
+		switch {
+		case v2:
+			_, rerr = a.Call(ctx, c, ideaID)
+		case a.fixed(i, now):
 			_, rerr = a.BookFixed(ctx, c, ideaID)
-		} else {
+		default:
 			rerr = ErrNoTime
 		}
 		if errors.Is(rerr, ErrNoTime) {
@@ -163,6 +167,12 @@ func (a *App) AnswerUrgent(ctx context.Context, c Couple, ideaID int64, answer s
 		}
 		_, _ = a.S.CloseUrgent(ctx, c.Space.ID, ideaID, "yes", now)
 		a.Live.From(ctx, c.Space.ID)
+		if v2 && a.fixed(i, now) {
+			return "Встреча создана. " + c.PartnerName() + " получит предложение со временем.", nil
+		}
+		if v2 {
+			return "Встреча создана. Предложи время в карточке встречи.", nil
+		}
 		if a.fixed(i, now) {
 			return "Отлично! Как только " + c.PartnerName() + " подтвердит — встреча в календаре у обоих.", nil
 		}

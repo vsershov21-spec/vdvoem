@@ -65,6 +65,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	a.agentRoutes(mux)
 	a.feedRoutes(mux, h)
 	h("GET /api/me", a.me)
+	h("POST /api/ui", a.setUI)
 	h("GET /api/home", a.home)
 	h("GET /api/ideas", a.ideas)
 	h("POST /api/ideas", a.addIdea)
@@ -492,6 +493,21 @@ func (a *API) me(w http.ResponseWriter, r *http.Request, c app.Couple) (any, err
 		out["partner"] = person(*c.Partner)
 	}
 	return out, nil
+}
+
+// setUI: the app says which interface it has just opened ({"v":1} — the old screens, {"v":2} — the new shell),
+// so the bot writes to this person in the flow they see
+func (a *API) setUI(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		V int `json:"v"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetUI(r.Context(), c.Me.ID, in.V); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
 }
 
 func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -1322,6 +1338,9 @@ func (a *API) roundWith(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	var rd domain.Round
 	if r.URL.Query().Get("replace") == "1" {
 		rd, err = a.App.SwapIdea(r.Context(), c, id)
+	} else if a.App.UsesV2(r.Context(), c.Me.ID) {
+		// the new interface: a meeting without a time; a dated event is offered at its time as a proposal
+		rd, err = a.App.Call(r.Context(), c, id)
 	} else {
 		// an event with its own date and time goes straight to «confirm» — no time picking — then to the calendar
 		rd, err = a.App.BookFixed(r.Context(), c, id)

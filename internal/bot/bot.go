@@ -36,11 +36,11 @@ type Bot struct {
 }
 
 var Commands = map[string]string{
-	"start":    "Начать / пригласить партнёра",
+	"start":    "Начать или пригласить партнёра",
 	"go":       "Выбрать, куда сходить",
-	"surprise": "Удиви нас — случайная идея",
+	"surprise": "Случайная идея из ваших",
 	"ask":      "Спросить помощника",
-	"plans":    "Что запланировано",
+	"plans":    "Что в планах",
 	"invite":   "Новая ссылка для партнёра",
 	"help":     "Как это работает",
 }
@@ -230,6 +230,10 @@ func (b *Bot) message(ctx context.Context, m *tg.Message) {
 			b.sendInvite(ctx, chat, link)
 		}
 	case "/help":
+		if b.App.UsesV2(ctx, c.Me.ID) {
+			b.say(ctx, chat, helpV2, b.openApp(""))
+			return
+		}
 		b.say(ctx, chat, helpText, b.openApp(""))
 	case "":
 		b.free(ctx, c, chat, text)
@@ -284,6 +288,15 @@ const helpText = `<b>Как это работает</b>
 
 /surprise — случайная идея из копилки. /ask — спросить помощника. Раз в неделю я сам предложу что-нибудь — режим меняется в настройках.`
 
+// helpV2: the same for someone whose app is the new interface
+const helpV2 = `<b>Как это работает</b>
+1. Пришли ссылку или название: это идея. Каждый отмечает «Хочу» или «Не моё».
+2. Совпало: один зовёт и предлагает время, второй отвечает «Да» или «Не могу». Встреча в планах после «Да».
+3. Дела лежат во вкладке «Дела». Просьбу партнёр берёт или возвращает.
+
+Сюда я пишу, когда нужен твой ответ: предложение, напоминание о встрече, дела на сегодня. Что присылать, выбирается в настройках.
+Спросить можно текстом или голосом: «что у нас в планах», «куда сходить в субботу».`
+
 func splitCmd(t string) (string, string) {
 	if !strings.HasPrefix(t, "/") {
 		return "", t
@@ -317,6 +330,10 @@ func (b *Bot) free(ctx context.Context, c app.Couple, chat int64, text string) {
 			if res.Existing != nil {
 				i = *res.Existing
 			}
+		}
+		if b.App.UsesV2(ctx, c.Me.ID) { // the new interface has no «срочно»: the partner is called, and answers a proposal
+			b.call(ctx, c, chat, i.ID)
+			return
 		}
 		if _, err := b.App.MarkUrgent(ctx, c, i.ID, text); err != nil {
 			b.Log.Warn("urgent", "err", err)
@@ -452,10 +469,10 @@ func (b *Bot) start(ctx context.Context, m *tg.Message) {
 		return
 	}
 	if c.Partner != nil {
-		b.say(ctx, m.Chat.ID, fmt.Sprintf("Привет, %s! Вы с %s теперь вдвоём. Кидайте сюда ссылки и идеи — я сложу их в общую копилку.", html.EscapeString(c.Me.Name), html.EscapeString(app.NameIns(c.Partner.Name))), b.openApp(""))
+		b.say(ctx, m.Chat.ID, fmt.Sprintf("Привет, %s! Вы с %s теперь вдвоём. Идеи, встречи и дела у вас общие. Сюда я пишу, когда нужен твой ответ.", html.EscapeString(c.Me.Name), html.EscapeString(app.NameIns(c.Partner.Name))), b.openApp(""))
 		return
 	}
-	b.say(ctx, m.Chat.ID, fmt.Sprintf("Привет, %s! Я помогаю паре решить, куда сходить и когда — без бесконечного «не знаю, а ты?».", html.EscapeString(c.Me.Name)), nil)
+	b.say(ctx, m.Chat.ID, fmt.Sprintf("Привет, %s! Здесь пара решает, куда сходить и когда, и делит дела. Сюда я пишу, когда нужен твой ответ.", html.EscapeString(c.Me.Name)), nil)
 	if link == "" {
 		link, _ = b.App.NewInvite(ctx, c)
 	}
@@ -468,7 +485,48 @@ func (b *Bot) sendInvite(ctx context.Context, chat int64, link string) {
 		tg.Keyboard(tg.Row(tg.Link("Отправить приглашение", share)), tg.Row(tg.App("Открыть «Вдвоём»", strings.TrimRight(b.App.PublicURL, "/")+"/app/"))))
 }
 
+// call: «Идём» from the chat for someone with the new interface — a meeting without a time (or, for a dated
+// event, a proposal of its time); never a dead end when another meeting is still open
+func (b *Bot) call(ctx context.Context, c app.Couple, chat, ideaID int64) {
+	meet := func(id int64) *tg.Markup {
+		return b.openAppAs("Открыть встречу", fmt.Sprintf("meet/%d", id))
+	}
+	r, err := b.App.Call(ctx, c, ideaID)
+	i, _ := b.App.S.Idea(ctx, c.Space.ID, ideaID)
+	title := html.EscapeString(i.Title)
+	switch {
+	case errors.Is(err, app.ErrNotPaired):
+		b.say(ctx, chat, "Сначала пригласи партнёра: /invite", nil)
+	case errors.Is(err, app.ErrRoundOpen) && r.Chosen == ideaID:
+		b.say(ctx, chat, fmt.Sprintf("Встреча уже есть: <b>%s</b>.", title), meet(r.ID))
+	case errors.Is(err, app.ErrRoundOpen):
+		b.say(ctx, chat, fmt.Sprintf("У вас уже есть встреча без времени. Позвать на <b>%s</b> вместо неё?", title),
+			tg.Keyboard(tg.Row(tg.CB("Да, заменить", fmt.Sprintf("sw:%d", ideaID)), tg.CB("Оставить как есть", "nop"))))
+	case err != nil:
+		b.Log.Warn("call", "err", err)
+		b.say(ctx, chat, "Не получилось. Попробуй ещё раз.", nil)
+	case b.App.MeetProposals(ctx, c, r.ID)[domain.ProposalTime] != nil:
+		b.say(ctx, chat, fmt.Sprintf("Встреча создана: <b>%s</b>. %s получит предложение со временем.", title, html.EscapeString(c.PartnerName())), meet(r.ID))
+	default:
+		b.say(ctx, chat, fmt.Sprintf("Встреча создана: <b>%s</b>. Предложи время, %s ответит.", title, html.EscapeString(c.PartnerName())), meet(r.ID))
+	}
+}
+
+func (b *Bot) openAppAs(label, path string) *tg.Markup {
+	return tg.Keyboard(tg.Row(tg.App(label, strings.TrimRight(b.App.PublicURL, "/")+"/app/"+path)))
+}
+
+// moveInCard: an old «Перенести» pressed by someone with the new interface — a move is a proposal now
+func (b *Bot) moveInCard(ctx context.Context, chat, roundID int64) {
+	b.say(ctx, chat, "Перенос теперь в карточке встречи: предложи другое время. Прежнее действует, пока партнёр не ответит «Да».",
+		b.openAppAs("Открыть встречу", fmt.Sprintf("meet/%d", roundID)))
+}
+
 func (b *Bot) goRound(ctx context.Context, c app.Couple, chat int64) {
+	if c.Partner != nil && b.App.UsesV2(ctx, c.Me.ID) { // no choice by slots in the new interface: a meeting starts from an idea
+		b.say(ctx, chat, "Что совпало, лежит во вкладке «Идеи». Нажми «Идём» у идеи: партнёр получит приглашение.", b.openAppAs("Открыть «Совпало»", "ideas/both"))
+		return
+	}
 	if _, err := b.App.Go(ctx, c); errors.Is(err, app.ErrNotPaired) {
 		b.say(ctx, chat, "Сначала пригласи партнёра: /invite", nil)
 	} else if err != nil {
@@ -526,6 +584,9 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 	case "w":
 		_, err = b.App.SetWish(ctx, c, id(1), domain.Wish(arg(2)))
 		toast = map[string]string{"want": "Хочу ✓", "very": "Очень хочу ✓", "skip": "Пропущу"}[arg(2)]
+		if arg(2) == "skip" && b.App.UsesV2(ctx, c.Me.ID) {
+			toast = "Не моё"
+		}
 		if err == nil && q.Message != nil {
 			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, q.Message.Text+"\n\n<i>Твоя отметка: "+strings.ToLower(toast)+"</i>", nil)
 		}
@@ -602,6 +663,10 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 			}
 		}
 	case "ex": // «А потом?»: the partner answers a proposed next stop
+		if e, er := b.App.S.Extra(ctx, id(1)); er == nil && e.State != "proposed" {
+			toast = "Уже отвечено"
+			break
+		}
 		_, err = b.App.AnswerExtra(ctx, c, id(1), arg(2) == "y")
 		if errors.Is(err, app.ErrExtraOwn) {
 			toast, err = "Это твоё предложение — ждём ответа партнёра", nil
@@ -612,15 +677,34 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		_, err = b.App.Confirm(ctx, c, id(1))
 		toast = "Подтверждено"
 	case "ot":
+		if b.App.UsesV2(ctx, c.Me.ID) {
+			b.moveInCard(ctx, chat, id(1))
+			break
+		}
 		_, err = b.App.OtherTime(ctx, c, id(1))
 	case "x", "xq":
 		_, err = b.App.Cancel(ctx, c, id(1))
+		toast = "Отменено"
 	case "d":
+		if arg(2) == "moved" && b.App.UsesV2(ctx, c.Me.ID) {
+			b.moveInCard(ctx, chat, id(1))
+			break
+		}
 		_, err = b.App.Done(ctx, c, id(1), arg(2))
+	case "af": // «как прошло» of the new interface: af:<round>:like|soso|skip — each answers for themselves
+		err = b.App.Rate(ctx, c, id(1), arg(2))
+		toast = map[string]string{"like": "Понравилось", "soso": "Не очень", "skip": "Не ходили"}[arg(2)]
+		if err == nil && q.Message != nil {
+			_ = b.TG.Edit(ctx, chat, q.Message.MessageID, html.EscapeString(q.Message.Text)+"\n\n<i>Твой ответ: "+strings.ToLower(toast)+"</i>", nil)
+		}
 	case "ag":
 		_, err = b.App.Again(ctx, c, id(1), arg(2))
 		toast = "Запомнил"
 	case "sg":
+		if b.App.UsesV2(ctx, c.Me.ID) {
+			b.call(ctx, c, chat, id(1))
+			break
+		}
 		_, err = b.App.GoWith(ctx, c, id(1))
 		if errors.Is(err, app.ErrRoundOpen) { // no dead end: offer to put this idea into the open choice
 			err = nil
@@ -631,6 +715,7 @@ func (b *Bot) callback(ctx context.Context, q *tg.CallbackQuery) {
 		}
 	case "sw":
 		_, err = b.App.SwapIdea(ctx, c, id(1))
+		toast = "Заменил"
 	case "nop":
 		toast = "Оставил как есть"
 	case "sn":

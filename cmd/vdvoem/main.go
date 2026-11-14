@@ -266,8 +266,8 @@ func setup(ctx context.Context, c *tg.Client, public, secret string, webhook boo
 		{"commands", func() error { return c.SetCommands(ctx, bot.Commands, bot.CommandOrder) }},
 		{"menu", func() error { return c.SetMenuButton(ctx, "Вдвоём", public+"/app/") }},
 		{"description", func() error {
-			return c.SetDescription(ctx, "Решаем вдвоём, куда сходить и когда — без «не знаю, а ты?»",
-				"Кидайте ссылки и идеи в общую копилку, отмечайте «хочу», а я найду общее свободное время, предложу три варианта и пришлю событие в календарь. Подтверждают оба — молчание не считается согласием.")
+			return c.SetDescription(ctx, "Пара решает, куда сходить и когда, и делит дела.",
+				"Собирайте идеи и отмечайте «Хочу». Совпало: один предлагает время, второй отвечает. Встреча в планах после «Да». Дела делятся там же. Сюда бот пишет, когда нужен ответ.")
 		}},
 	}
 	for _, s := range steps {

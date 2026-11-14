@@ -1361,3 +1361,218 @@ func TestMeetProposals(t *testing.T) {
 		t.Fatalf("the partner's busy day: %+v", f)
 	}
 }
+
+// since: what a chat got after the first `from` messages — the texts and every button as «label|data-or-url»
+func (f *fakeTG) since(from int, chat int64) (texts, keys string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, m := range f.msgs[from:] {
+		if m.chat != chat {
+			continue
+		}
+		texts += m.text + "\n---\n"
+		if m.mk == nil {
+			continue
+		}
+		for _, row := range m.mk.InlineKeyboard {
+			for _, b := range row {
+				keys += b.Text + "|" + b.CallbackData + b.URL
+				if b.WebApp != nil {
+					keys += b.WebApp.URL
+				}
+				keys += "\n"
+			}
+		}
+	}
+	return
+}
+
+func (f *fakeTG) n() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.msgs)
+}
+
+// The bot for someone whose app is the new interface: the partner is called without slots, the time is a
+// proposal with «Да / Не могу», the meeting is in the plans after «Да» — and none of the old choice
+// (mark your time, three variants, confirm) is sent. The old interface keeps its messages.
+func TestBotFollowsNewInterface(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	if a.UsesV2(ctx, v.Me.ID) {
+		t.Fatal("nobody uses the new interface before the app says so")
+	}
+	if err := a.SetUI(ctx, v.Me.ID, 3); !errors.Is(err, app.ErrBadInput) {
+		t.Fatalf("an unknown interface is refused: %v", err)
+	}
+	for _, id := range []int64{v.Me.ID, n.Me.ID} {
+		if err := a.SetUI(ctx, id, 2); err != nil || !a.UsesV2(ctx, id) {
+			t.Fatalf("the new shell reports itself: %v", err)
+		}
+	}
+	_ = a.SetUI(ctx, v.Me.ID, 1)
+	if a.UsesV2(ctx, v.Me.ID) {
+		t.Fatal("the old screens take the old messages back")
+	}
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+
+	res, _ := a.AddIdea(ctx, n, "Планетарий на Баррикадной")
+	id := res.Idea.ID
+	a.Tick(ctx) // the idea card
+	if tx, keys := f.since(0, 2); !strings.Contains(tx, "Сохранил в идеи") || !strings.Contains(keys, "Не моё|") || strings.Contains(keys, "Очень хочу") {
+		t.Fatalf("the idea card has the two marks of the new interface: %q %q", tx, keys)
+	}
+	_, _ = a.SetWish(ctx, n, id, domain.WishWant)
+	_, _ = a.SetWish(ctx, v, id, domain.WishWant)
+
+	start := f.n()
+	r, err := a.GoWith(ctx, v, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, keys := f.since(start, 2)
+	if !strings.Contains(tx, "Вова зовёт: <b>Планетарий на Баррикадной</b>. Время ещё не выбрано.") {
+		t.Fatalf("the partner is called in one line: %q", tx)
+	}
+	if !strings.Contains(keys, fmt.Sprintf("/app/meet/%d", r.ID)) || strings.Contains(keys, "|ts:") || strings.Contains(keys, "|x:") || strings.Contains(keys, "round/") {
+		t.Fatalf("one button to the meeting card, no slots: %q", keys)
+	}
+	if tx, _ := f.since(start, 1); tx != "" {
+		t.Fatalf("the one who called is in the card already: %q", tx)
+	}
+
+	at := ck.t.Add(48 * time.Hour).Truncate(time.Hour)
+	p, err := a.ProposeTime(ctx, v, r.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, keys := f.since(start, 2); !strings.Contains(keys, fmt.Sprintf("Да|pr:%d:yes", p.ID)) || !strings.Contains(keys, fmt.Sprintf("Не могу|pr:%d:no", p.ID)) {
+		t.Fatalf("the time is a proposal with «Да / Не могу»: %q", keys)
+	}
+	if _, err := a.AnswerProposal(ctx, n, p.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); rd.State != domain.StatePlanned || !rd.StartsAt.Equal(at) {
+		t.Fatalf("«Да» puts the meeting into the plans: %s", rd.State)
+	}
+	for _, chat := range []int64{1, 2} {
+		tx, keys := f.since(start, chat)
+		for _, old := range []string{"Когда тебе удобно", "отметь, когда", "Куда идём", "Совпало!", "Подтверди", "предлагает время", "Пока не совпало", "Мы идём", "ответила «да»", "копилк"} {
+			if strings.Contains(tx, old) {
+				t.Fatalf("chat %d got a message of the old choice (%q): %q", chat, old, tx)
+			}
+		}
+		for _, old := range []string{"|ts:", "|v:", "|c:", "|ot:", "|xq:", "|rs:"} {
+			if strings.Contains(keys, old) {
+				t.Fatalf("chat %d got a button of the old choice (%q): %q", chat, old, keys)
+			}
+		}
+		if strings.Count(tx, "Встреча в планах.") != 1 || !strings.Contains(keys, fmt.Sprintf("/app/meet/%d", r.ID)) {
+			t.Fatalf("chat %d hears «в планах» once, with the card: %q %q", chat, tx, keys)
+		}
+	}
+
+	// a move is a proposal too; after «Да» both hear the new time and the reminder follows it
+	at2 := at.Add(24 * time.Hour)
+	p2, _ := a.ProposeTime(ctx, n, r.ID, at2)
+	start = f.n()
+	if _, err := a.AnswerProposal(ctx, v, p2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, chat := range []int64{1, 2} {
+		if tx, _ := f.since(start, chat); strings.Count(tx, "Встреча перенесена.") != 1 || strings.Contains(tx, "ответил «да»") {
+			t.Fatalf("chat %d hears the move once: %q", chat, tx)
+		}
+	}
+	start = f.n()
+	ck.t = at2.Add(-2*time.Hour + time.Minute)
+	a.Tick(ctx)
+	if tx, keys := f.since(start, 2); !strings.Contains(tx, "Через 2 часа") || !strings.Contains(keys, fmt.Sprintf("/app/meet/%d", r.ID)) || strings.Contains(keys, "|ot:") {
+		t.Fatalf("the reminder opens the card and moves nothing by itself: %q %q", tx, keys)
+	}
+	rd, _ := a.S.Round(ctx, v.Space.ID, r.ID)
+	start = f.n()
+	ck.t = rd.EndsAt.Add(3*time.Hour + time.Minute)
+	a.Tick(ctx)
+	if tx, keys := f.since(start, 2); !strings.Contains(tx, "Как прошло: <b>Планетарий на Баррикадной</b>?") || !strings.Contains(keys, fmt.Sprintf("Понравилось|af:%d:like", r.ID)) || strings.Contains(keys, "|d:") {
+		t.Fatalf("«как прошло» asks each one with the three answers of the new interface: %q %q", tx, keys)
+	}
+	start = f.n()
+	if err := a.Rate(ctx, n, r.ID, "like"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Rate(ctx, v, r.ID, "soso"); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); rd.State != domain.StateDone || rd.AgainA == "" || rd.AgainB == "" {
+		t.Fatalf("each rated for themselves: %s %q %q", rd.State, rd.AgainA, rd.AgainB)
+	}
+	for _, chat := range []int64{1, 2} {
+		if tx, _ := f.since(start, chat); strings.Contains(tx, "Повторим") || strings.Contains(tx, "Вы оба ответили") {
+			t.Fatalf("chat %d: the app has asked already, the bot does not ask again: %q", chat, tx)
+		}
+	}
+
+	// a cancellation: one line to the partner, in the words of the new interface
+	res2, _ := a.AddIdea(ctx, v, "Каток в Парке Горького")
+	r2, err := a.GoWith(ctx, v, res2.Idea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p3, _ := a.ProposeTime(ctx, v, r2.ID, ck.t.Add(72*time.Hour))
+	start = f.n()
+	if _, err := a.Cancel(ctx, v, r2.ID); err != nil {
+		t.Fatal(err)
+	}
+	if tx, _ := f.since(start, 2); !strings.Contains(tx, "Вова отменил встречу: <b>Каток в Парке Горького</b>.") || strings.Contains(tx, "выбор") {
+		t.Fatalf("cancel: %q", tx)
+	}
+	if _, err := a.AnswerProposal(ctx, n, p3.ID, true); err == nil {
+		t.Fatalf("the offered time of a cancelled meeting is withdrawn: %v", err)
+	}
+
+	// the partner went back to the old screens: they are written to the old way, the one with the new shell is not
+	_ = a.SetUI(ctx, n.Me.ID, 1)
+	start = f.n()
+	if _, err := a.GoWith(ctx, v, res2.Idea.ID); err != nil {
+		t.Fatal(err)
+	}
+	if tx, keys := f.since(start, 2); !strings.Contains(tx, "Вова хочет") || !strings.Contains(keys, "round/") {
+		t.Fatalf("the old interface keeps its message: %q %q", tx, keys)
+	}
+}
+
+// A dated event in the new interface: «Идём» offers its time as a proposal at once — one message, no «подтверди»
+func TestCallDatedEvent(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	_ = a.SetUI(ctx, n.Me.ID, 2)
+	res, _ := a.AddIdea(ctx, v, "Концерт в Зарядье")
+	i, _ := a.S.Idea(ctx, v.Space.ID, res.Idea.ID)
+	at := ck.t.Add(72 * time.Hour).Truncate(time.Hour).Add(7 * time.Hour) // 19:00
+	i.StartsAt = &at
+	if err := a.S.UpdateIdea(ctx, i, ck.t); err != nil {
+		t.Fatal(err)
+	}
+	start := f.n()
+	r, err := a.Call(ctx, v, i.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, keys := f.since(start, 2)
+	if strings.Count(tx, "---") != 1 || !strings.Contains(tx, "Вова зовёт: <b>Концерт в Зарядье</b>") || strings.Contains(tx, "Время ещё не выбрано") || strings.Contains(tx, "Подтверди") {
+		t.Fatalf("one proposal with the time of the event: %q", tx)
+	}
+	if !strings.Contains(keys, "Да|pr:") || strings.Contains(keys, "|c:") {
+		t.Fatalf("answered as a proposal: %q", keys)
+	}
+	if mp := a.MeetProposals(ctx, n, r.ID)["time"]; mp == nil || mp.Start != at.Unix() {
+		t.Fatalf("the time of the event is offered: %+v", mp)
+	}
+	if _, err := a.Call(ctx, n, i.ID); !errors.Is(err, app.ErrRoundOpen) {
+		t.Fatalf("one open meeting at a time: %v", err)
+	}
+}
