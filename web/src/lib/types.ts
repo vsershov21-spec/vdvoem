@@ -21,7 +21,7 @@ export type Round = {
   id: number; state: RoundState; version: number; opened_at: number; expires_at: number
   days: string[]; today?: string; horizon?: string; my_slots: string[]; partner_slots?: string[]; my_busy?: string[]; partner_busy?: string[]; sent: boolean; partner_sent: boolean
   voted: boolean; partner_voted: boolean; my_vote?: number; partner_vote?: number
-  confirmed: boolean; partner_confirmed: boolean; again: string; budget: number
+  confirmed: boolean; partner_confirmed: boolean; again: string; partner_again?: string; budget: number
   windows?: { from: number; to: number }[]; triple: Idea[]; chosen?: Idea
   starts_at?: number; ends_at?: number; when?: string; compromise?: Idea; photos?: number
   route?: RouteStop[]; extra_suggest?: Idea[]

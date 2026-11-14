@@ -1187,6 +1187,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	confMe, _ := pick(me, rd.ConfirmA, rd.ConfirmB).(bool)
 	confOther, _ := pick(other, rd.ConfirmA, rd.ConfirmB).(bool)
 	againMe, _ := pick(me, rd.AgainA, rd.AgainB).(string)
+	againOther, _ := pick(other, rd.AgainA, rd.AgainB).(string) // how the partner liked it: the history shows both
 
 	days := []string{}
 	for _, d := range app.RoundDays(rd, c.Loc()) {
@@ -1195,7 +1196,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	first, last := app.SlotRange(a.App.Now(), c.Loc())
 	out := map[string]any{"id": rd.ID, "today": first.Format("2006-01-02"), "horizon": last.Format("2006-01-02"), "state": string(rd.State), "version": rd.Version, "opened_at": rd.OpenedAt.Unix(), "expires_at": rd.ExpiresAt.Unix(),
 		"days": days, "my_slots": keys, "partner_slots": theirKeys, "sent": sentMe, "partner_sent": sentOther, "voted": voteMe != 0, "partner_voted": voteOther != 0,
-		"confirmed": confMe, "partner_confirmed": confOther, "again": againMe, "budget": rd.BudgetKop}
+		"confirmed": confMe, "partner_confirmed": confOther, "again": againMe, "partner_again": againOther, "budget": rd.BudgetKop}
 	if rd.State == domain.StateTime {
 		// busy times from each person's own calendar: only «занят», never what
 		n := int(last.Sub(first).Hours()/24) + 1

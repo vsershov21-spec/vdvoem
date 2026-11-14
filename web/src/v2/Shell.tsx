@@ -10,14 +10,14 @@ import { Ideas, IdeaCard, AddIdea } from './Ideas'
 import { Meet } from './Meet'
 import { Plans, Free } from './Plans'
 import { Chores, ChoreCard } from './Chores'
-import { Profile, History, Settings } from './Profile'
+import { Profile, History, Settings, Taste } from './Profile'
 import { Assistant } from './Assistant'
 import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
 // step at a time («‹ откуда пришёл»), one confirmation line, and both themes. Screens that are not built yet
 // say so honestly instead of pretending.
-const NAMES: Record<string, string> = { '': 'Главная', ideas: 'Идеи', assistant: 'Помощник', chores: 'Дела', plans: 'Планы', idea: 'Идея', chore: 'Дело', meet: 'Встреча', us: 'Профиль', settings: 'Настройки', history: 'История', free: 'Общее время' }
+const NAMES: Record<string, string> = { '': 'Главная', ideas: 'Идеи', assistant: 'Помощник', chores: 'Дела', plans: 'Планы', idea: 'Идея', chore: 'Дело', meet: 'Встреча', us: 'Профиль', settings: 'Настройки', history: 'История', free: 'Общее время', taste: 'Мой вкус' }
 const STEP: Record<string, number> = { assistant: 7 }
 
 export function Shell() {
@@ -66,6 +66,7 @@ export function Shell() {
   else if (top === 'us') screen = <Profile home={home.data} from={from} />
   else if (top === 'history') screen = <History view={route[1] || 'meets'} home={home.data} from={from} />
   else if (top === 'settings') screen = <Settings section={route[1]} home={home.data} from={from} />
+  else if (top === 'taste') screen = <Taste from={from} />
   else screen = (
     <div className="scr" data-testid={'v2-' + top}>
       {nested ? <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{NAMES[top] || ''}</b><span /></div> : <h2>{NAMES[top]}</h2>}

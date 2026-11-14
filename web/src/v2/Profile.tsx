@@ -10,6 +10,7 @@ import type { Chore } from './Chores'
 
 const Sub = ({ from, title }: { from: string; title: string }) => <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{title}</b><span /></div>
 const A = (n?: string) => (n || '?')[0]
+const rate = (who: string, a?: string) => `${who}: ${a === 'yes' ? 'понравилось' : a === 'no' ? 'не очень' : 'без оценки'}`
 
 // ---------- profile: the pair, the history of meetings and chores, settings ----------
 export function Profile({ home, from }: { home: HomeV2 | null; from: string }) {
@@ -30,6 +31,7 @@ export function Profile({ home, from }: { home: HomeV2 | null; from: string }) {
         <button className="srow" data-testid="hist-meets" onClick={() => go('history/meets')}><span className="tx"><b>Встречи</b><small>где были и как понравилось</small></span>›</button>
         <button className="srow" data-testid="hist-chores" onClick={() => go('history/chores')}><span className="tx"><b>Дела</b><small>кто что сделал и когда</small></span>›</button></div></div>
       <div className="blk"><label>Я</label><div className="v-card v-list">
+        <button className="srow" data-testid="to-taste" onClick={() => go('taste')}><span className="tx"><b>Мой вкус</b><small>что нравится: по этому подбираются идеи</small></span>›</button>
         <button className="srow" data-testid="to-settings" onClick={() => go('settings')}><span className="tx"><b>Настройки</b><small>уведомления, календарь, пара</small></span>›</button></div></div>
     </div>)
 }
@@ -47,7 +49,7 @@ export function History({ view, home, from }: { view: string; home: HomeV2 | nul
       <div className="v-seg" role="tablist"><button role="tab" aria-selected={tab === 'meets'} className={tab === 'meets' ? 'on' : ''} onClick={() => go('history/meets', true)}>Встречи</button><button role="tab" aria-selected={tab === 'chores'} className={tab === 'chores' ? 'on' : ''} onClick={() => go('history/chores', true)}>Дела</button></div>
       {tab === 'meets' ? (meets.data && (meets.data.meetings.length ? meets.data.meetings.map(r =>
         <button className="in" key={r.id} data-testid="hist-meet" onClick={() => go('meet/' + r.id)}>{r.chosen && <Pic idea={r.chosen} className="th" />}<span><b>{r.chosen?.title || 'Встреча'}</b>
-          <small>{r.starts_at ? whenText(r.starts_at) : ''} · {r.again === 'yes' ? 'тебе понравилось' : r.again === 'no' ? 'тебе не очень' : 'ты ещё не оценил'}</small></span>›</button>)
+          <small>{r.starts_at ? whenText(r.starts_at) : ''} · {rate('ты', r.again)} · {rate(pn, r.partner_again)}</small></span>›</button>)
         : <Empty title="Встреч ещё не было"><button className="b p w" onClick={() => go('ideas')}>Выбрать, куда сходить</button></Empty>))
         : <>
           <label className="in"><i>⌕</i><span><input value={q} onChange={e => setQ(e.target.value)} placeholder="Найти: «кран», «подарок»" aria-label="Поиск по делам" data-testid="hist-search" /></span></label>
@@ -107,5 +109,29 @@ export function Settings({ section, home, from }: { section?: string; home: Home
       <div className="blk"><label>Для меня</label><div className="v-card v-list">{SECTIONS.filter(x => x.scope === 'me').map(row)}</div></div>
       <div className="blk"><label>Для пары</label><div className="v-card v-list">{SECTIONS.filter(x => x.scope === 'pair').map(row)}</div></div>
       <div className="blk"><label>Вход</label><div className="v-card v-list"><button className="srow" onClick={async () => { try { await post('/security/logout-all'); say('Остальные устройства отключены') } catch (e) { say(humanError(e)) } }}><span className="tx"><b>Выйти на других устройствах</b><small>вход через Telegram останется на этом</small></span>›</button></div></div>
+    </div>)
+}
+
+// ---------- «Мой вкус»: one tap — нравится; the scout and the assistant pick ideas by it ----------
+type Sphere = { id: string; title: string; emoji: string; tags: string[] }
+type MyTaste = { spheres: Record<string, number>; tags: Record<string, number>; [k: string]: unknown }
+export function Taste({ from }: { from: string }) {
+  const { data, set } = useLoad<{ spheres: Sphere[]; me: MyTaste }>('/taste')
+  const save = async (me: MyTaste) => {
+    set(d => d && { ...d, me })
+    try { const r = await put<{ me: MyTaste }>('/taste', me); set(d => d && { ...d, me: r.me }) } catch (e) { say(humanError(e)) }
+  }
+  if (!data) return <div className="scr"><Sub from={from} title="Мой вкус" /></div>
+  const me = { ...data.me, spheres: data.me.spheres || {}, tags: data.me.tags || {} }
+  return (
+    <div className="scr" data-testid="v2-taste">
+      <Sub from={from} title="Мой вкус" />
+      <p className="m">Отметь, что нравится. По этому скаут и помощник подбирают идеи, а отметки на карточках уточняют остальное.</p>
+      {data.spheres.map(s => { const on = (me.spheres[s.id] || 0) > 0
+        return <div className="blk" key={s.id}>
+          <button className={'v-chip' + (on ? ' on' : '')} style={{ alignSelf: 'flex-start' }} aria-pressed={on} data-testid={'sphere-' + s.id} onClick={() => save({ ...me, spheres: { ...me.spheres, [s.id]: on ? 0 : 1 } })}>{s.title}</button>
+          {on && <div className="v-row" style={{ flexWrap: 'wrap' }}>{s.tags.map(t => { const tOn = (me.tags[t] || 0) > 0
+            return <button key={t} className={'v-chip' + (tOn ? ' on' : '')} aria-pressed={tOn} onClick={() => save({ ...me, tags: { ...me.tags, [t]: tOn ? 0 : 1 } })}>{t}</button> })}</div>}
+        </div> })}
     </div>)
 }

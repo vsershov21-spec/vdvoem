@@ -348,3 +348,17 @@ test('E59 помощник в новой оболочке отвечает ка�
   await press(v, '✓ Сделано')
   await expect.poll(async () => (await api(v, 'GET', '/chores/history')).chores.length, { timeout: 15000 }).toBe(1)
 })
+
+test('E60 «Мой вкус» в новой оболочке: одно касание отмечает сферу и открывает её подробности', async ({ browser }) => {
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const p = await openV2(await phone(browser), v, 'us')
+  await p.getByTestId('to-taste').click()
+  await expect(p.getByRole('button', { name: 'Назад' })).toContainText('Профиль')
+  const first = p.locator('[data-testid^="sphere-"]').first()
+  const id = (await first.getAttribute('data-testid'))!.replace('sphere-', '')
+  await first.click()
+  await expect(first).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(async () => (await api(v, 'GET', '/taste')).me.spheres?.[id] || 0).toBeGreaterThan(0)
+  await shot(p, 'E60-taste')
+})
