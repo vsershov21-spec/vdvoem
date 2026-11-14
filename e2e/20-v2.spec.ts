@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext } from '@playwright/test'
-import { people, pair, phone, api, addIdeas, shot, waitMsg, press, TOKEN, BASE, type U } from './lib'
+import { people, pair, phone, api, addIdeas, shot, waitMsg, press, say, TOKEN, BASE, type U } from './lib'
 
 // Вдвоём 2.0 lives next to the current screens and opens with ?v2=1. These tests follow the accepted
 // scenarios (docs/v2/PROJECT.md): the home screen with the swipe deck, «Ждёт тебя», and going back by steps.
@@ -328,4 +328,23 @@ test('E58 профиль: история дел с поиском; настро�
   expect(rows[0]).toMatchObject({ role: 'notice', sub: 'до 3 000 ₽' })
   expect((await api(n, 'GET', '/prefs')).pair['meet.budget']).toBe('3000')
   expect((await api(n, 'GET', '/prefs')).me['notify.scout']).toBe('0')
+})
+
+test('E59 помощник в новой оболочке отвечает карточками; дело, написанное боту, появляется во вкладке «Дела»', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  await addIdeas(n, ['Ужин в грузинском ресторане'])
+  const p = await openV2(await phone(browser), v, 'assistant')
+  await expect(p.getByTestId('tab-assistant')).toHaveAttribute('aria-current', 'page')
+  await p.getByTestId('chat-input').fill('куда поужинать?')
+  await p.getByTestId('chat-send').click()
+  await expect(p.getByTestId('chat-reply').last()).toBeVisible({ timeout: 30000 })
+  await shot(p, 'E59-chat')
+  await say(v, 'Купить молоко')
+  await waitMsg(v, /Купить молоко/)
+  await p.getByTestId('tab-chores').click()
+  await expect(p.getByTestId('chore-row')).toContainText('Купить молоко', { timeout: 15000 })
+  await press(v, '✓ Сделано')
+  await expect.poll(async () => (await api(v, 'GET', '/chores/history')).chores.length, { timeout: 15000 }).toBe(1)
 })

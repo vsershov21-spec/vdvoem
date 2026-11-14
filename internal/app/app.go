@@ -244,6 +244,9 @@ func (a *App) AddIdea(ctx context.Context, c Couple, text string) (AddResult, er
 	if err != nil {
 		return AddResult{}, err
 	}
+	if kind == domain.KindChore { // the «Дела» tab of the new interface has its own table: the chore is there at once
+		_ = a.S.MirrorChore(ctx, i.ID, c.Space.ID, c.Me.ID, i.Title, now)
+	}
 	res := AddResult{Idea: i}
 	if sim := a.similar(ctx, c.Space.ID, i); sim != nil {
 		res.Similar = sim

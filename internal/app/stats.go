@@ -210,6 +210,7 @@ func (a *App) ChoreDone(ctx context.Context, c Couple, id int64) (store.Idea, er
 	if err := a.S.UpdateIdea(ctx, i, a.now()); err != nil {
 		return i, err
 	}
+	_ = a.S.DoneMirroredChore(ctx, i.ID, c.Me.ID, a.now())
 	if c.Partner != nil {
 		a.sendQuiet(ctx, c.Partner.ChatID, esc(c.Me.Name)+" "+Past(c.Me.Name, "сделал")+": <b>"+esc(i.Title)+"</b> ✓", nil)
 	}

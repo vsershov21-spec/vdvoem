@@ -141,3 +141,17 @@ func (s *Store) kv(ctx context.Context, q string, id int64) map[string]string {
 func containsFold(s, sub string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(strings.TrimSpace(sub)))
 }
+
+// MirrorChore: a chore that came as a message to the bot is an idea of kind «chore» for the current screens
+// and a row here for the new tab; from_idea ties the two.
+func (s *Store) MirrorChore(ctx context.Context, ideaID, spaceID, authorID int64, title string, now time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO chores(space_id, author_id, assignee_id, title, state, created_at, from_idea)
+		SELECT ?,?,?,?,'open',?,? WHERE NOT EXISTS (SELECT 1 FROM chores WHERE from_idea=?)`, spaceID, authorID, authorID, title, now.Unix(), ideaID, ideaID)
+	return err
+}
+
+// DoneMirroredChore: «✓ Сделано» on the idea closes its row in the new table
+func (s *Store) DoneMirroredChore(ctx context.Context, ideaID, by int64, now time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE chores SET state='done', done_by=?, done_at=? WHERE from_idea=? AND state IN ('open','ask','declined')`, by, now.Unix(), ideaID)
+	return err
+}

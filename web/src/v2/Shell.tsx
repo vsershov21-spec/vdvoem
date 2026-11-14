@@ -11,6 +11,7 @@ import { Meet } from './Meet'
 import { Plans, Free } from './Plans'
 import { Chores, ChoreCard } from './Chores'
 import { Profile, History, Settings } from './Profile'
+import { Assistant } from './Assistant'
 import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
@@ -59,6 +60,7 @@ export function Shell() {
   else if (top === 'meet') screen = <Meet id={Number(route[1])} home={home.data} from={from} />
   else if (top === 'plans') screen = <Plans home={home.data} />
   else if (top === 'free') screen = <Free home={home.data} from={from} />
+  else if (top === 'assistant') screen = <Assistant />
   else if (top === 'chores') screen = <Chores home={home.data} />
   else if (top === 'chore') screen = <ChoreCard id={Number(route[1])} home={home.data} from={from} />
   else if (top === 'us') screen = <Profile home={home.data} from={from} />
