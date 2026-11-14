@@ -371,6 +371,7 @@ func (a *API) agentBoots(w http.ResponseWriter, r *http.Request) {
 		At     int64          `json:"at"`
 		Stages map[string]int `json:"stages"`
 		UA     string         `json:"ua"`
+		Net    string         `json:"net,omitempty"` // the network before our code: dns, connect, tls, first byte, the app file
 		Errors []string       `json:"errors,omitempty"`
 	}
 	by := map[string]*open{}
@@ -390,6 +391,8 @@ func (a *API) agentBoots(w http.ResponseWriter, r *http.Request) {
 		switch b.Stage {
 		case "html":
 			o.UA = b.Msg
+		case "net":
+			o.Net = b.Msg
 		case "error", "reject":
 			o.Errors = append(o.Errors, b.Msg)
 		}
