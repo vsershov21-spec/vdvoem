@@ -31,6 +31,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && github.event_name == 'pull_request'
         with: { name: vdvoem-bin, path: vdvoem-bin/vdvoem, retention-days: 7, if-no-files-found: ignore }
+      # the same binary on the branch «v2-bin»: build artifacts cannot be fetched from the work sandbox, a branch can
+      - name: Publish the branch binary to «v2-bin»
+        if: always() && github.event_name == 'pull_request' && hashFiles('vdvoem-bin/vdvoem') != ''
+        run: |
+          set -e
+          D=$(mktemp -d)
+          gzip -c vdvoem-bin/vdvoem > "$D/vdvoem.gz"
+          echo "${{ github.event.pull_request.head.sha }}" > "$D/VERSION"
+          cd "$D" && git init -q -b v2-bin && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "bin ${{ github.event.pull_request.head.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" v2-bin
       - name: Twenty couples (report)
         if: always()
         run: PERSONAS_OUT=$PWD/personas.md go test ./internal/app -run TestPersonas -count=1 >/dev/null || true; cat personas.md || true

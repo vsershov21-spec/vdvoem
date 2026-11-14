@@ -29,6 +29,16 @@ const Us = lazy(() => load.us().then(m => ({ default: m.Us })))
 const PickScreen = lazy(() => load.pick().then(m => ({ default: m.PickScreen })))
 const TasteScreen = lazy(() => load.taste().then(m => ({ default: m.TasteScreen })))
 const SurpriseSheet = lazy(() => load.surprise().then(m => ({ default: m.SurpriseSheet })))
+// Вдвоём 2.0 is built next to the current screens and opens only with ?v2=1 (remembered; ?v2=0 turns it off)
+const ShellV2 = lazy(() => import('./v2/Shell').then(m => ({ default: m.Shell })))
+const v2on = () => {
+  try {
+    const q = new URLSearchParams(location.search).get('v2')
+    if (q === '1') localStorage.setItem('vd-v2', '1')
+    if (q === '0') localStorage.removeItem('vd-v2')
+    return localStorage.getItem('vd-v2') === '1'
+  } catch { return false }
+}
 
 let themePref = ''
 export const setThemePref = (t: string) => { themePref = t; applyTheme() }
@@ -43,11 +53,16 @@ export function App() {
   const [entered, setEntered] = useState(false)
   useEffect(() => { applyTheme(); onTheme(applyTheme) }, [])
   return (<>
-    {entered && <Main />}
+    {entered && (v2on() ? <Suspense fallback={null}><V2 /></Suspense> : <Main />)}
     {!entered && <Entry onEnter={() => { (window as any).__vdlog?.('enter', ''); setEntered(true) }} />}
     <Burst />
     <Toasts />
   </>)
+}
+
+function V2() {
+  useEffect(() => { get_me_theme(); startLive() }, [])
+  return <ShellV2 />
 }
 
 function Main() {
