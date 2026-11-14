@@ -1264,3 +1264,100 @@ func TestSettingsAndQuietBot(t *testing.T) {
 		t.Fatalf("the home screen shows everything regardless: %+v", rows)
 	}
 }
+
+// The meeting of the new interface: a time is offered and accepted (never set by one), a move is a new
+// offer, a stop comes into the route only after «да», and a cancel is seen by the other one.
+func TestMeetProposals(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	res, _ := a.AddIdea(ctx, n, "Планетарий на Баррикадной")
+	id := res.Idea.ID
+	_, _ = a.SetWish(ctx, n, id, domain.WishWant)
+	_, _ = a.SetWish(ctx, v, id, domain.WishWant)
+	r, err := a.GoWith(ctx, v, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := ck.t.Add(48 * time.Hour).Truncate(time.Hour)
+	if _, err := a.ProposeTime(ctx, v, r.ID, ck.t.Add(-time.Hour)); !errors.Is(err, app.ErrBadTime) {
+		t.Fatalf("a time in the past is refused: %v", err)
+	}
+	p, err := a.ProposeTime(ctx, v, r.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); rd.State == domain.StatePlanned {
+		t.Fatal("an offer alone plans nothing")
+	}
+	if rows := a.Inbox(ctx, n); len(rows) != 1 || rows[0].Title != "Вова зовёт: Планетарий на Баррикадной" {
+		t.Fatalf("partner inbox: %+v", rows)
+	}
+	if mp := a.MeetProposals(ctx, v, r.ID)["time"]; mp == nil || !mp.Mine || mp.State != "wait" || mp.Start != at.Unix() {
+		t.Fatalf("the author sees «ждём»: %+v", mp)
+	}
+	if _, err := a.AnswerProposal(ctx, n, p.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	rd, _ := a.S.Round(ctx, v.Space.ID, r.ID)
+	if rd.State != domain.StatePlanned || !rd.StartsAt.Equal(at) {
+		t.Fatalf("«да» plans the meeting at the offered time: %s %v", rd.State, rd.StartsAt)
+	}
+	// a move: the old time stands until the other says yes
+	at2 := at.Add(24 * time.Hour)
+	p2, _ := a.ProposeTime(ctx, n, r.ID, at2)
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); !rd.StartsAt.Equal(at) {
+		t.Fatal("a move waits for the answer")
+	}
+	if _, err := a.AnswerProposal(ctx, v, p2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); !rd.StartsAt.Equal(at2) || rd.State != domain.StatePlanned {
+		t.Fatalf("moved: %v", rd.StartsAt)
+	}
+	// a stop: «нет» comes back to the one who offered; «да» puts it into the route
+	s1, err := a.ProposeStop(ctx, v, r.ID, 0, "Кафе у Патриарших")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ex, _ := a.S.Extras(ctx, r.ID); len(ex) != 0 {
+		t.Fatal("an offered stop is not in the route yet")
+	}
+	_, _ = a.AnswerProposal(ctx, n, s1.ID, false)
+	if mp := a.MeetProposals(ctx, v, r.ID)["stop"]; mp == nil || mp.State != "no" {
+		t.Fatalf("the «нет» is shown to the author: %+v", mp)
+	}
+	if a.MeetProposals(ctx, n, r.ID)["stop"] != nil {
+		t.Fatal("the one who said no has nothing to see")
+	}
+	s2, _ := a.ProposeStop(ctx, v, r.ID, 0, "Ресторан Хачапури и вино")
+	if _, err := a.AnswerProposal(ctx, n, s2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if ex, _ := a.S.Extras(ctx, r.ID); len(ex) != 1 || ex[0].State != "accepted" {
+		t.Fatalf("accepted stop in the route: %+v", ex)
+	}
+	// cancel: a row for the other one
+	if err := a.CancelMeet(ctx, v, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	rows := a.Inbox(ctx, n)
+	if len(rows) != 1 || rows[0].Role != "notice" || rows[0].Title != "Вова отменил встречу: Планетарий на Баррикадной" {
+		t.Fatalf("cancel notice: %+v", rows)
+	}
+	// free windows and busy days
+	day := ck.t.In(v.Loc()).AddDate(0, 0, 1).Format("2006-01-02")
+	_ = a.SetFreeSlot(ctx, v, day, 1, true)
+	if f := a.Free(ctx, n); len(f["common"].([]string)) != 0 || len(f["partner"].([]string)) != 1 {
+		t.Fatalf("one mark is not a common window: %+v", f)
+	}
+	_ = a.SetFreeSlot(ctx, n, day, 1, true)
+	_ = a.SetBusyDay(ctx, n, day, true)
+	f := a.Free(ctx, v)
+	if c := f["common"].([]string); len(c) != 1 || c[0] != day+":1" {
+		t.Fatalf("common window: %+v", f)
+	}
+	if b := f["partner_busy"].([]string); len(b) != 1 || b[0] != day {
+		t.Fatalf("the partner's busy day: %+v", f)
+	}
+}

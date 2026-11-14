@@ -68,8 +68,15 @@ func (a *App) AnswerProposal(ctx context.Context, c Couple, id int64, yes bool) 
 	}
 	p.State = st
 	f := a.effects[p.Kind]
-	if f == nil && p.Kind == domain.ProposalChore {
-		f = a.choreAnswered // the built-in effect: the chore goes to the one who took it
+	if f == nil { // the built-in effects: a chore goes to the one who took it, a meeting gets its time, a route its stop
+		switch p.Kind {
+		case domain.ProposalChore:
+			f = a.choreAnswered
+		case domain.ProposalTime:
+			f = a.timeAnswered
+		case domain.ProposalStop:
+			f = a.stopAnswered
+		}
 	}
 	if f != nil {
 		if err = f(ctx, c, p, yes); err != nil {

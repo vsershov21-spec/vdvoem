@@ -7,6 +7,8 @@ import type { HomeV2 } from './types'
 import { Nav, Toast, TABS, Empty } from './ui'
 import { Home } from './Home'
 import { Ideas, IdeaCard, AddIdea } from './Ideas'
+import { Meet } from './Meet'
+import { Plans, Free } from './Plans'
 import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
@@ -52,6 +54,9 @@ export function Shell() {
   if (top === '') screen = <Home home={home.data} onAddIdea={() => setAdding(true)} />
   else if (top === 'ideas') screen = <Ideas home={home.data} onAdd={() => setAdding(true)} />
   else if (top === 'idea') screen = <IdeaCard id={Number(route[1])} home={home.data} from={from} />
+  else if (top === 'meet') screen = <Meet id={Number(route[1])} home={home.data} from={from} />
+  else if (top === 'plans') screen = <Plans home={home.data} />
+  else if (top === 'free') screen = <Free home={home.data} from={from} />
   else screen = (
     <div className="scr" data-testid={'v2-' + top}>
       {nested ? <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{NAMES[top] || ''}</b><span /></div> : <h2>{NAMES[top]}</h2>}

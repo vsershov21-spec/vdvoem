@@ -74,6 +74,14 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("POST /api/ideas/{id}/wish", a.wish)
 	h("POST /api/ideas/{id}/merge", a.merge)
 	h("GET /api/inbox", a.inbox)
+	h("GET /api/meet/{id}", a.meet)
+	h("POST /api/meet/{id}/time", a.meetTime)
+	h("POST /api/meet/{id}/stop", a.meetStop)
+	h("POST /api/meet/{id}/cancel", a.meetCancel)
+	h("POST /api/meet/{id}/buy", a.meetBuy)
+	h("GET /api/free", a.free)
+	h("POST /api/free", a.setFree)
+	h("POST /api/busy-day", a.setBusyDay)
 	h("GET /api/chores", a.chores)
 	h("POST /api/chores", a.addChore)
 	h("GET /api/chores/history", a.choreHistory)
@@ -343,6 +351,8 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 409, map[string]string{"error": "own_proposal"})
 	case errors.Is(err, domain.ErrProposalClosed):
 		writeJSON(w, 409, map[string]string{"error": "proposal_closed"})
+	case errors.Is(err, app.ErrMeetState):
+		writeJSON(w, 409, map[string]string{"error": "meet_state"})
 	case errors.Is(err, app.ErrChoreState):
 		writeJSON(w, 409, map[string]string{"error": "chore_state"})
 	case errors.Is(err, app.ErrBadInput):
@@ -765,6 +775,140 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	}
 	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
 	return map[string]any{"idea": viewIdea(c, i)}, err
+}
+
+// ---------- the meeting card ----------
+
+func (a *API) meetOut(r *http.Request, c app.Couple, id int64) (any, error) {
+	rd, err := a.App.S.Round(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	buying := ""
+	if v := a.App.S.SpaceSettings(r.Context(), c.Space.ID)[fmt.Sprintf("sys.buy:%d", id)]; v == fmt.Sprint(c.Me.ID) {
+		buying = "me"
+	} else if v != "" {
+		buying = "partner"
+	}
+	return map[string]any{"round": a.viewRound(r.Context(), c, rd), "proposals": a.App.MeetProposals(r.Context(), c, id), "buying": buying}, nil
+}
+
+func (a *API) meet(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	return a.meetOut(r, c, id)
+}
+
+func (a *API) meetTime(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Start int64  `json:"start"` // unix, or a slot of the grid: day + part (+ "HH:MM")
+		Day   string `json:"day"`
+		Part  int    `json:"part"`
+		At    string `json:"at"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	start := time.Unix(in.Start, 0)
+	if in.Start == 0 {
+		if start, err = app.SlotStart(in.Day, in.Part, c.Loc()); err != nil {
+			return nil, app.ErrBadInput
+		}
+		if hm, e := time.Parse("15:04", in.At); e == nil {
+			y, m, d := start.Date()
+			start = time.Date(y, m, d, hm.Hour(), hm.Minute(), 0, 0, c.Loc())
+		}
+	}
+	if _, err := a.App.ProposeTime(r.Context(), c, id, start); err != nil {
+		return nil, err
+	}
+	return a.meetOut(r, c, id)
+}
+
+func (a *API) meetStop(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Idea int64  `json:"idea"`
+		Text string `json:"text"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if _, err := a.App.ProposeStop(r.Context(), c, id, in.Idea, in.Text); err != nil {
+		return nil, err
+	}
+	return a.meetOut(r, c, id)
+}
+
+// meetBuy: «Куплю я» — the other one sees who is buying the tickets
+func (a *API) meetBuy(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.App.S.Round(r.Context(), c.Space.ID, id); err != nil {
+		return nil, err
+	}
+	if err := a.App.S.SetSpaceSetting(r.Context(), c.Space.ID, fmt.Sprintf("sys.buy:%d", id), fmt.Sprint(c.Me.ID)); err != nil {
+		return nil, err
+	}
+	a.App.Live.From(r.Context(), c.Space.ID)
+	return a.meetOut(r, c, id)
+}
+
+func (a *API) meetCancel(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if err := a.App.CancelMeet(r.Context(), c, id); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+// ---------- Планы: free windows and busy days ----------
+
+func (a *API) free(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.App.Free(r.Context(), c), nil
+}
+
+func (a *API) setFree(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Day  string `json:"day"`
+		Part int    `json:"part"`
+		On   bool   `json:"on"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetFreeSlot(r.Context(), c, in.Day, in.Part, in.On); err != nil {
+		return nil, err
+	}
+	return a.App.Free(r.Context(), c), nil
+}
+
+func (a *API) setBusyDay(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Day string `json:"day"`
+		On  bool   `json:"on"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetBusyDay(r.Context(), c, in.Day, in.On); err != nil {
+		return nil, err
+	}
+	return a.App.Free(r.Context(), c), nil
 }
 
 // ---------- chores ----------
