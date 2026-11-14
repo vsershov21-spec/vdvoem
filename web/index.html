@@ -20,6 +20,17 @@
       addEventListener('error', function (e) { var t = e.target; __vdlog('error', (e.message || '') + ' ' + (t && (t.src || t.href) ? 'load ' + (t.src || t.href) : (e.filename || '') + ':' + (e.lineno || ''))) }, true)
       addEventListener('unhandledrejection', function (e) { __vdlog('reject', e.reason && (e.reason.message || e.reason)) })
       __vdlog('html', navigator.userAgent.slice(-60))
+      // where a white screen goes: the network before any of our code ran (a VPN, a slow route) — measured
+      // from the tap, not from this script; sent once the page has loaded
+      addEventListener('load', function () {
+        setTimeout(function () {
+          try {
+            var n = performance.getEntriesByType('navigation')[0], r = Math.round
+            var js = performance.getEntriesByType('resource').filter(function (x) { return /assets\/index-/.test(x.name) && /\.js/.test(x.name) })[0]
+            __vdlog('net', JSON.stringify({ dns: r(n.domainLookupEnd - n.domainLookupStart), tcp: r(n.connectEnd - n.connectStart), tls: n.secureConnectionStart ? r(n.connectEnd - n.secureConnectionStart) : 0, ttfb: r(n.responseStart - n.requestStart), html: r(n.responseEnd), run: r(performance.now()), js: js ? r(js.responseEnd - js.startTime) : -1, jskb: js ? r(js.transferSize / 1024) : -1, proto: n.nextHopProtocol || '' }))
+          } catch (e) {}
+        }, 0)
+      })
     </script>
     <!-- Telegram's SDK from our own server (fast), telegram.org only if our copy is missing; then tell Telegram
          at once that the page is ready, so its grey screen gives way to our loader while the app downloads -->
