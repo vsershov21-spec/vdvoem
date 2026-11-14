@@ -26,7 +26,7 @@ export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.R
   // the deck is fixed when it opens: marks made here (and the partner's live updates) must not reshuffle it
   const [list, setList] = useState<Idea[] | null>(null)
   useEffect(() => { if (data && !list) setList(data.ideas.filter(x => !marked.has(x.id))) }, [data])
-  if (!list) return <div className="deck"><Skel h={430} r={32} mb={0} /></div>
+  if (!list) return <div className="sdeck"><Skel h={430} r={32} mb={0} /></div>
   const i = list[k], nx = list[k + 1]
   const pn = partner?.name || 'Партнёр'
   const next = () => { setK(x => x + 1); setBusy(false) }
@@ -49,7 +49,7 @@ export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.R
   const restart = () => { setList(null); setK(0); refresh(); emit('home') }
   const sheet = <MatchSheet idea={match} partner={pn} onClose={() => setMatch(null)} />
   if (!i) return (<>
-    <div className="deck deck--empty card rise">
+    <div className="sdeck sdeck--empty card rise">
       <Empty title={list.length ? 'Всё разобрали' : 'Свайпать пока нечего'} text={done ? `Отмечено: ${done}. Совпадения — в «Идеи → Хотите оба». Скаут принесёт новое утром.` : 'Все идеи и события уже с отметкой. Добавь идею или спроси помощника.'}>
         <div className="row" style={{ gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Btn kind="soft" sm icon="heart" onClick={() => go('ideas/both')}>Хотите оба</Btn>
@@ -62,32 +62,32 @@ export function Deck({ partner, onEmpty }: { partner?: Person; onEmpty?: React.R
   </>)
   const when = i.starts_at ? new Date(i.starts_at * 1000).toLocaleString('ru', { weekday: 'short', day: 'numeric', month: 'long', ...(new Date(i.starts_at * 1000).getHours() ? { hour: '2-digit', minute: '2-digit' } : {}) }) : ''
   return (<>
-    <div className="deck" data-testid="deck">
-      {nx && <div className="deck__peek" aria-hidden="true"><Cover idea={nx} h={300} big><span /><span /></Cover></div>}
+    <div className="sdeck" data-testid="deck">
+      {nx && <div className="sdeck__peek" aria-hidden="true"><Cover idea={nx} h={230} big><span /><span /></Cover></div>}
       <AnimatePresence initial={false}>
         <Swipe key={i.id} onSwipe={d => wish(d === 'right' ? 'want' : d === 'up' ? 'very' : 'skip')}>
-          <div className="deck__card" data-testid="triage-card">
-            <Cover idea={i} h={300} big>
+          <div className="sdeck__card" data-testid="triage-card">
+            <Cover idea={i} h={230} big>
               <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                 {when && <span className="pill pill--glass"><Icon n="cal" s={12} w={2.2} />{when}</span>}
                 {i.partner_marked && <span className="pill pill--glass">{pn} {past(partner?.name, 'отметил')}</span>}
               </span>
               <div className="cover__title" style={{ fontSize: 24, lineHeight: '28px' }}>{i.title}</div>
             </Cover>
-            <div className="deck__body">
+            <div className="sdeck__body">
               {i.meta && <p className="callout" style={{ margin: 0, fontWeight: 600 }}>{i.meta}</p>}
-              {i.why ? <p className="caption muted deck__why">{i.why}</p> : i.info?.about ? <p className="caption muted deck__why">{i.info.about}</p> : i.match?.note ? <p className="caption muted deck__why">{i.match.note}</p> : null}
+              {i.why ? <p className="caption muted sdeck__why">{i.why}</p> : i.info?.about ? <p className="caption muted sdeck__why">{i.info.about}</p> : i.match?.note ? <p className="caption muted sdeck__why">{i.match.note}</p> : null}
             </div>
           </div>
         </Swipe>
       </AnimatePresence>
     </div>
-    <div className="deck__acts">
-      <button className="deck__btn" aria-label="Пропущу" onClick={() => wish('skip')} disabled={busy}><Icon n="x" s={26} w={2.4} /></button>
-      <button className="deck__btn deck__btn--sm" aria-label="Очень хочу" onClick={() => wish('very')} disabled={busy}><Icon n="stars" s={22} w={2.2} /></button>
-      <button className="deck__btn deck__btn--yes" aria-label="Хочу" onClick={() => wish('want')} disabled={busy}><Icon n="heart" s={26} w={2.4} /></button>
+    <div className="sdeck__acts">
+      <button className="sdeck__btn" aria-label="Пропущу" onClick={() => wish('skip')} disabled={busy}><Icon n="x" s={26} w={2.4} /></button>
+      <button className="sdeck__btn sdeck__btn--sm" aria-label="Очень хочу" onClick={() => wish('very')} disabled={busy}><Icon n="flame" s={22} w={2.2} /></button>
+      <button className="sdeck__btn sdeck__btn--yes" aria-label="Хочу" onClick={() => wish('want')} disabled={busy}><Icon n="heart" s={26} w={2.4} /></button>
     </div>
-    <div className="deck__more">
+    <div className="sdeck__more">
       <span className="caption muted">{k + 1} из {list.length}</span>
       <button className="link" onClick={later}>Потом</button>
       {partner && <button className="link" onClick={urgent}>Важно — пусть {pn} ответит</button>}

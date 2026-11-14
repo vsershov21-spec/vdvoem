@@ -37,8 +37,9 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
       {!home.paired ? <Invite /> : home.round ? <RoundCard r={home.round} home={home} /> : home.next ? <NextCard r={home.next} /> : null}
       {home.paired && <Now home={home} />}
       {home.paired && <>
-        <div className="sec" style={{ marginTop: home.round || home.next ? 18 : 2 }}>
-          <h2 className="title"><span className="orange-ind" />Куда пойдём?</h2>
+        {/* no section title: the deck is the screen; matches so far — one quiet link */}
+        <div className="row" style={{ margin: home.round || home.next || home.urgent?.length ? '14px 2px 8px' : '0 2px 8px', minHeight: 20 }}>
+          <span className="caption muted">Свайпни: вправо — хочу, влево — нет</span><span className="spacer" />
           {home.counts.both_want > 0 && <button className="link" onClick={() => go('ideas/both')}>Совпало · {home.counts.both_want}</button>}
         </div>
         <Deck partner={home.partner} />
@@ -115,21 +116,17 @@ function Who({ p, done, color }: { p: string; done: boolean; color: string }) {
   )
 }
 
+// the next date as one slim row: the deck below stays on the first screen
 function NextCard({ r }: { r: Round }) {
   if (!r.chosen || !r.starts_at) return null
   const ms = r.starts_at * 1000 - Date.now(), d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5)
+  const left = ms <= 0 ? 'уже сейчас' : d > 0 ? `через ${d} д ${h} ч` : `через ${h} ч ${Math.floor((ms % 36e5) / 6e4)} мин`
   return (
-    <div className="ticket rise card--tap" onClick={() => go('round/' + r.id)} data-testid="next-card">
-      <Cover idea={r.chosen} h={176}>
-        <span className="pill pill--glass" style={{ alignSelf: 'flex-start' }}><Icon n="cal" s={13} w={2.2} />Запланировано</span>
-        <div><div className="cover__title" style={{ fontSize: 22, lineHeight: '26px' }}>{r.chosen.title}</div>
-          <div className="caption" style={{ opacity: .9, marginTop: 4 }}>{r.when}</div></div>
-      </Cover>
-      <div className="row" style={{ padding: '12px 16px', gap: 16 }}>
-        <span className="caption muted">До встречи</span><span className="spacer" />
-        <b className="headline">{ms <= 0 ? 'уже сейчас' : d > 0 ? `${d} д ${h} ч` : `${h} ч ${Math.floor((ms % 36e5) / 6e4)} мин`}</b>
-      </div>
-    </div>
+    <button className="nextrow rise" onClick={() => go('round/' + r.id)} data-testid="next-card">
+      <span className="nextrow__img"><Cover idea={r.chosen} h={56}><span /><span /></Cover></span>
+      <span className="nextrow__main"><small>Ближайшая встреча · {left}</small><b>{r.chosen.title}</b><span>{r.when}</span></span>
+      <Icon n="chev" s={16} w={2.4} />
+    </button>
   )
 }
 
