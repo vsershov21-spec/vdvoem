@@ -4,10 +4,10 @@ import type { Home, Idea, Round } from '../lib/types'
 import { useLoad, emit } from '../lib/data'
 import { post, upload, humanError, ApiError } from '../lib/api'
 import { go } from '../lib/router'
-import { dayLabel, hm, money, dur, relLeft, when, parseDay, ncase, past as agreed } from '../lib/format'
+import { dayLabel, hm, money, relLeft, when, parseDay, ncase, past as agreed } from '../lib/format'
 import { haptic, download } from '../lib/tg'
 import { Icon } from '../ui/icons'
-import { Btn, Cover, Empty, Marks, Sheet, Skel, SubHeader, burst, toast } from '../ui/kit'
+import { Btn, Cover, Empty, Sheet, Skel, SubHeader, burst, toast } from '../ui/kit'
 import { MonthGrid, type DayMark } from '../ui/Charts'
 import { Places } from '../ui/Places'
 import { useOnline } from '../lib/live'
@@ -46,7 +46,7 @@ export function RoundScreen({ id, home }: { id: number; home: Home | null }) {
   return <><SubHeader title={titles[r.state]} right={['time', 'vote', 'confirm'].includes(r.state) ? <span className="caption muted">{relLeft(r.expires_at)}</span> : undefined} />{body}</>
 }
 
-const titles: Record<string, string> = { time: 'Когда удобно', vote: 'Выбираем', confirm: 'Совпало', planned: 'Встреча', done: 'Встреча', expired: 'Выбор закрыт', cancelled: 'Отменено' }
+const titles: Record<string, string> = { time: 'Когда удобно', vote: 'Куда идём', confirm: 'Совпало', planned: 'Встреча', done: 'Встреча', expired: 'Выбор закрыт', cancelled: 'Отменено' }
 type Act = (a: string, b?: object) => Promise<R>
 
 // ---------- 1. time ----------
@@ -218,83 +218,50 @@ function ChosenStrip({ i }: { i: Idea }) {
   )
 }
 
-// ---------- 2. vote: swipe deck ----------
-function VoteStage({ r, act, partner, home }: { r: Round; act: Act; partner: string; home: Home }) {
-  const [top, setTop] = useState(0)
-  const n = r.triple.length
-  const mismatch = r.voted && r.partner_voted
-  const vote = async (id: number) => { haptic.heavy(); await act('vote', { idea_id: id }) }
-  if (r.voted && !mismatch) {
-    const mine = r.triple.find(i => i.id === r.my_vote)
-    return (
-      <div className="col">
-        <div className="frame rise"><div className="frame__in" style={{ textAlign: 'center' }}>
-          <div className="meet" style={{ margin: '8px auto 16px' }}><i /><i /></div>
-          <h2 className="title">Твой голос принят</h2>
-          <p className="callout muted">Твой выбор — «{mine?.title || 'ни один'}». Голос {ncase(partner, 'gen')} откроется после ответа — так честнее.</p>
-        </div></div>
-        <p className="caption muted" style={{ textAlign: 'center', margin: '4px 0 0' }}>Можно переголосовать, пока {partner} не {agreed(partner, 'ответил')}.</p>
-        <Deck r={r} top={top} setTop={setTop} onVote={vote} me={home.me} small />
-      </div>
-    )
-  }
+// ---------- 2. what — from our own matches for the common time, in the open ----------
+// No blind vote: the list is what both already want (then the closest), each one's pick is visible at once,
+// the same pick by both is the decision.
+function VoteStage({ r, act, partner }: { r: Round; act: Act; partner: string; home: Home }) {
+  const pick = async (id: number) => { haptic.heavy(); await act('vote', { idea_id: id }).catch(() => {}) }
+  const w = r.windows?.[0]
+  const whenText = w ? new Date(w.from * 1000).toLocaleString('ru', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : ''
+  const theirs = r.triple.find(i => i.id === r.partner_vote)
+  const wants = (x?: string) => x === 'want' || x === 'very'
   return (
-    <div className="col">
-      {mismatch && (
-        <div className="card rise" style={{ display: 'grid', gap: 10 }}>
-          <b className="headline">Голоса разошлись</b>
-          <p className="callout muted" style={{ margin: 0 }}>Ты — «{r.triple.find(i => i.id === r.my_vote)?.title || 'ни один'}», {partner} — «{r.triple.find(i => i.id === r.partner_vote)?.title || 'ни один'}».</p>
-          {r.compromise && <Btn kind="accent" block onClick={() => vote(r.compromise!.id).catch(() => {})}>Давай «{r.compromise.title}» — вы оба не против</Btn>}
+    <div className="col" data-testid="choose">
+      <div className="rise">
+        <h1 className="display" style={{ margin: 0 }}>Вы оба свободны</h1>
+        {whenText && <p className="callout muted" style={{ margin: '4px 0 0' }}>{whenText}</p>}
+      </div>
+      {theirs && r.my_vote !== theirs.id && (
+        <div className="props rise" data-testid="their-pick">
+          <b className="props__h">{partner} за</b>
+          <div className="props__row">
+            <span className="props__main"><b>{theirs.title}</b><span>{theirs.meta}</span></span>
+            <button className="btn btn--accent btn--sm" onClick={() => pick(theirs.id)}>Идём</button>
+          </div>
         </div>
       )}
-      {n === 0 ? <Empty title="Нечего предложить" text="Под ваше время в копилке ничего не подошло. Добавьте идей — или возьмите другую тройку." /> :
-        <Deck r={r} top={top} setTop={setTop} onVote={vote} me={home.me} />}
-      <div className="row">
-        <Btn kind="soft" block icon="shuffle" onClick={() => act('reshuffle').then(() => setTop(0)).catch(() => {})}>Другая тройка</Btn>
-        <Btn kind="ghost" block onClick={() => vote(-1).catch(() => {})}>Ни один</Btn>
-      </div>
+      {r.triple.length === 0 ? <Empty title="На это время ничего не подошло" text="Добавьте идей или выберите другое время." /> : (
+        <div className="col" style={{ gap: 8 }}>
+          {r.triple.map(i => {
+            const mine = r.my_vote === i.id
+            return (
+              <div key={i.id} className={'pickrow rise' + (mine ? ' is-mine' : '')} data-testid="choose-option">
+                <button className="pickrow__open" onClick={() => go('idea/' + i.id)} aria-label={'Открыть: ' + i.title}>
+                  <span className="pickrow__img"><Cover idea={i} h={64}><span /><span /></Cover></span>
+                  <span className="pickrow__main"><b>{i.title}</b><span>{i.meta}</span>
+                    {wants(i.my_wish) && wants(i.partner_wish) && <span className="pickrow__tag">хотите оба</span>}</span>
+                </button>
+                <Btn sm kind={mine ? 'soft' : 'primary'} onClick={() => pick(i.id)}>{mine ? 'Мой выбор' : 'Сюда'}</Btn>
+              </div>)
+          })}
+        </div>
+      )}
+      {r.my_vote && r.my_vote > 0 && !theirs ? <p className="caption muted" style={{ textAlign: 'center', margin: 0 }}>Ждём {ncase(partner, 'acc')}. Выбор можно поменять.</p> : null}
+      <Btn kind="ghost" block icon="shuffle" onClick={() => { act('reshuffle').catch(() => {}) }}>Показать другие</Btn>
     </div>
   )
-}
-
-function Deck({ r, top, setTop, onVote, me, small }: { r: Round; top: number; setTop: (n: number) => void; onVote: (id: number) => Promise<void>; me: Home['me']; small?: boolean }) {
-  const n = r.triple.length
-  const drag = useRef<{ x: number; y: number; id: number } | null>(null)
-  const [dx, setDx] = useState(0)
-  const next = () => { haptic.select(); setTop((top + 1) % n) }
-  const end = async () => {
-    const d = dx; drag.current = null; setDx(0)
-    if (d > 90) await onVote(r.triple[top].id).catch(() => {})
-    else if (d < -90) next()
-  }
-  return (<>
-    <div className="deck" style={small ? { height: 340 } : undefined}>
-      {r.triple.map((i, k) => {
-        const pos = (k - top + n) % n
-        const isTop = pos === 0
-        const style = isTop && dx ? { transform: `translateX(${dx}px) rotate(${dx / 18}deg)` } : undefined
-        return (
-          <div key={i.id} className="dcard" data-pos={pos > 2 ? 'hidden' : isTop ? undefined : pos} data-drag={isTop && drag.current ? '' : undefined} style={{ ...style, zIndex: 10 - pos }}
-            onPointerDown={e => { if (!isTop || (e.target as HTMLElement).closest('button')) return; drag.current = { x: e.clientX, y: e.clientY, id: i.id }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) }}
-            onPointerMove={e => { if (drag.current) setDx(e.clientX - drag.current.x) }}
-            onPointerUp={end} onPointerCancel={() => { drag.current = null; setDx(0) }}>
-            {isTop && <><span className="dcard__stamp dcard__stamp--yes" style={{ opacity: Math.max(0, dx / 90) }}>ГОЛОСУЮ</span>
-              <span className="dcard__stamp dcard__stamp--no" style={{ opacity: Math.max(0, -dx / 90) }}>ДАЛЬШЕ</span></>}
-            <Cover idea={i} big>
-              <div className="row">{k === 0 && <span className="pill pill--glass"><Icon n="spark" s={13} w={2.2} />мой фаворит</span>}
-                {r.my_vote === i.id && <span className="pill pill--glass"><Icon n="check" s={13} w={2.6} />твой голос</span>}</div>
-              <div className="cover__title" style={{ fontSize: 24, lineHeight: '28px' }}>{i.title}</div>
-            </Cover>
-            <div className="dcard__body">
-              <div className="row"><span className="caption muted" style={{ flex: 1 }}>{[i.address, i.price_min ? '≈ ' + money(i.price_min) : '', dur(i.duration_min)].filter(Boolean).join(' · ')}</span><Marks idea={i} me={me} /></div>
-              <Btn kind={r.my_vote === i.id ? 'soft' : 'primary'} block icon="check" onClick={() => onVote(i.id)}>{r.my_vote === i.id ? 'Твой голос' : 'Голосую за это'}</Btn>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-    <div className="deckdots">{r.triple.map((i, k) => <i key={i.id} data-on={k === top || undefined} onClick={() => setTop(k)} />)}</div>
-  </>)
 }
 
 // ---------- 3. confirm ----------

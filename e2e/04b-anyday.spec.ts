@@ -8,7 +8,7 @@ test('E24 время на любой день: недели, календарь,
   await pair(v, n)
   await addIdeas(v, ['Ужин в ресторане', 'Кино', 'Театр'])
   const p = await open(await phone(browser), v)
-  await p.getByRole('button', { name: 'Выбрать вместе' }).click()
+  await p.getByRole('button', { name: 'Когда мы свободны' }).click()
   await expect(p.getByText('Когда удобно')).toBeVisible()
   await expect(p.locator('.slots__day')).toHaveCount(7)
   await shot(p, 'E24-week')
@@ -48,5 +48,5 @@ test('E24 время на любой день: недели, календарь,
   const r = (await api(n, 'POST', `/rounds/${round.id}/slots`, { slots: [k] })).round
   expect(r.state).toBe('vote')
   expect(r.windows[0].from * 1000).toBeGreaterThan(Date.UTC(y, m - 1, d + 20))
-  await expect(p.getByText('Выбираем')).toBeVisible({ timeout: 12000 })
+  await expect(p.getByTestId('choose')).toBeVisible({ timeout: 12000 })
 })

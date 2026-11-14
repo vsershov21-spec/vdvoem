@@ -18,7 +18,7 @@ test('E10 выбор: время → колода → совпало → под�
   const vc = await phone(browser), nc = await phone(browser, { dark: true })
   const vp = await open(vc, v)
   await shot(vp, 'E10-home')
-  await vp.getByRole('button', { name: 'Выбрать вместе' }).click()
+  await vp.getByRole('button', { name: 'Когда мы свободны' }).click()
   await expect(vp.getByText('Когда удобно')).toBeVisible()
   // paint by dragging across one day: morning → evening
   const d = await days(v)
@@ -35,17 +35,17 @@ test('E10 выбор: время → колода → совпало → под�
   await expect(np.getByTestId('island')).toContainText('Твой ход')
   await np.getByTestId('round-card').click()
   await mark(np, [d[1] + ':2'])
-  await expect(np.getByText('Выбираем')).toBeVisible()
+  await expect(np.getByTestId('choose')).toBeVisible()
   await np.waitForTimeout(600)
   await shot(np, 'E10-deck-dark')
-  // swipe right on the top card = vote
-  const top = np.locator('.dcard').first()
-  const fav = (await top.locator('.cover__title').textContent())!
-  const box = (await top.boundingBox())!
-  await np.mouse.move(box.x + 60, box.y + 120); await np.mouse.down(); await np.mouse.move(box.x + 260, box.y + 130, { steps: 10 }); await np.mouse.up()
-  await expect(np.getByText('Твой голос принят')).toBeVisible()
-  await expect(vp.getByText('Выбираем')).toBeVisible({ timeout: 12000 })
-  await vp.locator('.dcard', { hasText: fav }).getByRole('button', { name: 'Голосую за это' }).click()
+  // the list is in the open: Настя picks one, Вова sees «Настя за …» and agrees in one tap
+  const first = np.getByTestId('choose-option').first()
+  const fav = (await first.locator('.pickrow__main b').textContent())!
+  await first.getByRole('button', { name: 'Сюда' }).click()
+  await expect(first.getByRole('button', { name: 'Мой выбор' })).toBeVisible()
+  await expect(vp.getByTestId('choose')).toBeVisible({ timeout: 12000 })
+  await expect(vp.getByTestId('their-pick')).toContainText(fav)
+  await vp.getByTestId('their-pick').getByRole('button', { name: 'Идём' }).click()
   // the same idea at the common time is the decision: planned at once, no second «подтверди»
   await expect(vp.getByText('Совпало!')).toBeVisible()
   await shot(vp, 'E10-match')
@@ -67,31 +67,31 @@ test('E10 выбор: время → колода → совпало → под�
   await expect(vp.getByTestId('next-card')).toContainText(fav)
 })
 
-test('E11 голоса разошлись: компромисс, другая тройка, «Ни один»', async ({ browser }) => {
+test('E11 куда идём: сначала то, что хотите оба; выбрали разное — видно сразу; «Показать другие»', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   const ids = await addIdeas(v, ['Ужин в ресторане', 'Музей космонавтики', 'Прогулка в парке', 'Каток', 'Кино', 'Боулинг', 'Квиз'])
-  for (const id of ids) { await api(v, 'POST', `/ideas/${id}/wish`, { wish: 'want' }); await api(n, 'POST', `/ideas/${id}/wish`, { wish: 'want' }) }
+  for (const id of ids.slice(0, 4)) { await api(v, 'POST', `/ideas/${id}/wish`, { wish: 'want' }); await api(n, 'POST', `/ideas/${id}/wish`, { wish: 'want' }) }
   const { round } = await api(v, 'POST', '/rounds')
   const k = round.days[0] + ':2'
   await api(v, 'POST', `/rounds/${round.id}/slots`, { slots: [k] })
   const r = (await api(n, 'POST', `/rounds/${round.id}/slots`, { slots: [k] })).round
   const first = r.triple.map((i: any) => i.id)
+  expect(first.length).toBe(4) // everything both want that fits the time — not a blind triple
+  expect([...first].sort()).toEqual(ids.slice(0, 4).sort())
   await api(v, 'POST', `/rounds/${round.id}/vote`, { idea_id: first[0] })
   await api(n, 'POST', `/rounds/${round.id}/vote`, { idea_id: first[1] })
   const np = await open(await phone(browser), n, 'round/' + round.id)
-  await expect(np.getByText('Голоса разошлись')).toBeVisible()
-  await shot(np, 'E11-mismatch')
-  await np.getByRole('button', { name: 'Другая тройка' }).click()
+  await expect(np.getByTestId('their-pick')).toContainText(r.triple[0].title) // Вова's pick, in the open
+  await expect(np.getByTestId('choose-option').filter({ hasText: 'хотите оба' })).toHaveCount(4)
+  await shot(np, 'E11-choose')
+  await np.getByRole('button', { name: 'Показать другие' }).click()
   await expect.poll(async () => (await api(n, 'GET', `/rounds/${round.id}`)).round.triple.map((i: any) => i.id).join()).not.toBe(first.join())
-  await np.getByRole('button', { name: 'Ни один' }).click()
-  expect((await api(n, 'GET', `/rounds/${round.id}`)).round.my_vote).toBe(-1)
-  // compromise: both voted for different ideas both are fine with
+  // agreeing with the partner's pick is the decision
   const t = (await api(v, 'GET', `/rounds/${round.id}`)).round.triple.map((i: any) => i.id)
   await api(v, 'POST', `/rounds/${round.id}/vote`, { idea_id: t[0] })
-  await api(n, 'POST', `/rounds/${round.id}/vote`, { idea_id: t[1] })
   await np.reload()
-  await np.getByRole('button', { name: /вы оба не против/ }).click()
+  await np.getByTestId('their-pick').getByRole('button', { name: 'Идём' }).click()
   await expect(np.getByText('Совпало!')).toBeVisible()
 })
 
@@ -109,7 +109,7 @@ test('E12 время — открытое обсуждение: видно вр�
   await waitMsg(v, /Пока не совпало/)
   await shot(np, 'E12-no-overlap')
   await np.getByTestId('partner-time').getByRole('button', { name: /Подходит/ }).first().click()
-  await expect(np.getByText('Выбираем')).toBeVisible()
+  await expect(np.getByTestId('choose')).toBeVisible()
 })
 
 test('E12b календарь на телефоне: личная ссылка-подписка, встреча там, отмена её снимает', async () => {

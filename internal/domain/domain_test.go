@@ -67,6 +67,11 @@ func TestPickTriple(t *testing.T) {
 	if Why(got[0]) != "Вы оба очень хотите, и время подходит." {
 		t.Fatalf("why: %s", Why(got[0]))
 	}
+	// for a common time: everything both want that fits (2, 1, 5), then the best of the rest only to reach three
+	ft := PickForTime(PickInput{Ideas: ideas, Windows: win, BudgetKop: 600000, Now: now}, 6)
+	if len(ft) != 3 || ft[0].Idea.ID != 2 || ft[1].Idea.ID != 1 || ft[2].Idea.ID != 5 {
+		t.Fatalf("for time: %v", ft)
+	}
 	// excluded ideas never come back in «Другая тройка»
 	again := PickTriple(PickInput{Ideas: ideas, Windows: win, BudgetKop: 600000, Now: now, Exclude: map[int64]bool{2: true, 5: true, 1: true}})
 	if len(again) != 1 || again[0].Idea.ID != 3 {

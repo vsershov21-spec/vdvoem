@@ -30,11 +30,12 @@ test('E27 вместе в приложении: изменения партнё�
   await np.goto(`/app/round/${round.id}`)
   await np.locator(`.cell[data-k="${k}"]`).click().catch(async () => { await np.getByRole('button', { name: 'Ближайшие дни' }).click(); await np.locator(`.cell[data-k="${k}"]`).click() })
   await np.getByRole('button', { name: /Готово/ }).click()
-  await expect(vp.getByText('Выбираем')).toBeVisible({ timeout: 2500 })
+  await expect(vp.getByTestId('choose')).toBeVisible({ timeout: 2500 })
   // Настя votes first; when Вова picks the same, her screen jumps to «Совпало!»
   const v1 = (await api(n, 'GET', `/rounds/${round.id}`)).round
   await api(n, 'POST', `/rounds/${round.id}/vote`, { idea_id: v1.triple[0].id })
-  await vp.locator('.dcard', { hasText: v1.triple[0].title }).getByRole('button', { name: 'Голосую за это' }).click()
+  await expect(vp.getByTestId('their-pick')).toContainText(v1.triple[0].title) // her pick is visible at once
+  await vp.getByTestId('their-pick').getByRole('button', { name: 'Идём' }).click()
   await expect(np.getByText('Совпало!')).toBeVisible({ timeout: 2500 })
 
   // Настя closes the app: the green dot goes away

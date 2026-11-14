@@ -40,7 +40,7 @@ export function Home({ home, onAdd, onSurprise, onStart }: { home: HomeT | null;
         <AskBar />
         <div className="row" style={{ gap: 8, marginTop: 10 }}>
           <Btn kind="surface" block icon="dice" onClick={() => onSurprise('random')}>Удиви нас</Btn>
-          {!home.round && <Btn kind="surface" block icon="cal" onClick={onStart}>Выбрать вместе</Btn>}
+          {!home.round && <Btn kind="surface" block icon="cal" onClick={onStart}>Когда мы свободны</Btn>}
         </div>
       </>}
       {!home.paired && <AskBar />}
@@ -109,7 +109,7 @@ function UrgentRow({ u, partner }: { u: UrgentAsk; partner: string }) {
 
 const stageText: Record<string, [string, string]> = {
   time: ['Отмечаем время', 'Где совпадёте — там и подберу варианты'],
-  vote: ['Голосуем', 'Три варианта под ваше общее время'],
+  vote: ['Куда идём', 'Выберите из совпавшего'],
   confirm: ['Совпало!', 'Осталось подтвердить обоим'],
 }
 
