@@ -2337,10 +2337,17 @@ func TestLeaveThenNewPartner(t *testing.T) {
 	ctx := context.Background()
 	l := lifeOfPair(t, a, ck)
 	space := l.v.Space.ID
+	stale, _ := a.NewInvite(ctx, l.v) // a link made while they were a pair
 	if _, _, err := a.LeavePair(ctx, l.v); err != nil {
 		t.Fatal(err)
 	}
 	ns, _ := a.Couple(ctx, 2)
+	if _, _, err := a.Start(ctx, app.Profile{TGID: 6, ChatID: 6, Name: "Чужой"}, "inv_"+app.InviteCode(stale)); !errors.Is(err, app.ErrInviteUsed) {
+		t.Fatalf("a link from before the leaving must not bring anybody in: %v", err)
+	}
+	if c, _ := a.Couple(ctx, 2); c.Partner != nil {
+		t.Fatal("she stays alone")
+	}
 	// alone, the marks of the one who left are kept but belong to nobody: nothing «совпало»
 	link, _ := a.NewInvite(ctx, ns)
 	x, _, err := a.Start(ctx, app.Profile{TGID: 5, ChatID: 5, Name: "Олег"}, "inv_"+app.InviteCode(link))

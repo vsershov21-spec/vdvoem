@@ -145,6 +145,8 @@ func detach(ctx context.Context, tx execer, me Member, now time.Time) ([]Cancell
 		{`UPDATE proposals SET state='withdrawn', answered_at=? WHERE space_id=? AND state='wait'`, []any{now.Unix(), me.SpaceID}},
 		{`UPDATE proposals SET author_saw=1 WHERE space_id=? AND state='no' AND author_saw=0`, []any{me.SpaceID}},
 		{`UPDATE urgent SET done_at=?, answer='cancelled' WHERE space_id=? AND done_at IS NULL`, []any{now.Unix(), me.SpaceID}},
+		// a link that was sent while they were a pair must not bring anybody into what is one person's now
+		{`UPDATE invites SET expires_at=? WHERE space_id=? AND used_at IS NULL AND expires_at>?`, []any{now.Unix(), me.SpaceID, now.Unix()}},
 		{`UPDATE spaces SET status='solo' WHERE id=?`, []any{me.SpaceID}},
 	})
 }
