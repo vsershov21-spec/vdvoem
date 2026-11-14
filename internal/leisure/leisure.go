@@ -7,6 +7,7 @@ package leisure
 import (
 	_ "embed"
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -184,7 +185,9 @@ func Fits(tag, text string) bool {
 		return false
 	}
 	t := norm(text)
-	if at(t, tag) {
+	// a kind whose stems hold the tag as a whole word («кино ») is never matched by its tag as a prefix
+	// («кинопарк»)
+	if at(t, tag) && !slices.Contains(k.Stems, tag+" ") {
 		return true
 	}
 	for _, s := range k.Stems {
@@ -216,4 +219,12 @@ func Narrow(tags []string) []string {
 		}
 	}
 	return out
+}
+
+// CatOf: the category a kind belongs to (food, culture, …), "" for an unknown tag
+func CatOf(tag string) string {
+	if k, ok := byTag[tag]; ok {
+		return k.Cat
+	}
+	return ""
 }

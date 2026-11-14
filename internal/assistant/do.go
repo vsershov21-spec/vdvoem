@@ -290,7 +290,7 @@ func (r *run) find(ctx context.Context, in Intent, text string) Reply {
 		what := strings.TrimSpace(firstNonEmpty(cond, in.Q, text))
 		// a definite kind («кино в субботу») with little or nothing of it: the scout looks without being asked
 		thin := near != "" || len(in.G) > 0 && found < 3
-		if askNewRe.MatchString(strings.ToLower(text)) || thin {
+		if askNewRe.MatchString(strings.ToLower(text)) && !in.Scout || thin { // «что нового нашёл скаут» asks about finds, not for a search
 			if r.askScout(ctx, "Найти новое: "+what, 0) == nil {
 				t += "\n🔭 Попросил скаута поискать новое — " + short(what, 40) + ". Принесёт утром, пришлю сюда и в бот."
 			}

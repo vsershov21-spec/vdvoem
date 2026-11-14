@@ -582,6 +582,7 @@ func (as *Assistant) understand1(ctx context.Context, text string, pt Turn, now 
 		m = reconcile(m, rule, text)
 	}
 	m = negationsBacked(m, text)
+	m = wordsBacked(m, text)
 	m = mergeFollowUp(prev, m, text)
 	return m, "model", altFor(m, rule, text)
 }
@@ -839,3 +840,26 @@ func negationsBacked(m Intent, text string) Intent {
 }
 
 var negRe = regexp.MustCompile(`(?:^|[^\p{L}])(?:не|без|кроме|никаких|никакого|никакой)\s`)
+
+// wordsBacked: the model's moods and «наши / новое» stand only where the words say so — «итальянские
+// рестораны» came back «культурно», «грузинские рестики» — «романтика», «романтичное до 5000» — «только наши»
+func wordsBacked(m Intent, text string) Intent {
+	said := app.MoodsFrom(text)
+	var moods []string
+	for _, x := range m.Moods {
+		if slices.Contains(said, x) {
+			moods = append(moods, x)
+		}
+	}
+	m.Moods = moods
+	t := strings.ToLower(text)
+	if m.Whose == "ours" && !oursSaidRe.MatchString(t) || m.Whose == "new" && !newSaidRe.MatchString(t) {
+		m.Whose = ""
+	}
+	return m
+}
+
+var (
+	oursSaidRe = regexp.MustCompile(`наш|копилк|сво[иеёя]|мы добавля|из банка|в банке`)
+	newSaidRe  = regexp.MustCompile(`нов|не видел|не знаем|друг(ие|ое|ого)|ещ[её] не|которых нет|чего нет|свеж`)
+)

@@ -236,6 +236,10 @@ func fitsDay(i store.Idea, q afishaQ, now time.Time, loc *time.Location) bool {
 func fitsKinds(i store.Idea, g []string) bool {
 	text := i.Title + " " + i.Why + " " + i.Info.About + " " + strings.Join(i.Info.Genres, " ")
 	for _, k := range g {
+		// a cuisine is a place to eat: a Japanese exhibition is not «азиатская кухня»
+		if leisure.CatOf(k) == "food" && i.Category != "food" {
+			continue
+		}
 		for _, x := range i.Info.Genres {
 			if x == k {
 				return true
