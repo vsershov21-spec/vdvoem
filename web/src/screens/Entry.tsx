@@ -64,7 +64,8 @@ function animateTo(v: ReturnType<typeof useMotionValue<number>>, to: number, ms:
 
 // e2e and screenshots: ?nointro=1 skips the lamp-and-particles show once signed in
 const noIntro = (() => { try { const q = new URLSearchParams(location.search).get('nointro'); if (q) sessionStorage.setItem('vd-nointro', q); return sessionStorage.getItem('vd-nointro') === '1' } catch { return false } })()
-const seenToday = () => { try { return localStorage.getItem('vd-intro') === new Date().toDateString() } catch { return false } }
+// the lamp-and-bridge show is for the very first open only: every later open goes straight in (it cost 5–8 s a day)
+const seenToday = () => { try { return !!localStorage.getItem('vd-intro') } catch { return true } }
 const markSeen = () => { try { localStorage.setItem('vd-intro', new Date().toDateString()) } catch { /* private mode */ } }
 
 export function Entry({ onEnter }: { onEnter: () => void }) {
@@ -90,7 +91,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
         if (++tries < 4) later(600 * tries, who); else setNetErr(true)
       })
     who()
-    // the full show once a day; afterwards the lamp is on almost at once
+    // the full show on the first open ever; afterwards nothing waits
     later(noIntro || quick ? 0 : 650, () => { setLit(true); setPhase('on'); haptic.soft() }) // after the first open of the day nothing waits for the lamp
     return () => timers.current.forEach(clearTimeout)
   }, [])
@@ -116,7 +117,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     const short = seenToday() || matchMedia('(prefers-reduced-motion: reduce)').matches
     markSeen()
     shortRef.current = short
-    // the show is once a day; every other open goes straight in (the data is already on its way)
+    // the show is once; every other open goes straight in (the data is already on its way)
     if (short) { finish(); return }
     later(100, () => setShape('bridge'))
     later(9000, finish) // safety net on very slow devices
@@ -131,7 +132,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     if (ended.current) return
     ended.current = true
     setDissolve(true); setPhase('out')
-    later(shortRef.current ? 320 : 650, onEnter)
+    later(shortRef.current ? 160 : 650, onEnter)
   }
   const [bioType, setBioType] = useState('')
   const [lockErr, setLockErr] = useState('')
