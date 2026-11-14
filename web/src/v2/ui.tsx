@@ -20,7 +20,7 @@ export function Nav({ tab, counts }: { tab: string; counts: Record<string, numbe
   useEffect(() => { if (ix >= 0 && ix !== 2) navPrev = ix; just.current = tab }, [ix, tab])
   return (
     <nav className="nav" aria-label="Разделы">
-      {ix >= 0 && ix !== 2 && <span className="pill" key={ix} style={{ '--from': from * 100 + '%', '--to': ix * 100 + '%' } as CSSProperties} />}
+      {ix >= 0 && ix !== 2 && <span className="v-pill" key={ix} style={{ '--from': from * 100 + '%', '--to': ix * 100 + '%' } as CSSProperties} />}
       {TABS.map(t => {
         const on = t.path === tab, c = counts[t.path] || 0
         return (
@@ -43,7 +43,7 @@ export function Toast() {
   useEffect(() => { if (!t) return; const x = setTimeout(() => setT(null), t.undo ? 5000 : 3000); return () => clearTimeout(x) }, [t])
   if (!t) return null
   return (
-    <div className="toast" key={t.k} role="status" data-testid="toast">
+    <div className="v-toast" key={t.k} role="status" data-testid="toast">
       <svg className="tick" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" pathLength={1} /><path d="M7.5 12.3l3 3 6-6.6" pathLength={1} /></svg>
       <span>{t.text}</span>
       {t.undo && <button onClick={() => { t.undo!(); setT(null) }}>Вернуть</button>}
@@ -60,8 +60,8 @@ export function Sheet({ open, onClose, children, testid }: { open: boolean; onCl
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="scrim" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="sheet" role="dialog" aria-modal="true" data-testid={testid}>{children}</div>
+    <div className="v-scrim" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="v-sheet" role="dialog" aria-modal="true" data-testid={testid}>{children}</div>
     </div>)
 }
 
@@ -73,7 +73,7 @@ export function Pic({ idea, className = 'pic', style, children, ...rest }: { ide
 }
 
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => (
-  <div className="card stub">
+  <div className="v-card stub">
     <svg className="eart" viewBox="0 0 120 64" aria-hidden="true"><circle cx="46" cy="32" r="22" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="2 6" strokeLinecap="round" /><circle cx="74" cy="32" r="22" fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="2 6" strokeLinecap="round" /><circle cx="60" cy="32" r="3.5" fill="var(--accent)" /></svg>
     <h3>{title}</h3>{children}
   </div>)

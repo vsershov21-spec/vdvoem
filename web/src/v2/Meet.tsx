@@ -23,7 +23,7 @@ export function Meet({ id, home, from }: { id: number; home: HomeV2 | null; from
   const [busy, setBusy] = useState(false)
   const pn = home?.partner?.name || 'партнёр'
   const head = <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>Встреча</b><span /></div>
-  if (!data) return <div className="scr meet">{head}</div>
+  if (!data) return <div className="scr mcard">{head}</div>
   const r = data.round, i = r.chosen, tp = data.proposals.time, sp = data.proposals.stop
   const planned = r.state === 'planned', past = planned && !!r.starts_at && r.starts_at * 1000 < Date.now()
   const closed = r.state === 'cancelled' || r.state === 'expired' || r.state === 'done'
@@ -36,38 +36,38 @@ export function Meet({ id, home, from }: { id: number; home: HomeV2 | null; from
   const answer = (p: MP, yes: boolean, ok: string) => run(() => post(`/proposals/${p.id}/answer`, { yes }), ok)
   const stops = (r.route || []).filter(s => s.state === 'accepted')
   return (
-    <div className="scr meet" data-testid="v2-meet">
+    <div className="scr mcard" data-testid="v2-meet">
       {head}
       {i ? <Pic idea={i} style={{ minHeight: 150 }}>{i.title}<small data-testid="meet-status">{status}</small></Pic> : <div className="pic t1" style={{ minHeight: 120 }}>Встреча<small>{status}</small></div>}
       {past && !closed && <After round={r} onDone={refresh} />}
-      {tp?.state === 'wait' && !tp.mine && <div className="card prop" data-testid="time-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} зовёт</b><b>{tp.sub}</b>
-        <div className="row"><button className="b a s" disabled={busy} onClick={() => answer(tp, true, 'Встреча в планах у обоих')}>Да</button><button className="b s" onClick={() => setSheet('time')}>Другое время</button><button className="b s ghost" disabled={busy} onClick={() => answer(tp, false, pn + ' увидит отказ')}>Не могу</button></div></div>}
-      {sp?.state === 'wait' && !sp.mine && <div className="card prop" data-testid="stop-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} предлагает после</b>
-        <div className="row"><span style={{ flex: 1, minWidth: 0 }}><b>{sp.title}</b></span><button className="b a s" disabled={busy} onClick={() => answer(sp, true, 'Место в маршруте')}>Да</button><button className="b s" disabled={busy} onClick={() => answer(sp, false, pn + ' увидит «нет»')}>Нет</button></div></div>}
+      {tp?.state === 'wait' && !tp.mine && <div className="v-card prop" data-testid="time-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} зовёт</b><b>{tp.sub}</b>
+        <div className="v-row"><button className="b a s" disabled={busy} onClick={() => answer(tp, true, 'Встреча в планах у обоих')}>Да</button><button className="b s" onClick={() => setSheet('time')}>Другое время</button><button className="b s ghost" disabled={busy} onClick={() => answer(tp, false, pn + ' увидит отказ')}>Не могу</button></div></div>}
+      {sp?.state === 'wait' && !sp.mine && <div className="v-card prop" data-testid="stop-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} предлагает после</b>
+        <div className="v-row"><span style={{ flex: 1, minWidth: 0 }}><b>{sp.title}</b></span><button className="b a s" disabled={busy} onClick={() => answer(sp, true, 'Место в маршруте')}>Да</button><button className="b s" disabled={busy} onClick={() => answer(sp, false, pn + ' увидит «нет»')}>Нет</button></div></div>}
       {!closed && <>
-        <div className="blk"><label>Когда</label><div className="card" data-testid="meet-when">
-          {tp?.state === 'wait' ? <><div className="row"><b>{tp.sub}</b><span className="sp" />{tp.mine && <button className="back" onClick={() => setSheet('time')}>Изменить</button>}</div>
+        <div className="blk"><label>Когда</label><div className="v-card" data-testid="meet-when">
+          {tp?.state === 'wait' ? <><div className="v-row"><b>{tp.sub}</b><span className="sp" />{tp.mine && <button className="back" onClick={() => setSheet('time')}>Изменить</button>}</div>
             <p className="m">{tp.mine ? `Ждём ответа ${ncase(pn, 'gen')}. Строка на главной и в боте.` : 'Ответь выше.'}{planned && r.starts_at ? ' Пока действует ' + whenText(r.starts_at) + '.' : ''}</p></>
-            : planned && r.starts_at ? <><div className="row"><b>{whenText(r.starts_at)}</b><span className="sp" />{!past && <button className="back" onClick={() => setSheet('time')}>Перенести</button>}</div><p className="m">Оба согласны. В календаре телефона у обоих.</p></>
+            : planned && r.starts_at ? <><div className="v-row"><b>{whenText(r.starts_at)}</b><span className="sp" />{!past && <button className="back" onClick={() => setSheet('time')}>Перенести</button>}</div><p className="m">Оба согласны. В календаре телефона у обоих.</p></>
               : tp?.state === 'no' ? <><p>{pn} не может {tp.sub}</p><button className="b p w" onClick={() => { post(`/proposals/${tp.id}/seen`).catch(() => {}); setSheet('time') }}>Другое время</button></>
                 : <><p className="m">Время не выбрано. Предложи, {pn} ответит.</p><button className="b p w" data-testid="offer-time" onClick={() => setSheet('time')}>Предложить время</button></>}
         </div></div>
-        <div className="blk"><label>Где</label><div className="card"><b>{i?.address || i?.place?.title || 'адрес не указан'}</b>{i?.maps && <button className="back" style={{ alignSelf: 'flex-start' }} onClick={() => openLink(i.maps)}>открыть на карте ↗</button>}</div></div>
-        <div className="blk"><label>А потом</label><div className="card" data-testid="meet-after">
-          {stops.map(s => <div className="row" key={s.id}><Pic idea={s.idea} className="th" /><span style={{ flex: 1, minWidth: 0 }}><b>{s.idea.title}</b><p className="m">договорились</p></span></div>)}
-          {sp?.mine && <div className="row"><span style={{ flex: 1, minWidth: 0 }}><b>{sp.title}</b><p className="m">{sp.state === 'wait' ? 'ждём ' + ncase(pn, 'acc') : pn + ': нет'}</p></span></div>}
+        <div className="blk"><label>Где</label><div className="v-card"><b>{i?.address || i?.place?.title || 'адрес не указан'}</b>{i?.maps && <button className="back" style={{ alignSelf: 'flex-start' }} onClick={() => openLink(i.maps)}>открыть на карте ↗</button>}</div></div>
+        <div className="blk"><label>А потом</label><div className="v-card" data-testid="meet-after">
+          {stops.map(s => <div className="v-row" key={s.id}><Pic idea={s.idea} className="th" /><span style={{ flex: 1, minWidth: 0 }}><b>{s.idea.title}</b><p className="m">договорились</p></span></div>)}
+          {sp?.mine && <div className="v-row"><span style={{ flex: 1, minWidth: 0 }}><b>{sp.title}</b><p className="m">{sp.state === 'wait' ? 'ждём ' + ncase(pn, 'acc') : pn + ': нет'}</p></span></div>}
           {!stops.length && !sp?.mine && <p className="m">Место выбираете вы, второй подтверждает.</p>}
           <button className="b s" style={{ alignSelf: 'flex-start' }} data-testid="add-stop" onClick={() => { if (sp?.mine && sp.state === 'no') post(`/proposals/${sp.id}/seen`).catch(() => {}); setSheet('stop') }}>{stops.length || sp?.mine ? 'Другое место' : 'Выбрать место'}</button>
         </div></div>
-        {planned && !past && <div className="blk"><label>Билеты</label><div className="card" data-testid="meet-tickets">
+        {planned && !past && <div className="blk"><label>Билеты</label><div className="v-card" data-testid="meet-tickets">
           {r.tickets ? <b>Билеты у {r.tickets === 'me' ? 'тебя' : ncase(pn, 'gen')}</b>
-            : data.buying ? <div className="row"><b>Покупает{data.buying === 'me' ? 'шь ты' : ' ' + pn}</b><span className="sp" />{data.buying === 'me' && <button className="b a s" disabled={busy} onClick={() => run(() => post(`/rounds/${r.id}/tickets`), 'Билеты отмечены')}>Куплены</button>}</div>
-              : <><p className="m">Кто покупает?</p><div className="row"><button className="b a s" disabled={busy} data-testid="buy-me" onClick={() => run(() => post(`/meet/${r.id}/buy`), pn + ' видит: покупаешь ты')}>Куплю я</button><button className="b s" disabled={busy} onClick={() => run(() => post(`/rounds/${r.id}/tickets`), 'Билеты отмечены')}>Уже есть</button>
+            : data.buying ? <div className="v-row"><b>{data.buying === 'me' ? 'Покупаешь ты' : 'Покупает ' + pn}</b><span className="sp" />{data.buying === 'me' && <button className="b a s" disabled={busy} onClick={() => run(() => post(`/rounds/${r.id}/tickets`), 'Билеты отмечены')}>Куплены</button>}</div>
+              : <><p className="m">Кто покупает?</p><div className="v-row"><button className="b a s" disabled={busy} data-testid="buy-me" onClick={() => run(() => post(`/meet/${r.id}/buy`), pn + ' видит: покупаешь ты')}>Куплю я</button><button className="b s" disabled={busy} onClick={() => run(() => post(`/rounds/${r.id}/tickets`), 'Билеты отмечены')}>Уже есть</button>
                 {r.book && <button className="back" onClick={() => openLink(r.book!.url)}>{r.book.label} ↗</button>}</div></>}
         </div></div>}
         {!past && <button className="b ghost w" data-testid="cancel-meet" onClick={() => setSheet('cancel')}>Отменить встречу</button>}
       </>}
-      {closed && <div className="card"><p>{r.state === 'cancelled' ? 'Встреча отменена.' : 'Эта встреча уже в истории.'}</p><button className="b w" onClick={() => go('plans')}>К планам</button></div>}
+      {closed && <div className="v-card"><p>{r.state === 'cancelled' ? 'Встреча отменена.' : 'Эта встреча уже в истории.'}</p><button className="b w" onClick={() => go('plans')}>К планам</button></div>}
       <Sheet open={sheet === 'time'} onClose={() => setSheet('')} testid="time-sheet">
         <TimeSheet title={(planned ? 'Перенести: ' : 'Когда: ') + (i?.title || '')} partner={pn} note={planned ? `Старое время действует, пока ${pn} не ответит «Да».` : 'Встреча попадёт в планы после ответа «Да».'}
           onPick={(day, part, at) => { setSheet(''); run(() => post(`/meet/${r.id}/time`, { day, part, at }), `Отправлено ${ncase(pn, 'dat')}: на главную и в бот`) }} />
@@ -137,6 +137,6 @@ function After({ round, onDone }: { round: Round; onDone: () => void }) {
     } catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
   return (
-    <div className="card" data-testid="after"><h3>Как тебе?</h3><p className="m">Каждый отвечает за себя. Ответ уточняет твой вкус и попадает в историю.</p>
-      <div className="row" style={{ flexWrap: 'wrap' }}><button className="b" disabled={busy} onClick={() => rate('like')}>Понравилось</button><button className="b" disabled={busy} onClick={() => rate('no')}>Не очень</button><button className="b" disabled={busy} onClick={() => rate('skip')}>Не ходили</button></div></div>)
+    <div className="v-card" data-testid="after"><h3>Как тебе?</h3><p className="m">Каждый отвечает за себя. Ответ уточняет твой вкус и попадает в историю.</p>
+      <div className="v-row" style={{ flexWrap: 'wrap' }}><button className="b" disabled={busy} onClick={() => rate('like')}>Понравилось</button><button className="b" disabled={busy} onClick={() => rate('no')}>Не очень</button><button className="b" disabled={busy} onClick={() => rate('skip')}>Не ходили</button></div></div>)
 }

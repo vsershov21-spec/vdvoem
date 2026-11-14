@@ -49,8 +49,8 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
   const oursList = ours.filter(i => who === 'all' || (who === 'mine') === i.mine)
   return (
     <div className="scr" data-testid="v2-ideas">
-      <div className="row"><h2>Идеи</h2><span className="sp" /><button className="b p s" data-testid="add-idea" onClick={onAdd}>＋ Идея</button></div>
-      <div className="seg" role="tablist">
+      <div className="v-row"><h2>Идеи</h2><span className="sp" /><button className="b p s" data-testid="add-idea" onClick={onAdd}>＋ Идея</button></div>
+      <div className="v-seg" role="tablist">
         {([['ours', 'Наши'], ['afisha', 'Афиша'], ...(paired ? [['both', 'Совпало · ' + both.length]] : [])] as [View, string][]).map(([k, l]) =>
           <button key={k} role="tab" aria-selected={v === k} className={v === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>)}
       </div>
@@ -59,11 +59,11 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
           <button className="b p s" onClick={() => goMeet(i)}>Идём</button></div>)
         : <Empty title="Пока не совпало"><button className="b p w" onClick={() => go('')}>Отмечать идеи</button></Empty>)
         : v === 'afisha' ? <>
-          <div className="row"><div className="chips">
-            <button className={'chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Всё</button>
-            {cats.map(c => <button key={c} className={'chip' + (cat === c ? ' on' : '')} onClick={() => setCat(c)}>{CATS[c].name}</button>)}
+          <div className="v-row"><div className="v-chips">
+            <button className={'v-chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Всё</button>
+            {cats.map(c => <button key={c} className={'v-chip' + (cat === c ? ' on' : '')} onClick={() => setCat(c)}>{CATS[c].name}</button>)}
           </div><button className="back" style={{ flex: 'none' }} onClick={() => { setByDay(!byDay); setDay(0) }}>{byDay ? 'Списком' : 'По дням'}</button></div>
-          {byDay && <div className="card"><b>{now.toLocaleDateString('ru', { month: 'long' })}</b><div className="cal">
+          {byDay && <div className="v-card"><b>{now.toLocaleDateString('ru', { month: 'long' })}</b><div className="cal">
             {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(d => <span className="wd" key={d}>{d}</span>)}
             {Array.from({ length: (first.getDay() + 6) % 7 }, (_, k) => <span key={'e' + k} />)}
             {Array.from({ length: days }, (_, k) => { const d = k + 1, has = afisha.some(i => i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + d)
@@ -72,8 +72,8 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
           {shownAf.length ? shownAf.map(i => <button className="in" key={i.id} data-testid="afisha-row" onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</small></span>{matched(i) ? <span className="badge">совпало</span> : wants(i.my_wish) ? '♥' : '›'}</button>)
             : <Empty title={day ? 'В этот день событий нет' : 'Афиша пока пуста'}><p className="m">Скаут ищет события каждый день.</p></Empty>}
         </> : <>
-          {paired && <div className="chips">{([['all', 'Все'], ['mine', 'Мои'], ['their', ncase(pn, 'gen')]] as ['all' | 'mine' | 'their', string][]).map(([k, l]) =>
-            <button key={k} className={'chip' + (who === k ? ' on' : '')} onClick={() => setWho(k)}>{l}</button>)}</div>}
+          {paired && <div className="v-chips">{([['all', 'Все'], ['mine', 'Мои'], ['their', ncase(pn, 'gen')]] as ['all' | 'mine' | 'their', string][]).map(([k, l]) =>
+            <button key={k} className={'v-chip' + (who === k ? ' on' : '')} onClick={() => setWho(k)}>{l}</button>)}</div>}
           {oursList.length ? <div className="g2">{oursList.map(i =>
             <button className="gcard" key={i.id} data-testid="idea-card" onClick={() => go('idea/' + i.id)}><Pic idea={i}>{badge(i) && <small>{badge(i)}</small>}{i.title}</Pic>
               <small>{CATS[i.category]?.name || 'Идея'} · {i.mine ? 'моя' : 'от ' + ncase(pn, 'gen')}{wants(i.my_wish) ? ' · ♥' : ''}</small></button>)}</div>
@@ -114,17 +114,17 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
     <div className="scr" data-testid="v2-idea">
       <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>Идея</b><span /></div>
       <Pic idea={i} style={{ minHeight: 150 }}>{i.title}<small>{CATS[i.category]?.name || 'Идея'} · {i.ours ? (i.mine ? 'моя идея' : 'от ' + ncase(pn, 'gen')) : 'афиша'}</small></Pic>
-      {wait ? <div className="card prop" data-testid="collecting"><b>🔭 Скаут собирает остальное</b><p className="m">Название взято из ссылки сразу. Даты, адрес и цена: обычно до часа. Напишу на главной и в боте.</p></div>
-        : data.enriching ? <div className="card prop" data-testid="enriching"><b>🔭 Скаут дополняет</b><p className="m">Ищет: {miss.join(', ')}. Напишу на главной и в боте.</p></div>
-          : i.mine && miss.length > 0 ? <div className="card"><p className="m">Не хватает: {miss.join(', ')}</p><div className="row"><button className="b s" onClick={() => setEdit(true)}>Дописать</button><button className="b s" data-testid="ask-scout" onClick={enrich}>Попросить скаута</button></div></div> : null}
-      <div className="card list flds" data-testid="fields">
+      {wait ? <div className="v-card prop" data-testid="collecting"><b>🔭 Скаут собирает остальное</b><p className="m">Название взято из ссылки сразу. Даты, адрес и цена: обычно до часа. Напишу на главной и в боте.</p></div>
+        : data.enriching ? <div className="v-card prop" data-testid="enriching"><b>🔭 Скаут дополняет</b><p className="m">Ищет: {miss.join(', ')}. Напишу на главной и в боте.</p></div>
+          : i.mine && miss.length > 0 ? <div className="v-card"><p className="m">Не хватает: {miss.join(', ')}</p><div className="v-row"><button className="b s" onClick={() => setEdit(true)}>Дописать</button><button className="b s" data-testid="ask-scout" onClick={enrich}>Попросить скаута</button></div></div> : null}
+      <div className="v-card v-list flds" data-testid="fields">
         {rows.filter(([, v]) => v || i.mine).map(([l, v, f]) =>
-          <div className="fld" key={f}><small>{l}{v && by(f) && <span className="by">{by(f)}</span>}</small><span className={v ? '' : 'empty'}>{v || (wait && f !== 'note' && f !== 'about' ? 'скаут собирает' : 'не заполнено')}</span></div>)}
+          <div className="fld" key={f}><small>{l}{v && by(f) && <span className="by">{by(f)}</span>}</small><span className={v ? '' : 'v-empty'}>{v || (wait && f !== 'note' && f !== 'about' ? 'скаут собирает' : 'не заполнено')}</span></div>)}
       </div>
       {home?.paired && <>
-        <div className="blk"><label>Отметка</label><div className="row">
-          <button className={'chip' + (wants(i.my_wish) ? ' on' : '')} aria-pressed={wants(i.my_wish)} onClick={() => mark('want')}>♥ Хочу</button>
-          <button className={'chip' + (i.my_wish === 'skip' ? ' on' : '')} aria-pressed={i.my_wish === 'skip'} onClick={() => mark('skip')}>Не моё</button>
+        <div className="blk"><label>Отметка</label><div className="v-row">
+          <button className={'v-chip' + (wants(i.my_wish) ? ' on' : '')} aria-pressed={wants(i.my_wish)} onClick={() => mark('want')}>♥ Хочу</button>
+          <button className={'v-chip' + (i.my_wish === 'skip' ? ' on' : '')} aria-pressed={i.my_wish === 'skip'} onClick={() => mark('skip')}>Не моё</button>
           <span className="sp" /><span className="m">{wants(i.partner_wish) ? pn + ' хочет' : i.partner_wish === 'skip' ? pn + ': не моё' : i.partner_marked ? pn + ' уже отметил' + (/[ая]$/i.test(pn) ? 'а' : '') : pn + ' ещё не смотрел' + (/[ая]$/i.test(pn) ? 'а' : '')}</span>
         </div></div>
         {!wait && <button className="b a w" data-testid="go-meet" disabled={busy} onClick={async () => { if (meet) { go('meet/' + meet.id); return } setBusy(true); await goMeet(i); setBusy(false) }}>

@@ -101,7 +101,7 @@ func (p Proposal) Row(me int64, author, partner string, now time.Time) (InboxRow
 		r.Role, r.Hot, r.Actions = "notice", true, []string{"ok"}
 		r.Title = p.Title
 		if p.Kind == ProposalCancel {
-			r.Title = author + " " + pastVerb(author, "отменил") + " встречу: " + p.Title
+			r.Title = author + " " + PastVerb(author, "отменил") + " встречу: " + p.Title
 		}
 	case p.State == ProposalWait && !mine:
 		r.Role, r.Hot = "answer", true
@@ -161,7 +161,11 @@ func lowerFirst(s string) string {
 	return strings.ToLower(string(r[:1])) + string(r[1:])
 }
 
-// pastVerb: «отменил» / «отменила» by the name's ending — the same rule the bot's texts use
+// PastVerb agrees a past-tense verb with a name. The app replaces it with its fuller rule (Вова, Никита and
+// other men's names in -а/-я; see app.Past), so the home screen and the bot say the same thing.
+var PastVerb = pastVerb
+
+// pastVerb: the plain rule by the name's ending
 func pastVerb(name, verb string) string {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if strings.HasSuffix(n, "а") || strings.HasSuffix(n, "я") {

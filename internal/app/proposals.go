@@ -15,6 +15,8 @@ import (
 // Proposals: «предложил один, отвечает второй». The same proposal lies in three places — the home screen
 // («Ждёт тебя»), the card it is about, and the bot — and is answered in any of them. See domain/proposal.go.
 
+func init() { domain.PastVerb = Past }
+
 // ProposalEffect runs when a proposal is answered: the meeting gets its time, the chore its owner.
 // A kind without an effect is still a complete exchange — the answer is stored and both are told.
 type ProposalEffect func(ctx context.Context, c Couple, p domain.Proposal, yes bool) error

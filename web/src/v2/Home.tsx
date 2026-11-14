@@ -22,7 +22,7 @@ export function Home({ home, onAddIdea }: { home: HomeV2 | null; onAddIdea: () =
   const d = new Date()
   return (
     <div className="scr fix" data-testid="v2-home">
-      <div className="row">
+      <div className="v-row">
         <div><h2>Привет, {home.me.name}</h2><p className="m">{d.toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'long' })}</p></div>
         <span className="sp" />
         <button className="b s" aria-label="Добавить идею или дело" onClick={() => setPlus(true)}>＋</button>
@@ -153,11 +153,11 @@ function Deck({ partner, onAddIdea }: { partner: string; onAddIdea: () => void }
         <button key={k} role="tab" aria-selected={cur === k} className={cur === k ? 'on' : ''} onClick={() => setSrc(k)}>{l} <i>{n}</i></button>)}
       <span className="sp" /><button className="back" onClick={() => go('ideas')}>Все идеи</button>
     </div>
-    {!data ? <div className="card swipe0" />
+    {!data ? <div className="v-card swipe0" />
       : i ? <div className="deckwrap" key={i.id}>
-        {pile[2] && <Pic idea={pile[2]} className={'under u2' + (settle ? ' rise' : '')} />}
-        {pile[1] && <Pic idea={pile[1]} className={'under' + (settle ? ' rise' : '')} />}
-        <div className={'swipe ' + (settle ? 'settle' : 'enter')} ref={card} data-testid="deck-card" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} onPointerCancel={up}>
+        {pile[2] && <Pic idea={pile[2]} className={'under u2' + (settle ? ' v-rise' : '')} />}
+        {pile[1] && <Pic idea={pile[1]} className={'under' + (settle ? ' v-rise' : '')} />}
+        <div className={'v-swipe ' + (settle ? 'settle' : 'enter')} ref={card} data-testid="deck-card" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} onPointerCancel={up}>
           <Pic idea={i} role="button" tabIndex={0} aria-label={i.title} onClick={() => open(i.id)} />
           <i className="wash" /><em className="stamp y">Хочу</em><em className="stamp n">Не моё</em>
           <div className="gl">
@@ -165,14 +165,14 @@ function Deck({ partner, onAddIdea }: { partner: string; onAddIdea: () => void }
             <b className="ttl">{i.title}</b>
             <p>{[CATS[i.category]?.name, i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</p>
             {(i.address || i.info?.about || i.why) && <p className="dim">{[i.address, i.info?.about || i.why].filter(Boolean).join(' · ').slice(0, 110)}</p>}
-            <div className="row">
+            <div className="v-row">
               <button className="gb" onClick={() => go('idea/' + i.id)}>Подробнее</button><span className="sp" />
               <span className="acts"><button aria-label="Не моё" data-testid="deck-skip" onClick={() => fling(false)}>✕</button><button className="y" aria-label="Хочу" data-testid="deck-want" onClick={() => fling(true)}>♥</button></span>
             </div>
           </div>
         </div>
       </div>
-        : <div className="card swipe0" data-testid="deck-empty" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '18px 14px' } as CSSProperties}>
+        : <div className="v-card swipe0" data-testid="deck-empty" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '18px 14px' } as CSSProperties}>
           <Empty title={cur === 'ours' ? (data.ideas.some(x => x.ours) || gone.length ? 'Наши разобраны' : 'Своих идей пока нет') : 'Афиша разобрана'}>
             {(cur === 'ours' ? afisha.length : ours.length) > 0
               ? <button className="b p w" onClick={() => setSrc(cur === 'ours' ? 'afisha' : 'ours')}>{cur === 'ours' ? 'Смотреть афишу' : 'К нашим идеям'} · {cur === 'ours' ? afisha.length : ours.length}</button>
@@ -225,14 +225,14 @@ function Solo({ home, onAddIdea }: { home: HomeV2; onAddIdea: () => void }) {
   return (
     <div className="scr" data-testid="v2-solo">
       <div><h2>Привет, {home.me.name}</h2><p className="m">Партнёра пока нет</p></div>
-      <div className="card" style={{ background: 'linear-gradient(150deg,#ef6537,#31408f)', color: '#fff', gap: 10, padding: 16 }}>
+      <div className="v-card" style={{ background: 'linear-gradient(150deg,#ef6537,#31408f)', color: '#fff', gap: 10, padding: 16 }}>
         <h2 style={{ color: '#fff' }}>{invited ? 'Ждём партнёра' : 'Позови партнёра'}</h2>
         <p style={{ fontSize: 13.5 }}>{invited ? 'Ссылка живёт 3 дня и сработает один раз.' : 'Вдвоём приложение сводит ваши «хочу», помогает договориться о времени и делит дела.'}</p>
         <div style={{ background: 'rgba(255,255,255,.16)', borderRadius: 12, padding: '9px 10px', fontSize: 13 }}>Партнёр получит: «{text}»</div>
-        <div className="row"><button className="b" style={{ background: '#fff', color: '#141414', boxShadow: 'none' }} disabled={busy} data-testid="invite" onClick={invite}>{invited ? 'Отправить ещё раз' : 'Пригласить'}</button></div>
+        <div className="v-row"><button className="b" style={{ background: '#fff', color: '#141414', boxShadow: 'none' }} disabled={busy} data-testid="invite" onClick={invite}>{invited ? 'Отправить ещё раз' : 'Пригласить'}</button></div>
       </div>
       <div className="lbl">Пока ждёшь</div>
-      <div className="row"><button className="b p" style={{ flex: 1 }} onClick={onAddIdea}>＋ Идея</button><button className="b" style={{ flex: 1 }} onClick={() => go('chores')}>＋ Дело</button></div>
+      <div className="v-row"><button className="b p" style={{ flex: 1 }} onClick={onAddIdea}>＋ Идея</button><button className="b" style={{ flex: 1 }} onClick={() => go('chores')}>＋ Дело</button></div>
       <button className="in" onClick={() => go('ideas')}><i>♡</i><span><b>Отметь, что нравится в афише</b><small>отметки останутся, когда партнёр придёт</small></span>›</button>
     </div>)
 }

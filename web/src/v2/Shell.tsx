@@ -9,13 +9,15 @@ import { Home } from './Home'
 import { Ideas, IdeaCard, AddIdea } from './Ideas'
 import { Meet } from './Meet'
 import { Plans, Free } from './Plans'
+import { Chores, ChoreCard } from './Chores'
+import { Profile, History, Settings } from './Profile'
 import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
 // step at a time («‹ откуда пришёл»), one confirmation line, and both themes. Screens that are not built yet
 // say so honestly instead of pretending.
-const NAMES: Record<string, string> = { '': 'Главная', ideas: 'Идеи', assistant: 'Помощник', chores: 'Дела', plans: 'Планы', idea: 'Идея', meet: 'Встреча', us: 'Профиль', settings: 'Настройки', history: 'История', free: 'Общее время' }
-const STEP: Record<string, number> = { ideas: 4, idea: 4, assistant: 4, meet: 5, plans: 5, free: 5, chores: 6, us: 6, settings: 6, history: 6 }
+const NAMES: Record<string, string> = { '': 'Главная', ideas: 'Идеи', assistant: 'Помощник', chores: 'Дела', plans: 'Планы', idea: 'Идея', chore: 'Дело', meet: 'Встреча', us: 'Профиль', settings: 'Настройки', history: 'История', free: 'Общее время' }
+const STEP: Record<string, number> = { assistant: 7 }
 
 export function Shell() {
   const route = useRoute()
@@ -57,6 +59,11 @@ export function Shell() {
   else if (top === 'meet') screen = <Meet id={Number(route[1])} home={home.data} from={from} />
   else if (top === 'plans') screen = <Plans home={home.data} />
   else if (top === 'free') screen = <Free home={home.data} from={from} />
+  else if (top === 'chores') screen = <Chores home={home.data} />
+  else if (top === 'chore') screen = <ChoreCard id={Number(route[1])} home={home.data} from={from} />
+  else if (top === 'us') screen = <Profile home={home.data} from={from} />
+  else if (top === 'history') screen = <History view={route[1] || 'meets'} home={home.data} from={from} />
+  else if (top === 'settings') screen = <Settings section={route[1]} home={home.data} from={from} />
   else screen = (
     <div className="scr" data-testid={'v2-' + top}>
       {nested ? <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{NAMES[top] || ''}</b><span /></div> : <h2>{NAMES[top]}</h2>}
