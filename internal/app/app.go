@@ -41,6 +41,8 @@ type App struct {
 	Log       *slog.Logger
 	NoKick    bool      // tests drive jobs through Tick
 	Live      *live.Hub // open apps refresh in real time (nil = off)
+
+	effects map[string]ProposalEffect // what an answered proposal does, by kind (proposals.go)
 }
 
 var (
@@ -49,6 +51,7 @@ var (
 	ErrBadTime   = errors.New("bad_time")
 	ErrForbidden = errors.New("forbidden")
 	ErrNoRound   = errors.New("no_round")
+	ErrBadInput  = errors.New("bad_input")
 )
 
 func (a *App) now() time.Time { return a.Now() }
@@ -1436,6 +1439,7 @@ func (a *App) Tick(ctx context.Context) {
 		}
 	}
 	a.urgentTick(ctx, now)
+	a.proposalTick(ctx, now)
 	spaces, _ := a.S.Spaces(ctx)
 	for _, sp := range spaces {
 		l := now.In(sp.Loc())

@@ -1028,3 +1028,77 @@ func TestJoinKeepsSoloIdeas(t *testing.T) {
 		t.Fatalf("the solo idea must come along as hers: %+v", ideas)
 	}
 }
+
+// One mechanism for everything that needs the partner: proposed by one, answered by the other — in the app
+// or in the bot — and a «нет» comes back to the author instead of vanishing.
+func TestProposals(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	effects := 0
+	a.OnProposal(domain.ProposalChore, func(_ context.Context, _ app.Couple, _ domain.Proposal, yes bool) error {
+		if yes {
+			effects++
+		}
+		return nil
+	})
+	p, err := a.Propose(ctx, v, domain.ProposalChore, 0, "Забрать торт", "до сб 21 ноя", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(2), "Вова просит") || !strings.Contains(f.last(2), "Забрать торт") {
+		t.Fatalf("the partner is told in the bot: %q", f.last(2))
+	}
+	if rows := a.Inbox(ctx, n); len(rows) != 1 || rows[0].Role != "answer" || rows[0].Title != "Вова просит: забрать торт" {
+		t.Fatalf("partner inbox: %+v", rows)
+	}
+	if rows := a.Inbox(ctx, v); len(rows) != 1 || rows[0].Role != "waiting" || rows[0].Hot {
+		t.Fatalf("author inbox: %+v", rows)
+	}
+	if _, err := a.AnswerProposal(ctx, v, p.ID, true); !errors.Is(err, domain.ErrOwnProposal) {
+		t.Fatalf("the author cannot answer: %v", err)
+	}
+	// a day of silence: one reminder, not two
+	ck.t = ck.t.Add(25 * time.Hour)
+	a.Tick(ctx)
+	a.Tick(ctx)
+	if c := f.count(2, "Напоминаю. Вова просит"); c != 1 {
+		t.Fatalf("reminders: %d", c)
+	}
+	// «не могу»: back to the author, on the home screen until seen
+	if _, err := a.AnswerProposal(ctx, n, p.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.last(1), "«нет»") {
+		t.Fatalf("the author is told: %q", f.last(1))
+	}
+	rows := a.Inbox(ctx, v)
+	if len(rows) != 1 || rows[0].Role != "declined" || rows[0].Title != "Настя не может: забрать торт" {
+		t.Fatalf("declined row: %+v", rows)
+	}
+	if len(a.Inbox(ctx, n)) != 0 {
+		t.Fatal("answered — gone from the partner's inbox")
+	}
+	if _, err := a.AnswerProposal(ctx, n, p.ID, true); !errors.Is(err, domain.ErrProposalClosed) {
+		t.Fatalf("a second answer is refused: %v", err)
+	}
+	if err := a.SeenProposal(ctx, v, p.ID); err != nil || len(a.Inbox(ctx, v)) != 0 {
+		t.Fatalf("seen — the row leaves: %v", err)
+	}
+	// a new offer about the same thing replaces the waiting one; «да» runs the effect
+	p1, _ := a.Propose(ctx, v, domain.ProposalTime, 7, "Планетарий", "вс 15 ноя, 13:00", "")
+	p2, _ := a.Propose(ctx, n, domain.ProposalTime, 7, "Планетарий", "сб 21 ноя, 19:00", "")
+	if rows := a.Inbox(ctx, v); len(rows) != 1 || rows[0].ProposalID != p2.ID || rows[0].Title != "Настя зовёт: Планетарий" {
+		t.Fatalf("the counter-offer replaces the first: %+v (first was %d)", rows, p1.ID)
+	}
+	p3, _ := a.Propose(ctx, v, domain.ProposalChore, 0, "Купить цветы", "", "")
+	if _, err := a.AnswerProposal(ctx, n, p3.ID, true); err != nil || effects != 1 {
+		t.Fatalf("yes runs the effect: %v, %d", err, effects)
+	}
+	if err := a.WithdrawProposal(ctx, v, p2.ID); !errors.Is(err, app.ErrNotYours) {
+		t.Fatalf("only the author withdraws: %v", err)
+	}
+	if err := a.WithdrawProposal(ctx, n, p2.ID); err != nil || len(a.Inbox(ctx, v)) != 0 {
+		t.Fatalf("withdrawn — gone for both: %v", err)
+	}
+}

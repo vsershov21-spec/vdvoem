@@ -73,6 +73,12 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("DELETE /api/ideas/{id}", a.deleteIdea)
 	h("POST /api/ideas/{id}/wish", a.wish)
 	h("POST /api/ideas/{id}/merge", a.merge)
+	h("GET /api/inbox", a.inbox)
+	h("POST /api/proposals", a.propose)
+	h("POST /api/proposals/{id}/answer", a.answerProposal)
+	h("POST /api/proposals/{id}/withdraw", a.withdrawProposal)
+	h("POST /api/proposals/{id}/seen", a.seenProposal)
+	h("POST /api/proposals/{id}/remind", a.remindProposal)
 	h("POST /api/ideas/{id}/urgent", a.markUrgent)
 	h("DELETE /api/ideas/{id}/urgent", a.cancelUrgent)
 	h("POST /api/ideas/{id}/urgent/{answer}", a.answerUrgent)
@@ -325,6 +331,12 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 409, map[string]string{"error": "round_open"})
 	case errors.Is(err, app.ErrNoIdeas):
 		writeJSON(w, 404, map[string]string{"error": "no_ideas"})
+	case errors.Is(err, domain.ErrOwnProposal):
+		writeJSON(w, 409, map[string]string{"error": "own_proposal"})
+	case errors.Is(err, domain.ErrProposalClosed):
+		writeJSON(w, 409, map[string]string{"error": "proposal_closed"})
+	case errors.Is(err, app.ErrBadInput):
+		writeJSON(w, 400, map[string]string{"error": "bad_input"})
 	case errors.Is(err, app.ErrNotPending):
 		writeJSON(w, 409, map[string]string{"error": "not_pending"})
 	case errors.Is(err, app.ErrNotYours):
@@ -674,6 +686,67 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	}
 	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
 	return map[string]any{"idea": viewIdea(c, i)}, err
+}
+
+// «Ждёт тебя»: everything that waits for my answer, plus what I am waiting for myself
+func (a *API) inbox(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return map[string]any{"rows": a.App.Inbox(r.Context(), c)}, nil
+}
+
+func (a *API) propose(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Kind    string          `json:"kind"`
+		RefID   int64           `json:"ref_id"`
+		Title   string          `json:"title"`
+		Sub     string          `json:"sub"`
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	p, err := a.App.Propose(r.Context(), c, in.Kind, in.RefID, in.Title, in.Sub, string(in.Payload))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": p.ID, "rows": a.App.Inbox(r.Context(), c)}, nil
+}
+
+func (a *API) answerProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Yes bool `json:"yes"`
+	}
+	_ = body(r, &in)
+	if _, err := a.App.AnswerProposal(r.Context(), c, id, in.Yes); err != nil {
+		return nil, err
+	}
+	return map[string]any{"rows": a.App.Inbox(r.Context(), c)}, nil
+}
+
+func (a *API) withdrawProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.proposalAct(r, c, a.App.WithdrawProposal)
+}
+
+func (a *API) seenProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.proposalAct(r, c, a.App.SeenProposal)
+}
+
+func (a *API) remindProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.proposalAct(r, c, a.App.RemindProposal)
+}
+
+func (a *API) proposalAct(r *http.Request, c app.Couple, f func(context.Context, app.Couple, int64) error) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if err := f(r.Context(), c, id); err != nil {
+		return nil, err
+	}
+	return map[string]any{"rows": a.App.Inbox(r.Context(), c)}, nil
 }
 
 func (a *API) markUrgent(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
