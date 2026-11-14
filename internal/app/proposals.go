@@ -244,6 +244,9 @@ func proposalPath(p domain.Proposal) string {
 		return "chores"
 	}
 	if p.Kind == domain.ProposalNote {
+		if p.RefID < 0 { // not about a setting (an accepted invitation, a request for a new link): the home screen
+			return ""
+		}
 		return "settings"
 	}
 	if p.RefID > 0 {

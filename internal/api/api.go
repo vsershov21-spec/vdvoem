@@ -122,6 +122,8 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("GET /api/settings", a.settings)
 	h("PATCH /api/settings", a.patchSettings)
 	h("POST /api/invite", a.invite)
+	h("GET /api/invite/{code}", a.inviteInfo)
+	h("POST /api/invite/{code}/{act}", a.inviteAct)
 	h("GET /api/assistant", a.chat)
 	h("POST /api/assistant", a.askAssistant)
 	h("POST /api/assistant/act", a.act)
@@ -1335,8 +1337,24 @@ func (a *API) roundWith(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	if err != nil {
 		return nil, err
 	}
+	// «Общее время» → «Идём»: the meeting is made with a time at once — a slot of the grid (day + part)
+	var in struct {
+		Day  string `json:"day"`
+		Part int    `json:"part"`
+	}
+	if r.ContentLength != 0 {
+		if err := body(r, &in); err != nil {
+			return nil, app.ErrBadInput
+		}
+	}
 	var rd domain.Round
-	if r.URL.Query().Get("replace") == "1" {
+	if in.Day != "" {
+		start, e := app.SlotStart(in.Day, in.Part, c.Loc())
+		if e != nil {
+			return nil, app.ErrBadInput
+		}
+		rd, err = a.App.CallAt(r.Context(), c, id, start)
+	} else if r.URL.Query().Get("replace") == "1" {
 		rd, err = a.App.SwapIdea(r.Context(), c, id)
 	} else if a.App.UsesV2(r.Context(), c.Me.ID) {
 		// the new interface: a meeting without a time; a dated event is offered at its time as a proposal
@@ -1479,6 +1497,10 @@ func (a *API) roundAction(w http.ResponseWriter, r *http.Request, c app.Couple) 
 			return nil, bad("bad_answer")
 		}
 		rd, err = a.App.Again(ctx, c, id, in.Answer)
+	case "rate": // «как прошло» of the new interface: like | soso | skip, each for themselves
+		if err = a.App.Rate(ctx, c, id, in.Answer); err == nil {
+			rd, err = a.App.S.Round(ctx, c.Space.ID, id)
+		}
 	case "tickets":
 		if err = a.App.GotTickets(ctx, c, id); err == nil {
 			rd, err = a.App.S.Round(ctx, c.Space.ID, id)
@@ -1644,6 +1666,38 @@ func (a *API) invite(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 	}
 	link, err := a.App.NewInvite(r.Context(), c)
 	return map[string]string{"link": link}, err
+}
+
+// inviteInfo: the «Приглашение» screen — who calls, and whether the link can still be accepted
+func (a *API) inviteInfo(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.App.InviteInfo(r.Context(), c, app.InviteCode(r.PathValue("code"))), nil
+}
+
+// inviteAct: accept — the pair is made; ask — the author of a link that ran out is asked for a new one
+func (a *API) inviteAct(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	code := app.InviteCode(r.PathValue("code"))
+	switch r.PathValue("act") {
+	case "accept":
+		_, moved, err := a.App.AcceptInvite(r.Context(), c, code)
+		switch {
+		case errors.Is(err, app.ErrInviteExpired), errors.Is(err, app.ErrInvitePaired), errors.Is(err, app.ErrInviteOwn), errors.Is(err, app.ErrInviteUsed):
+			return nil, httpErr{409, err.Error()}
+		case errors.Is(err, store.ErrFull):
+			return nil, httpErr{409, app.ErrInviteUsed.Error()}
+		case err != nil:
+			return nil, err
+		}
+		return map[string]any{"ok": true, "moved": moved}, nil
+	case "ask":
+		if err := a.App.AskInvite(r.Context(), c, code); err != nil {
+			if errors.Is(err, app.ErrInviteUsed) {
+				return nil, httpErr{409, err.Error()}
+			}
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
+	}
+	return nil, httpErr{404, "not_found"}
 }
 
 // ---------- помощник ----------

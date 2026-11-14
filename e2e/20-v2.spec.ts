@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from '@playwright/test'
-import { people, pair, phone, api, addIdeas, shot, waitMsg, noMsg, press, say, TOKEN, BASE, type U } from './lib'
+import { test, expect, type BrowserContext, type Page } from '@playwright/test'
+import { people, pair, phone, api, addIdeas, shot, waitMsg, noMsg, press, say, chat, advance, lastId, TOKEN, BASE, type U } from './lib'
 
 // Вдвоём 2.0 lives next to the current screens and opens with ?v2=1. These tests follow the accepted
 // scenarios (docs/v2/PROJECT.md): the home screen with the swipe deck, «Ждёт тебя», and going back by steps.
@@ -239,6 +239,10 @@ test('E56 планы: «Я занят» одним касанием; общее 
   await expect(p.getByTestId('meet-status')).toHaveText('ждём Настю')
   const rows = (await api(n, 'GET', '/inbox')).rows
   expect(rows[0].title).toBe('Вова зовёт: Каток в Парке Горького')
+  // one call, one message: the proposal with the time, not «зовёт» and then the time
+  await waitMsg(n, /Вова зовёт: (<b>)?Каток в Парке Горького(<\/b>)?\n/)
+  expect((await chat(n)).filter(m => /Вова[\s\S]*Каток в Парке Горького/.test(m.text))).toHaveLength(1)
+  await noMsg(n, /Время ещё не выбрано|Осталось найти время/)
 })
 
 test('E57 дела: своё на сегодня, просьба партнёру и отказ, повтор, сделанные и история', async ({ browser }) => {
@@ -401,7 +405,7 @@ test('E61 бот в новом флоу: «зовёт» без слотов, с�
   await expect(q.getByTestId('match-row')).toContainText('Планетарий')
   await old('ideas/chores', 'v2-chores')
   await old('triage', 'v2-home')
-  await old('pick/1', 'v2-assistant')
+  await old('pick/1', 'v2-pick')
   await old('us', 'v2-us')
   await old('taste', 'v2-taste')
   await old('idea/' + id, 'v2-idea')
@@ -421,4 +425,143 @@ test('E61 бот в новом флоу: «зовёт» без слотов, с�
   await api(n, 'POST', '/ui', { v: 1 })
   await api(v, 'POST', `/meet/${rid}/cancel`)
   await waitMsg(n, /Вова отменил выбор/)
+})
+
+// the author of the link has the new interface: /start gives the invitation, the code is in the link
+async function inviteV2(a: U) {
+  await say(a, '/start')
+  const inv = await waitMsg(a, /Пригласи партнёра/)
+  const code = inv.text.match(/start=inv_([A-Z0-9]+)/)![1]
+  await api(a, 'POST', '/ui', { v: 2 })
+  return code
+}
+const keys = (m: { reply_markup?: any }) => (m.reply_markup?.inline_keyboard || []).flat()
+// the same phone opens another address of the app (a button of the bot pressed later)
+async function reopen(p: Page, u: U, path: string) {
+  const q = new URLSearchParams({ dev: `${u.id}:${u.name}`, devtoken: TOKEN, nointro: '1', v2: '1' })
+  await p.goto(`/app/${path}?${q}`)
+  await expect(p.getByTestId('v2')).toBeVisible({ timeout: 10000 })
+  await expect(p.locator('.splash')).toHaveCount(0, { timeout: 6000 })
+}
+
+test('E62 приглашение: партнёр видит, кто зовёт, пара создаётся по «Принять», идеи переезжают, автор узнаёт', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const [v, n] = people('Вова', 'Настя')
+  const code = await inviteV2(v)
+  await addIdeas(n, ['Бранч на Патриках']) // she has tried the app alone
+  await say(n, '/start inv_' + code)
+  const m = await waitMsg(n, /Привет, Настя! Вова зовёт тебя во «Вдвоём»: вместе выбирать, куда сходить, и делить дела\./)
+  const open = keys(m).find((k: any) => k.text === 'Посмотреть приглашение')
+  expect(open?.web_app?.url).toContain('/app/invite/' + code)
+  // nothing is joined by opening the link
+  expect((await api(n, 'GET', '/home')).paired).toBe(false)
+  await noMsg(v, /с тобой/)
+  const p = await openV2(await phone(browser), n, 'invite/' + code)
+  const scr = p.getByTestId('v2-invite')
+  await expect(scr).toContainText('Вова зовёт тебя во «Вдвоём»')
+  for (const t of ['Отмечают, куда хочется', 'Предлагают время и место', 'Делят дела', 'Твои идеи переедут в пару вместе с тобой'])
+    await expect(scr).toContainText(t)
+  await expect(p.getByTestId('invite-later')).toHaveText('Не сейчас')
+  await shot(p, 'E62-invite')
+  await p.getByTestId('invite-accept').click()
+  await expect(p.getByTestId('toast')).toContainText('Вы в паре. Твои идеи переехали')
+  await expect(p.getByTestId('v2-home')).toBeVisible({ timeout: 15000 })
+  await shot(p, 'E62-joined')
+  // the author: a line in the bot and the same on the home screen; her idea is theirs now
+  await waitMsg(v, /Настя приняла приглашение/)
+  const hv = await api(v, 'GET', '/home')
+  expect(hv.paired).toBe(true)
+  expect(hv.partner.name).toBe('Настя')
+  expect((await api(v, 'GET', '/ideas')).ideas.map((i: any) => i.title)).toContain('Бранч на Патриках')
+  const pv = await openV2(await phone(browser), v)
+  const row = pv.getByTestId('inbox-row').first()
+  await expect(row).toContainText('Настя приняла приглашение')
+  await shot(pv, 'E62-author')
+  await row.getByRole('button', { name: 'Понятно' }).click()
+  await expect(pv.getByTestId('inbox-row')).toHaveCount(0)
+  // the link has worked once: the next one who opens it is told so, with no way in
+  const [x] = people('Третий', '-')
+  await say(x, '/start inv_' + code)
+  const used = await waitMsg(x, /Вова уже в паре/)
+  expect(keys(used)).toHaveLength(0)
+  expect((await api(x, 'GET', '/home')).paired).toBe(false)
+  const px = await openV2(await phone(browser), x, 'invite/' + code)
+  await expect(px.getByTestId('invite-stop')).toContainText('Вова уже в паре')
+  await expect(px.getByTestId('invite-accept')).toHaveCount(0)
+  await shot(px, 'E62-used')
+  // someone who is in a pair opens an invitation
+  const after = await lastId(n)
+  await say(n, '/start inv_' + code)
+  await waitMsg(n, /Ты в паре с Вовой/, 15000, after)
+  await reopen(p, n, 'invite/' + code)
+  await expect(p.getByTestId('invite-stop')).toContainText('Ты в паре с Вовой')
+})
+
+test('E63 приглашение: «Не сейчас», своя ссылка, устаревшая ссылка и «Попросить новую»', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const [v, n] = people('Вова', 'Настя')
+  const code = await inviteV2(v)
+  // the author opens their own link
+  await say(v, '/start inv_' + code)
+  await waitMsg(v, /Это твоя ссылка/)
+  expect((await api(v, 'GET', '/invite/' + code)).state).toBe('own')
+  // «Не сейчас»: she stays alone, on her own home screen, and the link still works
+  await say(n, '/start inv_' + code)
+  await waitMsg(n, /Вова зовёт тебя во «Вдвоём»/)
+  const p = await openV2(await phone(browser), n, 'invite/' + code)
+  await p.getByTestId('invite-later').click()
+  await expect(p.getByTestId('v2-solo')).toBeVisible()
+  expect((await api(n, 'GET', '/invite/' + code)).state).toBe('ok')
+  // three days later the link has run out
+  await advance({ minutes: 73 * 60 })
+  const after = await lastId(n)
+  await say(n, '/start inv_' + code)
+  const old = await waitMsg(n, /Ссылка устарела/, 15000, after)
+  expect(keys(old).map((k: any) => k.text)).toEqual(['Попросить новую'])
+  await reopen(p, n, 'invite/' + code)
+  await expect(p.getByTestId('invite-stop')).toContainText('Ссылка устарела')
+  await expect(p.getByTestId('invite-accept')).toHaveCount(0)
+  await shot(p, 'E63-expired')
+  await p.getByTestId('invite-ask').click()
+  await expect(p.getByTestId('toast')).toContainText('Вова получит просьбу прислать новую ссылку')
+  await expect(p.getByTestId('invite-stop')).toContainText('На главную')
+  // the author is asked in the bot and on the home screen, once
+  const ask = await waitMsg(v, /Настя просит новую ссылку/)
+  expect(keys(ask).map((k: any) => k.text)).toEqual(['Новая ссылка'])
+  expect((await api(v, 'GET', '/home')).inbox[0].title).toBe('Настя просит новую ссылку')
+  await press(n, 'Попросить новую')
+  expect((await chat(v)).filter(m => /просит новую ссылку/.test(m.text))).toHaveLength(1)
+  // «Новая ссылка» gives a link with the text of the project, and it works
+  const before = await lastId(v)
+  await press(v, 'Новая ссылка')
+  const fresh = await waitMsg(v, /Пригласи партнёра/, 15000, before)
+  const share = decodeURIComponent(keys(fresh).find((k: any) => k.text === 'Отправить приглашение').url)
+  expect(share).toContain('Вова зовёт тебя во «Вдвоём»: вместе выбирать, куда сходить, и делить дела')
+  const code2 = fresh.text.match(/start=inv_([A-Z0-9]+)/)![1]
+  await reopen(p, n, 'invite/' + code2)
+  await p.getByTestId('invite-accept').click()
+  await expect(p.getByTestId('toast')).toContainText('Вы в паре')
+  await waitMsg(v, /Настя приняла приглашение/)
+  expect((await api(n, 'GET', '/home')).partner.name).toBe('Вова')
+})
+
+test('E64 «как прошло»: «Не ходили» одного не отменяет встречу за двоих, оба ответа в истории', async () => {
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  for (const u of [v, n]) await api(u, 'POST', '/ui', { v: 2 })
+  const [id] = await addIdeas(v, ['Каток в Парке Горького'])
+  const f = await api(v, 'GET', '/free')
+  const { round } = await api(v, 'POST', '/rounds/with/' + id, { day: f.days[1].day, part: 1 })
+  const offer = (await api(n, 'GET', '/inbox')).rows[0]
+  await api(n, 'POST', `/proposals/${offer.id}/answer`, { yes: true })
+  const planned = (await api(v, 'GET', `/rounds/${round.id}`)).round
+  expect(planned.state).toBe('planned')
+  await advance({ to: planned.ends_at + 4 * 3600 })
+  const one = (await api(v, 'POST', `/rounds/${round.id}/rate`, { answer: 'skip' })).round
+  expect(one.state).toBe('planned') // his answer is his: nothing is cancelled for her
+  expect(one.again).toBe('skip')
+  const two = (await api(n, 'POST', `/rounds/${round.id}/rate`, { answer: 'like' })).round
+  expect(two.state).toBe('done')
+  const hist = (await api(v, 'GET', '/history')).meetings.find((m: any) => m.id === round.id)
+  expect(hist).toMatchObject({ again: 'skip', partner_again: 'yes' })
 })

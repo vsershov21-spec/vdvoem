@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"vdvoem/internal/domain"
 	"vdvoem/internal/store"
@@ -32,6 +34,18 @@ func (a *App) usesV2(ctx context.Context, memberID int64) bool {
 
 // UsesV2: the member's app is the new interface, so the bot follows its flow — one offers, the other answers
 func (a *App) UsesV2(ctx context.Context, memberID int64) bool { return a.usesV2(ctx, memberID) }
+
+// WordsFor: a message on its way to a chat. Someone with the new interface reads its words («идеи», not
+// «копилка»); the old interface keeps its own. The chat of a person is their Telegram id.
+func (a *App) WordsFor(ctx context.Context, chatID int64, text string) string {
+	if !strings.Contains(text, "опилк") {
+		return text
+	}
+	if m, err := a.S.MemberByTG(ctx, chatID); err == nil && a.usesV2(ctx, m.ID) {
+		return domain.NewWords(text)
+	}
+	return text
+}
 
 // anyV2: at least one of the space uses the new interface (what is sent to the couple as a whole)
 func (a *App) anyV2(ctx context.Context, ms []store.Member) bool {
@@ -80,17 +94,31 @@ func (a *App) dropMeetProposals(ctx context.Context, spaceID, roundID int64) {
 // told who calls. An event with its own date and time is offered at that time at once — as a proposal the
 // partner answers «Да» or «Не могу», never as a vote on slots.
 func (a *App) Call(ctx context.Context, c Couple, ideaID int64) (domain.Round, error) {
+	return a.CallAt(ctx, c, ideaID, time.Time{})
+}
+
+// CallAt: the same with a time known at once («Общее время» → «Идём»: both are free then). The partner gets
+// one message, the proposal of that time — not «зовёт» and then the time. A meeting of this very idea that
+// still has no time simply gets the offer.
+func (a *App) CallAt(ctx context.Context, c Couple, ideaID int64, start time.Time) (domain.Round, error) {
 	i, err := a.S.Idea(ctx, c.Space.ID, ideaID)
 	if err != nil {
 		return domain.Round{}, err
 	}
-	fixed := a.fixed(i, a.now())
-	r, err := a.goWith(ctx, c, i, !fixed)
+	given := !start.IsZero()
+	if !given && a.fixed(i, a.now()) {
+		start = *i.StartsAt
+	}
+	r, err := a.goWith(ctx, c, i, start.IsZero())
+	if errors.Is(err, ErrRoundOpen) && r.Chosen == ideaID && given {
+		_, err = a.ProposeTime(ctx, c, r.ID, start)
+		return r, err
+	}
 	if err != nil {
 		return r, err
 	}
-	if fixed {
-		if _, err := a.ProposeTime(ctx, c, r.ID, *i.StartsAt); err != nil {
+	if !start.IsZero() {
+		if _, err := a.ProposeTime(ctx, c, r.ID, start); err != nil {
 			a.announceCall(ctx, c, r, i, "")
 		}
 	}
@@ -116,20 +144,38 @@ func (a *App) announceCall(ctx context.Context, c Couple, r domain.Round, i stor
 	}
 }
 
-// Rate: «как прошло» of the new interface, each for themselves — like | soso | skip
+// Rate: «как прошло» of the new interface, each for themselves — like | soso | skip. One answer never decides
+// for the two: «Не ходили» is the mark of the one who said it. The meeting is «прошла» once somebody says
+// they went; both marks are in the history of meetings.
 func (a *App) Rate(ctx context.Context, c Couple, roundID int64, k string) error {
-	switch k {
-	case "like", "soso":
-		if _, err := a.Done(ctx, c, roundID, "yes"); err != nil {
-			return err
-		}
-		_, err := a.Again(ctx, c, roundID, map[bool]string{true: "yes", false: "no"}[k == "like"])
-		return err
-	case "skip":
-		_, err := a.Done(ctx, c, roundID, "no")
+	r, err := a.round(ctx, c, roundID)
+	if err != nil {
 		return err
 	}
-	return ErrBadInput
+	if r.State == domain.StatePlanned && r.StartsAt.After(a.now()) {
+		return domain.ErrWrongState // it has not happened yet
+	}
+	ver, was := r.Version, r.State
+	changed, err := r.Rate(c.Me.Color, k)
+	if errors.Is(err, domain.ErrBadRate) {
+		return ErrBadInput
+	}
+	if err != nil || !changed {
+		return err
+	}
+	if err := a.save(ctx, r, ver); err != nil {
+		return err
+	}
+	if r.State == domain.StateDone {
+		if was != domain.StateDone {
+			_ = a.S.AfterMeeting(ctx, c.Space.ID, r.Chosen, r.StartsAt, "")
+		}
+		if again := map[string]string{"like": "yes", "soso": "no"}[k]; again != "" {
+			_ = a.S.AfterMeeting(ctx, c.Space.ID, r.Chosen, r.StartsAt, again)
+		}
+	}
+	a.Live.From(ctx, c.Space.ID)
+	return nil
 }
 
 // CallWords: Call from a chat (the assistant, the bot) — and what to say to the one who called

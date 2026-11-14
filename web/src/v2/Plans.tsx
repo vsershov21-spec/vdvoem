@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { useLoad, useOn, emit } from '../lib/data'
-import { post, humanError } from '../lib/api'
+import { post, humanError, ApiError } from '../lib/api'
 import { go, back } from '../lib/router'
 import { openLink } from '../lib/tg'
-import type { CalEvent, Idea } from '../lib/types'
+import type { CalEvent, Idea, Round } from '../lib/types'
 import type { HomeV2 } from './types'
 import { Sheet, Pic, Empty, say } from './ui'
-import { goMeet } from './Ideas'
 import type { FreeRes } from './Meet'
 
 const PARTS = ['Утро', 'День', 'Вечер']
@@ -73,10 +72,22 @@ export function Free({ home, from }: { home: HomeV2 | null; from: string }) {
   const tap = async (day: string, part: number, on: boolean) => { try { set(await post<FreeRes>('/free', { day, part, on })) } catch (e) { say(humanError(e)) } }
   const hit = data?.common[0], [hd, hp] = hit ? hit.split(':') : ['', '0']
   const label = hit ? `${data!.days.find(d => d.day === hd)?.label}, ${PARTS[+hp].toLowerCase()}` : ''
+  // «Идём» in a common window: the meeting is made with this time at once — one call, and the partner gets
+  // one message, the proposal
   const start = async (i: Idea) => {
-    await goMeet(i)
-    const id = Number(location.pathname.split('/').pop())
-    if (id) { try { await post(`/meet/${id}/time`, { day: hd, part: +hp }); say(`Время предложено: ${pn} ответит`); emit('home') } catch (e) { say(humanError(e)) } }
+    const at = { day: hd, part: +hp }
+    try {
+      const r = await post<{ round: Round }>('/rounds/with/' + i.id, at)
+      emit('home'); go('meet/' + r.round.id); say(`Время предложено: ${pn} ответит`)
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === 'round_open')) { say(humanError(e)); return }
+      // another meeting still has no time: this idea takes its place, then the time is offered
+      try {
+        const r = await post<{ round: Round }>('/rounds/with/' + i.id + '?replace=1')
+        await post(`/meet/${r.round.id}/time`, at)
+        emit('home'); go('meet/' + r.round.id); say(`Время предложено: ${pn} ответит`)
+      } catch (x) { say(humanError(x)) }
+    }
   }
   return (
     <div className="scr" data-testid="v2-free">

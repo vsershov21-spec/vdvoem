@@ -115,3 +115,12 @@ func SettingWords(key, value string) string {
 	}
 	return value
 }
+
+// RemindAt: does a member with this «когда напоминать о встрече» get the reminder with this lead
+// ("day" — a day ahead, "" — two hours ahead)
+func RemindAt(when, lead string) bool {
+	if lead == "day" {
+		return when == "day" || when == "both"
+	}
+	return when != "day"
+}

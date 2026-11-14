@@ -59,7 +59,7 @@ const DONE: Record<string, string> = { yes: 'Ответ отправлен', no:
 
 export function InboxLine({ row }: { row: InboxRow }) {
   const [busy, setBusy] = useState(false)
-  const where = row.kind === 'chore' ? 'chores' : row.kind === 'note' ? 'settings' : 'meet/' + row.ref_id
+  const where = row.kind === 'chore' ? 'chores' : row.kind === 'note' ? (row.ref_id < 0 ? '' : 'settings') : 'meet/' + row.ref_id
   const act = async (a: string) => {
     if (a === 'other') { if (row.role === 'declined') post(`/proposals/${row.id}/seen`).catch(() => {}); go(where); return }
     setBusy(true)
@@ -225,6 +225,7 @@ function Solo({ home, onAddIdea }: { home: HomeV2; onAddIdea: () => void }) {
   return (
     <div className="scr" data-testid="v2-solo">
       <div><h2>Привет, {home.me.name}</h2><p className="m">Партнёра пока нет</p></div>
+      {(home.inbox || []).filter(r => r.role !== 'waiting').map(r => <InboxLine key={r.id} row={r} />)}
       <div className="v-card" style={{ background: 'linear-gradient(150deg,#ef6537,#31408f)', color: '#fff', gap: 10, padding: 16 }}>
         <h2 style={{ color: '#fff' }}>{invited ? 'Ждём партнёра' : 'Позови партнёра'}</h2>
         <p style={{ fontSize: 13.5 }}>{invited ? 'Ссылка живёт 3 дня и сработает один раз.' : 'Вдвоём приложение сводит ваши «хочу», помогает договориться о времени и делит дела.'}</p>

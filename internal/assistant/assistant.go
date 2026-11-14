@@ -179,6 +179,7 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 		}
 		_ = as.App.S.SetExampleMeta(ctx, exID, rep.Ms, model, strings.Join(labels, " | "), len(rep.Cards), "")
 	}
+	as.newWords(ctx, c, &rep)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
 }
@@ -1126,6 +1127,7 @@ func (as *Assistant) clarify(ctx context.Context, c app.Couple, payload []byte) 
 	if rep.Text == "" {
 		rep.Text = "Готово."
 	}
+	as.newWords(ctx, c, &rep)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
 }
@@ -1249,6 +1251,7 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 	default:
 		rep.Text = "Не знаю такое действие."
 	}
+	as.newWords(ctx, c, &rep)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
 }
@@ -1338,4 +1341,19 @@ func (as *Assistant) Try(ctx context.Context, c app.Couple, texts []string, foll
 		out = append(out, st)
 	}
 	return out
+}
+
+// newWords: someone with the new interface reads its words — «идеи», not «копилка» — in the text, on the
+// cards and on the buttons
+func (as *Assistant) newWords(ctx context.Context, c app.Couple, rep *Reply) {
+	if !as.App.UsesV2(ctx, c.Me.ID) {
+		return
+	}
+	rep.Text = domain.NewWords(rep.Text)
+	for k := range rep.Cards {
+		rep.Cards[k].Why = domain.NewWords(rep.Cards[k].Why)
+	}
+	for k := range rep.Actions {
+		rep.Actions[k].Label = domain.NewWords(rep.Actions[k].Label)
+	}
 }

@@ -189,3 +189,18 @@ export function AddIdea({ open, onClose }: { open: boolean; onClose: () => void 
       <button className="b p w" disabled={busy || !text.trim()} data-testid="add-save" onClick={add}>Добавить</button>
     </Sheet>)
 }
+
+// «Подборка»: what the assistant found for a request, or what the partner sent to mark — the same rows as
+// the «Афиша» view, each opens the card of its idea
+export function PickList({ id, from }: { id: number; from: string }) {
+  const { data, err } = useLoad<{ title: string; ideas: Idea[] }>(id > 0 ? '/picks/' + id : null)
+  const head = <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>Подборка</b><span /></div>
+  if (!data) return <div className="scr" data-testid="v2-pick">{head}{(!!err || !(id > 0)) && <Empty title="Подборка не нашлась"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}</div>
+  return (
+    <div className="scr" data-testid="v2-pick">
+      {head}
+      <div><h2>{data.title}</h2><p className="m">Отметь, что нравится: «Хочу» в карточке идеи.</p></div>
+      {data.ideas.length ? data.ideas.map(i => <button className="in" key={i.id} data-testid="pick-row" onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</small></span>{matched(i) ? <span className="badge">совпало</span> : wants(i.my_wish) ? '♥' : '›'}</button>)
+        : <Empty title="В подборке пусто"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}
+    </div>)
+}

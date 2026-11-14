@@ -1613,3 +1613,332 @@ func TestCallWords(t *testing.T) {
 		t.Fatal("no round by slots is opened for the new interface")
 	}
 }
+
+// The invitation of the new interface: the one who opens the link sees who calls, and the pair is made by
+// «Принять приглашение» — not by opening the link. Everything they had alone comes along; the author gets a
+// line in the bot and on the home screen. A link that cannot be accepted says why.
+func TestInviteAccept(t *testing.T) {
+	a, f, _ := setup(t)
+	ctx := context.Background()
+	v, link, err := a.Start(ctx, app.Profile{TGID: 1, ChatID: 1, Name: "Вова"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := app.InviteCode(link)
+	if a.InviteV2(ctx, code) {
+		t.Fatal("the author has the old interface: the link joins at once, as before")
+	}
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	if !a.InviteV2(ctx, code) || a.InviteV2(ctx, "NOSUCHCODE") {
+		t.Fatal("the link of someone with the new interface opens the invitation screen")
+	}
+	n, _, _ := a.Start(ctx, app.Profile{TGID: 2, ChatID: 2, Name: "Настя"}, "")
+	res, err := a.AddIdea(ctx, n, "Бранч на Патриках")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.SetWish(ctx, n, res.Idea.ID, domain.WishVery); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddChore(ctx, n, app.ChoreIn{Title: "Купить корм", Who: "me"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// the screen: who calls, how many of her ideas will move; looking joins nothing
+	info := a.InviteInfo(ctx, n, code)
+	if info.State != app.InviteOK || info.From != "Вова" || info.Ideas != 1 {
+		t.Fatalf("the invitation: %+v", info)
+	}
+	if c, _ := a.Couple(ctx, 2); c.Partner != nil {
+		t.Fatal("the pair is made by «Принять», not by looking")
+	}
+	// the author opens their own link
+	if st := a.InviteInfo(ctx, v, code).State; st != app.InviteOwn {
+		t.Fatalf("own link: %s", st)
+	}
+	if _, _, err := a.AcceptInvite(ctx, v, code); !errors.Is(err, app.ErrInviteOwn) {
+		t.Fatalf("own link is not accepted: %v", err)
+	}
+
+	start := f.n()
+	nc, moved, err := a.AcceptInvite(ctx, n, code)
+	if err != nil || moved != 1 || nc.Partner == nil || nc.Partner.ID != v.Me.ID || nc.Space.ID != v.Space.ID {
+		t.Fatalf("accept: %v moved=%d %+v", err, moved, nc.Me)
+	}
+	// nothing of the solo space is lost: the idea with her mark on her side, and the chore
+	ideas, _ := a.S.Ideas(ctx, nc.Space.ID, domain.IdeaActive, domain.IdeaDraft)
+	if len(ideas) != 1 || ideas[0].Title != "Бранч на Патриках" || ideas[0].WishB != domain.WishVery || ideas[0].WishA != domain.WishNone || ideas[0].AuthorID != nc.Me.ID {
+		t.Fatalf("the solo idea must come along as hers: %+v", ideas)
+	}
+	chores, _ := a.S.Chores(ctx, nc.Space.ID)
+	if len(chores) != 1 || chores[0].Title != "Купить корм" || chores[0].Assignee != nc.Me.ID {
+		t.Fatalf("the solo chore must come along: %+v", chores)
+	}
+	// the author: one line in the bot and the same on the home screen; the invited one is in the app already
+	if tx, _ := f.since(start, 1); strings.Count(tx, "---") != 1 || !strings.Contains(tx, "Настя приняла приглашение") {
+		t.Fatalf("the author hears it once: %q", tx)
+	}
+	if tx, _ := f.since(start, 2); tx != "" {
+		t.Fatalf("the invited one is not written to: %q", tx)
+	}
+	vc, _ := a.Couple(ctx, 1)
+	rows := a.Inbox(ctx, vc)
+	if len(rows) != 1 || rows[0].Role != "notice" || rows[0].Title != "Настя приняла приглашение" || rows[0].RefID >= 0 {
+		t.Fatalf("the line on the author's home screen: %+v", rows)
+	}
+	if len(a.Inbox(ctx, nc)) != 0 {
+		t.Fatal("the line is the author's, not hers")
+	}
+
+	// used: somebody else opens the same link
+	x, _, _ := a.Start(ctx, app.Profile{TGID: 3, ChatID: 3, Name: "Третий"}, "")
+	if info := a.InviteInfo(ctx, x, code); info.State != app.InviteUsed || info.From != "Вова" {
+		t.Fatalf("a used link says who is in a pair already: %+v", info)
+	}
+	if _, _, err := a.AcceptInvite(ctx, x, code); !errors.Is(err, app.ErrInviteUsed) {
+		t.Fatalf("a used link is not accepted: %v", err)
+	}
+	if c, _ := a.Couple(ctx, 3); c.Partner != nil {
+		t.Fatal("the third one stays alone")
+	}
+	// the one who is in a pair opens another invitation
+	_, link2, _ := a.Start(ctx, app.Profile{TGID: 4, ChatID: 4, Name: "Чужой"}, "")
+	if info := a.InviteInfo(ctx, nc, app.InviteCode(link2)); info.State != app.InvitePaired || info.Partner != "Вова" {
+		t.Fatalf("already in a pair: %+v", info)
+	}
+	if _, _, err := a.AcceptInvite(ctx, nc, app.InviteCode(link2)); !errors.Is(err, app.ErrInvitePaired) {
+		t.Fatalf("in a pair, another invitation is not accepted: %v", err)
+	}
+	if c, _ := a.Couple(ctx, 2); c.Partner == nil || c.Partner.ID != v.Me.ID {
+		t.Fatal("the pair stays as it was")
+	}
+	if st := a.InviteInfo(ctx, x, "NOSUCHCODE").State; st != app.InviteGone {
+		t.Fatalf("an unknown link: %s", st)
+	}
+}
+
+// A link older than three days: «Попросить новую» — its author hears «Настя просит новую ссылку» once, in the
+// bot and on the home screen, and the new link works
+func TestInviteExpired(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, link, _ := a.Start(ctx, app.Profile{TGID: 1, ChatID: 1, Name: "Вова"}, "")
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	code := app.InviteCode(link)
+	n, _, _ := a.Start(ctx, app.Profile{TGID: 2, ChatID: 2, Name: "Настя"}, "")
+	if err := a.AskInvite(ctx, n, code); !errors.Is(err, app.ErrInviteUsed) {
+		t.Fatalf("a link that still works is accepted, not asked for again: %v", err)
+	}
+	ck.t = ck.t.Add(73 * time.Hour)
+	if info := a.InviteInfo(ctx, n, code); info.State != app.InviteExpired || info.From != "Вова" || info.Asked {
+		t.Fatalf("expired: %+v", info)
+	}
+	if _, _, err := a.AcceptInvite(ctx, n, code); !errors.Is(err, app.ErrInviteExpired) {
+		t.Fatalf("an expired link is not accepted: %v", err)
+	}
+	if c, _ := a.Couple(ctx, 2); c.Partner != nil {
+		t.Fatal("still alone")
+	}
+	start := f.n()
+	if err := a.AskInvite(ctx, n, code); err != nil {
+		t.Fatal(err)
+	}
+	if tx, keys := f.since(start, 1); strings.Count(tx, "---") != 1 || !strings.Contains(tx, "Настя просит новую ссылку") || !strings.Contains(keys, "Новая ссылка|inv") {
+		t.Fatalf("the author is asked in the bot: %q %q", tx, keys)
+	}
+	rows := a.Inbox(ctx, v)
+	if len(rows) != 1 || rows[0].Role != "notice" || rows[0].Title != "Настя просит новую ссылку" {
+		t.Fatalf("the author is asked on the home screen: %+v", rows)
+	}
+	start = f.n()
+	if err := a.AskInvite(ctx, n, code); err != nil || f.n() != start {
+		t.Fatalf("asked once: %v", err)
+	}
+	if !a.InviteInfo(ctx, n, code).Asked {
+		t.Fatal("the screen knows a new link has been asked for")
+	}
+	link2, err := a.NewInvite(ctx, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nc, _, err := a.AcceptInvite(ctx, n, app.InviteCode(link2)); err != nil || nc.Partner == nil {
+		t.Fatalf("the new link works: %v", err)
+	}
+}
+
+// «Общее время» → «Идём»: the meeting is made with the time at once, and the partner gets one message — the
+// proposal — not «зовёт» and then the time
+func TestCallAtOneMessage(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	_ = a.SetUI(ctx, n.Me.ID, 2)
+	res, _ := a.AddIdea(ctx, v, "Планетарий на Баррикадной")
+	at := ck.t.Add(48 * time.Hour)
+	start := f.n()
+	r, err := a.CallAt(ctx, v, res.Idea.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, keys := f.since(start, 2)
+	if strings.Count(tx, "---") != 1 || !strings.Contains(tx, "Вова зовёт: <b>Планетарий на Баррикадной</b>") || strings.Contains(tx, "Время ещё не выбрано") {
+		t.Fatalf("one message, the proposal of the time: %q", tx)
+	}
+	if !strings.Contains(keys, "Да|pr:") {
+		t.Fatalf("answered as a proposal: %q", keys)
+	}
+	if tx, _ := f.since(start, 1); tx != "" {
+		t.Fatalf("the one who called is in the card already: %q", tx)
+	}
+	if mp := a.MeetProposals(ctx, n, r.ID)["time"]; mp == nil || mp.Start != at.Unix() {
+		t.Fatalf("the time is offered: %+v", mp)
+	}
+	// «Идём» in another window for the same idea: the same meeting gets the new offer
+	at2 := at.Add(24 * time.Hour)
+	r2, err := a.CallAt(ctx, v, res.Idea.ID, at2)
+	if err != nil || r2.ID != r.ID {
+		t.Fatalf("the same meeting: %v %d %d", err, r.ID, r2.ID)
+	}
+	mp := a.MeetProposals(ctx, n, r.ID)["time"]
+	if mp == nil || mp.Start != at2.Unix() {
+		t.Fatalf("the offer is replaced: %+v", mp)
+	}
+	if _, err := a.AnswerProposal(ctx, n, mp.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ := a.S.Round(ctx, v.Space.ID, r.ID); rd.State != domain.StatePlanned || rd.StartsAt.Unix() != at2.Unix() {
+		t.Fatalf("«да» puts it into the plans: %s", rd.State)
+	}
+}
+
+// «Как прошло»: «Не ходили» of one is their own answer — it does not cancel the meeting for the partner,
+// and both answers stay with the meeting
+func TestRateDoesNotDecideForTwo(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	_ = a.SetUI(ctx, n.Me.ID, 2)
+	res, _ := a.AddIdea(ctx, v, "Каток в Парке Горького")
+	r, err := a.CallAt(ctx, v, res.Idea.ID, ck.t.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AnswerProposal(ctx, n, a.MeetProposals(ctx, n, r.ID)["time"].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Rate(ctx, v, r.ID, "like"); !errors.Is(err, domain.ErrWrongState) {
+		t.Fatalf("not rated before it happened: %v", err)
+	}
+	rd, _ := a.S.Round(ctx, v.Space.ID, r.ID)
+	ck.t = rd.EndsAt.Add(4 * time.Hour)
+	if err := a.Rate(ctx, v, r.ID, "skip"); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ = a.S.Round(ctx, v.Space.ID, r.ID); rd.State != domain.StatePlanned || rd.AgainA != domain.AgainSkip || rd.AgainB != "" {
+		t.Fatalf("his «не ходили» is his: the meeting is not cancelled and she is not answered for: %s %q %q", rd.State, rd.AgainA, rd.AgainB)
+	}
+	if err := a.Rate(ctx, n, r.ID, "like"); err != nil {
+		t.Fatal(err)
+	}
+	if rd, _ = a.S.Round(ctx, v.Space.ID, r.ID); rd.State != domain.StateDone || rd.AgainA != domain.AgainSkip || rd.AgainB != "yes" {
+		t.Fatalf("she went and liked it; both answers are kept: %s %q %q", rd.State, rd.AgainA, rd.AgainB)
+	}
+	if i, _ := a.S.Idea(ctx, v.Space.ID, res.Idea.ID); i.AgainYes != 1 || i.AgainNo != 0 || i.LastMetAt == nil {
+		t.Fatalf("her mark counts for the idea, his «не ходили» does not: %d %d", i.AgainYes, i.AgainNo)
+	}
+	if err := a.Rate(ctx, v, r.ID, "like"); !errors.Is(err, domain.ErrWrongState) {
+		t.Fatalf("an answer is given once: %v", err)
+	}
+	if err := a.Rate(ctx, n, r.ID, "like"); err != nil {
+		t.Fatalf("the same answer again is not an error: %v", err)
+	}
+	if i, _ := a.S.Idea(ctx, v.Space.ID, res.Idea.ID); i.AgainYes != 1 {
+		t.Fatalf("and it is not counted twice: %d", i.AgainYes)
+	}
+	if err := a.Rate(ctx, n, r.ID, "maybe"); !errors.Is(err, app.ErrBadInput) {
+		t.Fatalf("an unknown answer: %v", err)
+	}
+}
+
+// «Когда напоминать о встрече» is each one's own: a day ahead, two hours ahead, or both times
+func TestMeetingReminderSetting(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	_ = a.SetUI(ctx, n.Me.ID, 2)
+	if err := a.SetSetting(ctx, v, "notify.meeting_when", "day"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetSetting(ctx, n, "notify.meeting_when", "both"); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := a.AddIdea(ctx, v, "Планетарий на Баррикадной")
+	at := ck.t.Add(72 * time.Hour) // Saturday, 12:00
+	r, err := a.CallAt(ctx, v, res.Idea.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := f.n()
+	if _, err := a.AnswerProposal(ctx, n, a.MeetProposals(ctx, n, r.ID)["time"].ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if tx, _ := f.since(start, 1); !strings.Contains(tx, "Напомню за день.") {
+		t.Fatalf("the message says when he will be reminded: %q", tx)
+	}
+	if tx, _ := f.since(start, 2); !strings.Contains(tx, "Напомню за день и за 2 часа.") {
+		t.Fatalf("the message says when she will be reminded: %q", tx)
+	}
+	start = f.n()
+	ck.t = at.Add(-24*time.Hour + time.Minute)
+	a.Tick(ctx)
+	for _, chat := range []int64{1, 2} {
+		if tx, _ := f.since(start, chat); strings.Count(tx, "Завтра: <b>Планетарий на Баррикадной</b>") != 1 || strings.Contains(tx, "Через 2 часа") {
+			t.Fatalf("chat %d is reminded a day ahead: %q", chat, tx)
+		}
+	}
+	start = f.n()
+	ck.t = at.Add(-2*time.Hour + time.Minute)
+	a.Tick(ctx)
+	if tx, _ := f.since(start, 1); strings.Contains(tx, "Через 2 часа") {
+		t.Fatalf("«за день» only: no second reminder for him: %q", tx)
+	}
+	if tx, _ := f.since(start, 2); strings.Count(tx, "Через 2 часа: <b>Планетарий на Баррикадной</b>") != 1 {
+		t.Fatalf("«оба раза»: she is reminded two hours ahead too: %q", tx)
+	}
+}
+
+// the word «копилка» belongs to the old screens: a message on its way to someone with the new interface
+// says «идеи»
+func TestNewInterfaceWords(t *testing.T) {
+	a, f, _ := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	if got := a.WordsFor(ctx, 1, "Это уже есть в копилке."); got != "Это уже есть в идеях." {
+		t.Fatalf("the new interface: %q", got)
+	}
+	if got := a.WordsFor(ctx, 2, "Это уже есть в копилке."); got != "Это уже есть в копилке." {
+		t.Fatalf("the old interface keeps its word: %q", got)
+	}
+	// a cancelled choice of the old flow, heard by both: each in the words of their interface
+	res, _ := a.AddIdea(ctx, n, "Каток в Парке Горького")
+	_ = a.SetUI(ctx, v.Me.ID, 1)
+	r, err := a.GoWith(ctx, n, res.Idea.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a.SetUI(ctx, v.Me.ID, 2)
+	start := f.n()
+	if _, err := a.Cancel(ctx, n, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if tx, _ := f.since(start, 1); strings.Contains(tx, "опилк") {
+		t.Fatalf("no «копилка» for the new interface: %q", tx)
+	}
+	if tx, _ := f.since(start, 2); !strings.Contains(tx, "идеи остаются в копилке") {
+		t.Fatalf("the old interface hears what it heard before: %q", tx)
+	}
+}

@@ -27,7 +27,7 @@ export function Meet({ id, home, from }: { id: number; home: HomeV2 | null; from
   const r = data.round, i = r.chosen, tp = data.proposals.time, sp = data.proposals.stop
   const planned = r.state === 'planned', past = planned && !!r.starts_at && r.starts_at * 1000 < Date.now()
   const closed = r.state === 'cancelled' || r.state === 'expired' || r.state === 'done'
-  const status = r.state === 'cancelled' ? 'отменена' : r.state === 'done' ? 'прошла' : past ? 'прошла' : tp?.state === 'wait' ? (tp.mine ? 'ждём ' + ncase(pn, 'acc') : 'ждёт твоего ответа') : planned ? 'в планах' : tp?.state === 'no' ? 'время не подошло' : 'без времени'
+  const status = r.state === 'cancelled' ? 'отменена' : r.state === 'done' ? 'прошла' : past ? (r.again === 'skip' && r.partner_again === 'skip' ? 'не состоялась' : 'прошла') : tp?.state === 'wait' ? (tp.mine ? 'ждём ' + ncase(pn, 'acc') : 'ждёт твоего ответа') : planned ? 'в планах' : tp?.state === 'no' ? 'время не подошло' : 'без времени'
   const run = async (f: () => Promise<unknown>, ok?: string) => {
     setBusy(true)
     try { const res = await f(); if (res && (res as MeetRes).round) set(res as MeetRes); else refresh(); haptic.ok(); if (ok) say(ok); emit('home') }
@@ -39,7 +39,7 @@ export function Meet({ id, home, from }: { id: number; home: HomeV2 | null; from
     <div className="scr mcard" data-testid="v2-meet">
       {head}
       {i ? <Pic idea={i} style={{ minHeight: 150 }}>{i.title}<small data-testid="meet-status">{status}</small></Pic> : <div className="pic t1" style={{ minHeight: 120 }}>Встреча<small>{status}</small></div>}
-      {past && !closed && <After round={r} onDone={refresh} />}
+      {past && !closed && <After round={r} partner={pn} onDone={refresh} />}
       {tp?.state === 'wait' && !tp.mine && <div className="v-card prop" data-testid="time-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} зовёт</b><b>{tp.sub}</b>
         <div className="v-row"><button className="b a s" disabled={busy} onClick={() => answer(tp, true, 'Встреча в планах у обоих')}>Да</button><button className="b s" onClick={() => setSheet('time')}>Другое время</button><button className="b s ghost" disabled={busy} onClick={() => answer(tp, false, pn + ' увидит отказ')}>Не могу</button></div></div>}
       {sp?.state === 'wait' && !sp.mine && <div className="v-card prop" data-testid="stop-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} предлагает после</b>
@@ -125,18 +125,20 @@ function StopSheet({ main, partner, onPick }: { main?: Idea; partner: string; on
   </>)
 }
 
-// «Как прошло»: each one answers for themselves
-function After({ round, onDone }: { round: Round; onDone: () => void }) {
+// «Как прошло»: each one answers for themselves. «Не ходили» is the answer of the one who gave it: it
+// does not cancel the meeting for the partner, and both answers are in the history.
+const RATED: Record<string, string> = { yes: 'понравилось', no: 'не очень', skip: 'не ходили' }
+function After({ round, partner, onDone }: { round: Round; partner: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
-  const rate = async (k: 'like' | 'no' | 'skip') => {
+  const rate = async (k: 'like' | 'soso' | 'skip') => {
     setBusy(true)
-    try {
-      await post(`/rounds/${round.id}/done`, { answer: k === 'skip' ? 'no' : 'yes' })
-      if (k !== 'skip') await post(`/rounds/${round.id}/again`, { answer: k === 'like' ? 'yes' : 'no' })
-      say('Записал в историю'); emit('home'); onDone()
-    } catch (e) { say(humanError(e)) } finally { setBusy(false) }
+    try { await post(`/rounds/${round.id}/rate`, { answer: k }); say('Записал в историю'); emit('home'); onDone() }
+    catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
+  if (round.again) return (
+    <div className="v-card" data-testid="after"><b>Твой ответ: {RATED[round.again] || round.again}</b>
+      <p className="m">{round.partner_again ? `${partner}: ${RATED[round.partner_again] || round.partner_again}.` : `${partner} ответит за себя.`} Оба ответа в истории встреч.</p></div>)
   return (
     <div className="v-card" data-testid="after"><h3>Как тебе?</h3><p className="m">Каждый отвечает за себя. Ответ уточняет твой вкус и попадает в историю.</p>
-      <div className="v-row" style={{ flexWrap: 'wrap' }}><button className="b" disabled={busy} onClick={() => rate('like')}>Понравилось</button><button className="b" disabled={busy} onClick={() => rate('no')}>Не очень</button><button className="b" disabled={busy} onClick={() => rate('skip')}>Не ходили</button></div></div>)
+      <div className="v-row" style={{ flexWrap: 'wrap' }}><button className="b" disabled={busy} onClick={() => rate('like')}>Понравилось</button><button className="b" disabled={busy} onClick={() => rate('soso')}>Не очень</button><button className="b" disabled={busy} onClick={() => rate('skip')}>Не ходили</button></div></div>)
 }

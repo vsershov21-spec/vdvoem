@@ -7,7 +7,8 @@ import { useLoad, useOn } from '../lib/data'
 import type { HomeV2 } from './types'
 import { Nav, Toast, TABS, Empty } from './ui'
 import { Home } from './Home'
-import { Ideas, IdeaCard, AddIdea, showIdeas } from './Ideas'
+import { Ideas, IdeaCard, AddIdea, PickList, showIdeas } from './Ideas'
+import { Invite } from './Invite'
 import { Meet } from './Meet'
 import { Plans, Free } from './Plans'
 import { Chores, ChoreCard } from './Chores'
@@ -18,7 +19,7 @@ import { particles, still } from './particles'
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
 // step at a time («‹ откуда пришёл»), one confirmation line, and both themes. Screens that are not built yet
 // say so honestly instead of pretending.
-const NAMES: Record<string, string> = { '': 'Главная', ideas: 'Идеи', assistant: 'Помощник', chores: 'Дела', plans: 'Планы', idea: 'Идея', chore: 'Дело', meet: 'Встреча', us: 'Профиль', settings: 'Настройки', history: 'История', free: 'Общее время', taste: 'Мой вкус' }
+const NAMES: Record<string, string> = { '': 'Главная', ideas: 'Идеи', assistant: 'Помощник', chores: 'Дела', plans: 'Планы', idea: 'Идея', chore: 'Дело', meet: 'Встреча', us: 'Профиль', settings: 'Настройки', history: 'История', free: 'Общее время', taste: 'Мой вкус', invite: 'Приглашение', pick: 'Подборка' }
 const STEP: Record<string, number> = { assistant: 7 }
 
 // The bot's buttons and old links still name the screens of the previous interface. Each of them opens the
@@ -29,7 +30,6 @@ export function legacy(route: string[]): string | null {
   if (top === 'round') return Number(sub) > 0 ? 'meet/' + sub : 'plans'
   if (top === 'calendar') return 'plans'
   if (top === 'triage') return ''
-  if (top === 'pick') return 'assistant' // a selection is the assistant's answer: it is in the chat
   if (top === 'ideas' && sub) {
     if (sub === 'chores') return 'chores'
     if (sub === 'scout') showIdeas('afisha')
@@ -92,6 +92,8 @@ export function Shell() {
   else if (top === 'history') screen = <History view={route[1] || 'meets'} home={home.data} from={from} />
   else if (top === 'settings') screen = <Settings section={route[1]} home={home.data} from={from} />
   else if (top === 'taste') screen = <Taste from={from} />
+  else if (top === 'invite') screen = <Invite code={route[1] || ''} />
+  else if (top === 'pick') screen = <PickList id={Number(route[1])} from={from} />
   else screen = (
     <div className="scr" data-testid={'v2-' + top}>
       {nested ? <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{NAMES[top] || ''}</b><span /></div> : <h2>{NAMES[top]}</h2>}

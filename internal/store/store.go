@@ -209,9 +209,46 @@ func HashCode(code string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func (s *Store) CreateInvite(ctx context.Context, spaceID int64, code string, expires time.Time) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO invites(code_hash, space_id, expires_at) VALUES (?,?,?)`, HashCode(code), spaceID, expires.Unix())
+func (s *Store) CreateInvite(ctx context.Context, spaceID, authorID int64, code string, expires time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO invites(code_hash, space_id, author_id, expires_at) VALUES (?,?,?,?)`, HashCode(code), spaceID, authorID, expires.Unix())
 	return err
+}
+
+// Invite: an invitation as it is now — also a used or an expired one, so the one who opens it can be told why
+type Invite struct {
+	SpaceID, AuthorID int64
+	ExpiresAt         time.Time
+	Used, Asked       bool
+}
+
+func (s *Store) Invite(ctx context.Context, code string) (Invite, error) {
+	var v Invite
+	var exp int64
+	var used, asked sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `SELECT space_id, author_id, expires_at, used_at, asked_at FROM invites WHERE code_hash=?`, HashCode(code)).
+		Scan(&v.SpaceID, &v.AuthorID, &exp, &used, &asked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return v, ErrNotFound
+	}
+	v.ExpiresAt, v.Used, v.Asked = time.Unix(exp, 0), used.Valid, asked.Valid
+	return v, err
+}
+
+// MarkInviteAsked: true the first time only — the author hears «просит новую ссылку» once per link
+func (s *Store) MarkInviteAsked(ctx context.Context, code string, now time.Time) bool {
+	res, err := s.DB.ExecContext(ctx, `UPDATE invites SET asked_at=? WHERE code_hash=? AND asked_at IS NULL`, now.Unix(), HashCode(code))
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n == 1
+}
+
+// SoloIdeas: how many ideas of their own a person alone has (they move into the pair with them)
+func (s *Store) SoloIdeas(ctx context.Context, spaceID int64) int {
+	var n int
+	_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM ideas WHERE space_id=? AND source=''`, spaceID).Scan(&n)
+	return n
 }
 
 // PendingInvite: when the newest unused invite of the space runs out (zero time — none is waiting)
@@ -675,6 +712,7 @@ func (s *Store) MoveMember(ctx context.Context, memberID, from, to int64) error 
 	}{
 		{`UPDATE OR IGNORE ideas SET space_id=?, ` + wish + ` WHERE space_id=? AND source=''`, []any{to, from}},
 		{`UPDATE members SET space_id=?, color=? WHERE id=?`, []any{to, color, memberID}},
+		{`UPDATE chores SET space_id=? WHERE space_id=?`, []any{to, from}}, // «Дела» made alone come along too
 		{`UPDATE assistant_messages SET space_id=? WHERE member_id=?`, []any{to, memberID}},
 		{`UPDATE assistant_actions SET space_id=? WHERE member_id=?`, []any{to, memberID}},
 		{`UPDATE memories SET space_id=? WHERE member_id=?`, []any{to, memberID}},

@@ -10,7 +10,7 @@ import type { Chore } from './Chores'
 
 const Sub = ({ from, title }: { from: string; title: string }) => <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>{title}</b><span /></div>
 const A = (n?: string) => (n || '?')[0]
-const rate = (who: string, a?: string) => `${who}: ${a === 'yes' ? 'понравилось' : a === 'no' ? 'не очень' : 'без оценки'}`
+const rate = (who: string, a?: string) => `${who}: ${a === 'yes' ? 'понравилось' : a === 'no' ? 'не очень' : a === 'skip' ? 'не ходили' : 'без оценки'}`
 
 // ---------- profile: the pair, the history of meetings and chores, settings ----------
 export function Profile({ home, from }: { home: HomeV2 | null; from: string }) {
