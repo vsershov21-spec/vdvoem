@@ -11,7 +11,7 @@ import { Btn, Cover, Empty, Marks, Sheet, Skel, SubHeader, burst, toast } from '
 import { MonthGrid, type DayMark } from '../ui/Charts'
 import { Places } from '../ui/Places'
 import { useOnline } from '../lib/live'
-import { RouteBlock } from '../ui/Route'
+import { RouteBlock, ProposalsBar } from '../ui/Route'
 import { openLink } from '../lib/tg'
 import { CalSheet } from '../ui/CalLink'
 
@@ -304,6 +304,7 @@ function ConfirmStage({ r, act, partner, home, onPlace, onRound }: { r: Round; a
       <div className="meet rise" style={{ margin: '4px auto 4px' }}><i /><i /></div>
       <h1 className="display rise" style={{ textAlign: 'center' }}>Совпало!</h1>
       <p className="callout muted rise" style={{ textAlign: 'center', margin: 0 }}>Выбор поменялся — встреча будет в плане, когда «да» скажете оба.</p>
+      <ProposalsBar r={r} home={home} onRound={onRound} />
       <Ticket r={r} />
       {r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
       <RouteBlock r={r} home={home} onRound={onRound} />
@@ -374,6 +375,7 @@ function PlannedStage({ r, act, home, onPlace, onRound }: { r: Round; act: Act; 
         <h1 className="display rise" style={{ textAlign: 'center', margin: 0 }}>Совпало! Идём</h1>
         <p className="callout muted rise" style={{ textAlign: 'center', margin: 0 }}>Встреча в плане у вас обоих. Передумали — «Перенести» или «Отменить» внизу.</p>
       </>}
+      {!past && <ProposalsBar r={r} home={home} onRound={onRound} />}
       <Ticket r={r} />
       {!past && r.chosen && <Places idea={r.chosen} me={home.me} partner={home.partner} compact onChange={onPlace} />}
       {!past && <RouteBlock r={r} home={home} onRound={onRound} />}

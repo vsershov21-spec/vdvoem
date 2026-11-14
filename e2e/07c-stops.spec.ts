@@ -36,4 +36,14 @@ test('E47 «А потом?»: обед — выбираем из своих ла
   const r = (await api(v, 'GET', `/rounds/${round.id}`)).round
   expect(r.route.map((s: any) => s.idea.title)).toEqual(['Ресторан «Сахалин»'])
   await shot(p, 'E47-changed')
+  // Настя: the proposal is a row on the main screen; it opens the meeting with a summary, answered in place
+  const q = await open(await phone(browser), n)
+  await expect(q.getByTestId('proposal-row')).toContainText('Вова предлагает: Ресторан «Сахалин»')
+  await shot(q, 'E47-inbox')
+  await q.getByTestId('proposal-row').click()
+  await expect(q.getByTestId('proposals')).toContainText('Сахалин')
+  await shot(q, 'E47-proposal')
+  await q.getByTestId('proposals').getByRole('button', { name: 'Да' }).click()
+  await expect(q.getByTestId('proposals')).toHaveCount(0)
+  expect((await api(v, 'GET', `/rounds/${round.id}`)).round.route[0].state).toBe('accepted')
 })

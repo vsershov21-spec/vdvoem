@@ -11,7 +11,6 @@ export const TABS = [
   { path: 'ideas', id: 'bank', label: 'Идеи', icon: 'folder' },
   { path: 'assistant', id: 'ai', label: 'Помощник', icon: 'spark' }, // also the bar on the main screen
   { path: 'calendar', id: 'cal', label: 'Планы', icon: 'cal' },
-  { path: 'us', id: 'us', label: 'Мы', icon: 'user' },
 ]
 
 // the donor's icon pop: squash → overshoot → settle, with a small tilt

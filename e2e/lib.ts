@@ -109,7 +109,8 @@ export async function open(ctx: BrowserContext, u: U | null, path = '', intro = 
   if (u && !intro) await expect(p.locator('main.screen')).toBeVisible({ timeout: 10000 })
   return p
 }
-export const tab = (p: Page, id: 'home' | 'bank' | 'cal' | 'ai' | 'us') => p.locator('#tab-' + id).click()
+// «Мы» is no tab: it opens from the avatars on the main screen
+export const tab = async (p: Page, id: 'home' | 'bank' | 'cal' | 'ai' | 'us') => { if (id === 'us') { await p.locator('#tab-home').click(); await p.getByLabel('Мы').click() } else await p.locator('#tab-' + id).click() }
 
 // ---------- a fake Telegram client (served instead of telegram-web-app.js) ----------
 // platform 'ios' + bio:true = an iPhone with Face ID; 'tdesktop' + bio:false = the desktop app (no sensor)

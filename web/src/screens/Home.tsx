@@ -11,6 +11,7 @@ import { Avatar, Btn, Cover, Skel, toast } from '../ui/kit'
 import { answerUrgent, type UrgentAsk } from '../ui/Urgent'
 import { Deck } from '../ui/Deck'
 import { Going } from '../ui/Going'
+import { proposalsFor } from '../ui/Route'
 
 // The main screen is the deck. Order by what matters: who we are → what waits for my answer (one slim row each,
 // never a wall) → the deck (ours first, then the scout's afisha) → the assistant with ready questions.
@@ -69,6 +70,13 @@ function Inbox({ home }: { home: HomeT }) {
   const pn = home.partner?.name || 'Партнёр'
   const rows: React.ReactNode[] = []
   for (const u of home.urgent || []) rows.push(<UrgentRow key={'u' + u.idea_id} u={u} partner={pn} />)
+  // what the partner proposed for a meeting (a stop after it): one row, a tap opens the meeting with the summary
+  for (const g of [home.round, ...(home.going || [])].filter((x, k, l) => x && l.findIndex(y => y?.id === x.id) === k)) for (const s of g ? proposalsFor(g) : []) rows.push(
+    <button key={'p' + s.id} className="inrow inrow--hot" data-testid="proposal-row" onClick={() => go('round/' + g!.id)}>
+      <span className="inrow__ic"><Icon n="pin" s={17} /></span>
+      <span className="inrow__main"><b>{pn} предлагает: {s.idea.title}</b><span>после «{g!.chosen?.title}»{g!.when ? ' · ' + g!.when : ''}</span></span>
+      <span className="pill pill--accent">Ответить</span>
+    </button>)
   if (home.round) rows.push(<RoundRow key="r" r={home.round} home={home} />)
   for (const g of home.going || []) if (g.state === 'planned' && g.book && !g.tickets) rows.push(
     <button key={'t' + g.id} className="inrow" onClick={() => go('round/' + g.id)}>

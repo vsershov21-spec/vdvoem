@@ -7,7 +7,7 @@ import { money, plural } from '../lib/format'
 import { useOnline } from '../lib/live'
 import { shareLink, haptic, biometric, bioRequest, bioAuth, bioName } from '../lib/tg'
 import { Icon } from '../ui/icons'
-import { Avatar, Btn, Cover, Empty, Segmented, Sheet, Skel, toast } from '../ui/kit'
+import { Avatar, Btn, Cover, Empty, Segmented, Sheet, Skel, toast, SubHeader } from '../ui/kit'
 import { Heart } from '../ui/Heart'
 import { Gauge } from '../ui/Charts'
 import { b64, unb64 } from './Entry'
@@ -40,7 +40,7 @@ export function Us({ home }: { home: Home | null }) {
   const n = stats.data?.meetings ?? 0
   return (
     <>
-      <header className="hdr"><h1 className="display">Мы</h1></header>
+      <SubHeader title="Мы" back="Главная" />
       <div className="card rise" style={{ display: 'grid', gap: 14 }}>
         <div className="row" style={{ gap: 14 }}>
           <div className="pairava"><Avatar p={home.me} /><Avatar p={home.partner} ghost={!home.partner} online={partnerHere} /></div>

@@ -57,7 +57,7 @@ for (const dark of [false, true]) {
     const nav = await p.locator('.pnav').boundingBox()
     const island = await p.getByTestId('island').boundingBox()
     expect(island!.y, 'island clears Telegram fullscreen buttons').toBeGreaterThanOrEqual(90)
-    for (const [t, name] of [['bank', 'bank'], ['cal', 'calendar'], ['ai', 'assistant'], ['us', 'us'], ['home', 'home-again']] as const) {
+    for (const [t, name] of [['bank', 'bank'], ['cal', 'calendar'], ['ai', 'assistant'], ['home', 'home-again']] as const) {
       await tab(p, t)
       await audit(p, name + s)
       const nb = await p.locator('.pnav').boundingBox()
