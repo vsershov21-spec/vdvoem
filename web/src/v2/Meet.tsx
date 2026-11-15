@@ -39,7 +39,7 @@ export function Meet({ id, home, from }: { id: number; home: HomeV2 | null; from
     <div className="scr mcard" data-testid="v2-meet">
       {head}
       {i ? <Pic idea={i} style={{ minHeight: 150 }}>{i.title}<small data-testid="meet-status">{status}</small></Pic> : <div className="pic t1" style={{ minHeight: 120 }}>Встреча<small>{status}</small></div>}
-      {past && !closed && <After round={r} partner={pn} onDone={refresh} />}
+      {((past && r.state === 'planned') || (r.state === 'done' && (!!r.again || (!!r.starts_at && r.starts_at * 1000 > Date.now() - 14 * 864e5)))) && <After round={r} partner={pn} onDone={refresh} />}
       {tp?.state === 'wait' && !tp.mine && <div className="v-card prop" data-testid="time-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} зовёт</b><b>{tp.sub}</b>
         <div className="v-row"><button className="b a s" disabled={busy} onClick={() => answer(tp, true, 'Встреча в планах у обоих')}>Да</button><button className="b s" onClick={() => setSheet('time')}>Другое время</button><button className="b s ghost" disabled={busy} onClick={() => answer(tp, false, pn + ' увидит отказ')}>Не могу</button></div></div>}
       {sp?.state === 'wait' && !sp.mine && <div className="v-card prop" data-testid="stop-offer"><b style={{ color: 'var(--accent)', fontSize: 12.5 }}>{pn} предлагает после</b>

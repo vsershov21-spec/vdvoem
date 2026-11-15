@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './v2.css'
-import { useRoute, back, navDir, go } from '../lib/router'
+import { useRoute, back, navDir, navDepth, go } from '../lib/router'
 import { post } from '../lib/api'
 import { setBack } from '../lib/tg'
 import { useLoad, useOn } from '../lib/data'
@@ -62,14 +62,17 @@ export function Shell() {
   // the trail: which screens lead here — the back label is the previous one, and the tab stays lit
   const trail = useRef<string[]>([key])
   const prev = useRef(key)
+  const depth = useRef(navDepth())
   let anim = ''
   if (prev.current !== key) {
     const isTab = TABS.some(t => t.path === key)
     const wasTab = TABS.some(t => t.path === prev.current)
     if (isTab) { trail.current = [key]; anim = wasTab ? 't-fade' : 't-pop' }
     else if (navDir() === 'back' && trail.current.includes(key)) { trail.current = trail.current.slice(0, trail.current.lastIndexOf(key) + 1); anim = 't-pop' }
+    // a replaced address (the two views of «История») is the same step, not a new one: the way back stays
+    else if (navDir() !== 'back' && navDepth() === depth.current && trail.current.length > 1) { trail.current[trail.current.length - 1] = key; anim = 't-fade' }
     else { trail.current.push(key); anim = 't-push' }
-    prev.current = key
+    prev.current = key; depth.current = navDepth()
   }
   const rootTab = TABS.find(t => t.path === trail.current[0])?.path ?? ''
   const nested = !TABS.some(t => t.path === key)

@@ -57,8 +57,8 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
           <button key={k} role="tab" aria-selected={v === k} className={v === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>)}
       </div>
       {!data ? null : v === 'both' ? (both.length ? both.map(i =>
-        <div className="in" key={i.id} data-testid="match-row"><Pic idea={i} className="th" /><span style={{ cursor: 'pointer' }} onClick={() => go('idea/' + i.id)}><b>{i.title}</b><small>{[CATS[i.category]?.name, i.starts_at ? whenText(i.starts_at) : ''].filter(Boolean).join(' · ')}</small></span>
-          <button className="b p s" onClick={() => goMeet(i)}>Идём</button></div>)
+        <div className="in" key={i.id} data-testid="match-row" style={{ cursor: 'pointer' }} onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[CATS[i.category]?.name, i.starts_at ? whenText(i.starts_at) : ''].filter(Boolean).join(' · ')}</small></span>
+          <button className="b p s" onClick={e => { e.stopPropagation(); goMeet(i) }}>Идём</button></div>)
         : <Empty title="Пока не совпало"><button className="b p w" onClick={() => go('')}>Отмечать идеи</button></Empty>)
         : v === 'afisha' ? <>
           <div className="v-row"><div className="v-chips">
@@ -97,6 +97,7 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
   const filled = data.filled || {}
   const by = (f: string) => filled[f] === 'me' ? 'я' : filled[f] === 'partner' ? pn : filled[f] === 'scout' ? 'скаут' : ''
   const wait = collecting(i)
+  const own = i.mine && i.ours // an event the scout found has no author among the two: nobody edits it
   const rows: [string, string, string][] = [
     ['Когда', i.starts_at ? whenText(i.starts_at, i.ends_at) : '', 'when'], ['Где', i.address || '', 'where'],
     ['Цена на двоих', i.price_min ? money(i.price_min) + (i.price_max && i.price_max !== i.price_min ? '–' + money(i.price_max) : '') : '', 'price'],
@@ -118,11 +119,11 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
       <Pic idea={i} style={{ minHeight: 150 }}>{i.title}<small>{CATS[i.category]?.name || 'Идея'} · {i.ours ? (i.mine ? 'моя идея' : 'от ' + ncase(pn, 'gen')) : 'афиша'}</small></Pic>
       {wait ? <div className="v-card prop" data-testid="collecting"><b>🔭 Скаут собирает остальное</b><p className="m">Название взято из ссылки сразу. Даты, адрес и цена: обычно до часа. Напишу на главной и в боте.</p></div>
         : data.enriching ? <div className="v-card prop" data-testid="enriching"><b>🔭 Скаут дополняет</b><p className="m">Ищет: {miss.join(', ')}. Напишу на главной и в боте.</p></div>
-          : i.mine && miss.length > 0 ? <div className="v-card"><p className="m">Не хватает: {miss.join(', ')}</p><div className="v-row"><button className="b s" onClick={() => setEdit(true)}>Дописать</button><button className="b s" data-testid="ask-scout" onClick={enrich}>Попросить скаута</button></div></div> : null}
-      <div className="v-card v-list flds" data-testid="fields">
-        {rows.filter(([, v]) => v || i.mine).map(([l, v, f]) =>
+          : own && miss.length > 0 ? <div className="v-card"><p className="m">Не хватает: {miss.join(', ')}</p><div className="v-row"><button className="b s" onClick={() => setEdit(true)}>Дописать</button><button className="b s" data-testid="ask-scout" onClick={enrich}>Попросить скаута</button></div></div> : null}
+      {rows.some(([, v]) => v || own) && <div className="v-card v-list flds" data-testid="fields">
+        {rows.filter(([, v]) => v || own).map(([l, v, f]) =>
           <div className="fld" key={f}><small>{l}{v && by(f) && <span className="by">{by(f)}</span>}</small><span className={v ? '' : 'v-empty'}>{v || (wait && f !== 'note' && f !== 'about' ? 'скаут собирает' : 'не заполнено')}</span></div>)}
-      </div>
+      </div>}
       {home?.paired && <>
         <div className="blk"><label>Отметка</label><div className="v-row">
           <button className={'v-chip' + (wants(i.my_wish) ? ' on' : '')} aria-pressed={wants(i.my_wish)} onClick={() => mark('want')}>♥ Хочу</button>
@@ -132,7 +133,7 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
         {!wait && <button className="b a w" data-testid="go-meet" disabled={busy} onClick={async () => { if (meet) { go('meet/' + meet.id); return } setBusy(true); await goMeet(i); setBusy(false) }}>
           {meet ? 'Открыть встречу' : wants(i.partner_wish) || i.partner_marked && wants(i.my_wish) ? 'Идём' : 'Позвать ' + ncase(pn, 'acc')}</button>}
       </>}
-      {i.mine && <button className="b w" data-testid="edit-idea" onClick={() => setEdit(true)}>Изменить</button>}
+      {own && <button className="b w" data-testid="edit-idea" onClick={() => setEdit(true)}>Изменить</button>}
       <Sheet open={edit} onClose={() => setEdit(false)} testid="edit-sheet"><EditIdea idea={i} onDone={() => { setEdit(false); refresh(); emit('ideas') }} /></Sheet>
     </div>)
 }

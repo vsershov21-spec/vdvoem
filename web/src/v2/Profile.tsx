@@ -51,7 +51,7 @@ export function History({ view, home, from }: { view: string; home: HomeV2 | nul
       <div className="v-seg" role="tablist"><button role="tab" aria-selected={tab === 'meets'} className={tab === 'meets' ? 'on' : ''} onClick={() => go('history/meets', true)}>Встречи</button><button role="tab" aria-selected={tab === 'chores'} className={tab === 'chores' ? 'on' : ''} onClick={() => go('history/chores', true)}>Дела</button></div>
       {tab === 'meets' ? (meets.data && (meets.data.meetings.length ? meets.data.meetings.map(r =>
         <button className="in" key={r.id} data-testid="hist-meet" onClick={() => go('meet/' + r.id)}>{r.chosen && <Pic idea={r.chosen} className="th" />}<span><b>{r.chosen?.title || 'Встреча'}</b>
-          <small>{r.starts_at ? whenText(r.starts_at) : ''} · {rate('ты', r.again)} · {rate(pn, r.partner_again)}</small></span>›</button>)
+          <small>{r.starts_at ? whenText(r.starts_at) : ''}</small><small data-testid="hist-rates">{rate('ты', r.again)} · {rate(pn, r.partner_again)}</small></span>›</button>)
         : <Empty title="Встреч ещё не было"><button className="b p w" onClick={() => go('ideas')}>Выбрать, куда сходить</button></Empty>))
         : <>
           <label className="in"><i>⌕</i><span><input value={q} onChange={e => setQ(e.target.value)} placeholder="Найти: «кран», «подарок»" aria-label="Поиск по делам" data-testid="hist-search" /></span></label>
@@ -103,6 +103,7 @@ export function Settings({ section, home, from }: { section?: string; home: Home
           <button className={'tg' + (v[d.key] === '1' ? ' on' : '')} role="switch" aria-checked={v[d.key] === '1'} aria-label={d.label} data-testid={'set-' + d.key} onClick={() => change(d.key, v[d.key] === '1' ? '0' : '1')} /></div>)}</div>}
         {defs.filter(d => d.kind === 'choice').map(d => <div className="blk" key={d.key}><label>{d.label}</label><div className="v-row" style={{ flexWrap: 'wrap' }}>
           {d.values!.map(x => <button key={x} className={'v-chip' + (v[d.key] === x ? ' on' : '')} aria-pressed={v[d.key] === x} data-testid={`set-${d.key}-${x}`} onClick={() => change(d.key, x)}>{word(d.key, x)}</button>)}</div></div>)}
+        {s.id === 'notify' && <p className="m" data-testid="quiet-note">Тихие часы: с 23:00 до 9:00 сообщения бота приходят без звука.</p>}
         {s.id === 'cal' && <p className="m">{v['cal.busy'] === 'manual' ? 'Занятые дни отмечаются в Планах: тап по дню, «Я занят».' : 'Ссылка на календарь подключается в Планах, кнопка «Календарь».'}</p>}
       </div>)
   }

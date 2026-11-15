@@ -19,17 +19,23 @@ export const dueText = (c: { due?: number; due_time: boolean }) => {
   return base + (c.due_time ? ', ' + d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) : '')
 }
 const doneText = (c: Chore) => `${c.done_by} · ${c.done_at ? new Date(c.done_at * 1000).toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}`
-const LABEL = (pn: string): Record<string, string> => ({ done: 'Сделано', pass: 'Передать ' + ncase(pn, 'dat'), nudge: 'Напомнить ' + ncase(pn, 'dat'), take: 'Беру', move: 'Перенести на завтра', reopen: 'Вернуть в работу', withdraw: 'Отозвать просьбу', self: 'Беру сам', any: 'Кто угодно', decline: 'Не могу' })
+const LABEL = (pn: string): Record<string, string> => ({ done: 'Сделано', pass: 'Передать ' + ncase(pn, 'dat'), nudge: 'Напомнить ' + ncase(pn, 'dat'), take: 'Беру', move: 'Перенести срок на завтра', reopen: 'Вернуть в работу', withdraw: 'Отозвать просьбу', self: 'Беру сам', any: 'Кто угодно', decline: 'Не могу' })
 const OK: Record<string, string> = { pass: 'Просьба отправлена', nudge: 'Напоминание ушло в бот', take: 'Дело твоё', move: 'Срок: завтра', reopen: 'Вернул в работу', withdraw: 'Просьба отозвана', self: 'Дело твоё', any: 'Дело общее', decline: 'Дело вернулось автору' }
 
 export async function choreAct(id: number, act: string, after: (r: Res) => void) {
   try {
     const r = await post<Res>(`/chores/${id}/${act}`)
     haptic.ok(); after(r); emit('home')
-    if (act === 'done') say('Сделано', () => choreAct(id, 'reopen', after))
+    if (act === 'done') say(nextText(r, id), () => choreAct(id, 'reopen', after))
     else if (act === 'delete') say('Дело удалено', () => choreAct(id, 'restore', after))
     else if (OK[act]) say(OK[act])
   } catch (e) { say(humanError(e)) }
+}
+
+// a chore with a repeat: the done one goes to «Сделано», the next one is in the list with its new date
+const nextText = (r: Res, id: number) => {
+  const d = r.chores.find(c => c.id === id), n = d && r.chores.find(c => c.id !== id && c.state !== 'done' && c.title === d.title && !!c.repeat && !!c.due)
+  return n?.due ? 'Сделано. Следующее: ' + new Date(n.due * 1000).toLocaleDateString('ru', { day: 'numeric', month: 'long' }) : 'Сделано'
 }
 
 // ---------- the tab: every state of a chore has its place ----------
@@ -45,10 +51,10 @@ export function Chores({ home }: { home: HomeV2 | null }) {
   const all = data?.chores || []
   const sec = (s: string) => all.filter(c => c.section === s && (s === 'ask' || pass(c)))
   const row = (c: Chore) => (
-    <div className={'in' + (c.state === 'done' ? ' done' : '')} key={c.id} data-testid="chore-row">
+    <div className={'in' + (c.state === 'done' ? ' done' : '')} key={c.id} data-testid="chore-row" style={{ cursor: 'pointer' }} onClick={() => go('chore/' + c.id)}>
       <button className={'ck' + (c.state === 'done' ? ' on' : '')} aria-label={c.state === 'done' ? 'Вернуть в работу' : 'Сделано'} disabled={c.state !== 'done' && !c.actions.includes('done')}
-        onClick={() => choreAct(c.id, c.state === 'done' ? 'reopen' : 'done', set)}>{c.state === 'done' ? '✓' : ''}</button>
-      <span style={{ cursor: 'pointer' }} onClick={() => go('chore/' + c.id)}><b>{c.title}</b>
+        onClick={e => { e.stopPropagation(); choreAct(c.id, c.state === 'done' ? 'reopen' : 'done', set) }}>{c.state === 'done' ? '✓' : ''}</button>
+      <span><b>{c.title}</b>
         <small className={c.section === 'overdue' ? 'red' : ''}>{c.state === 'done' ? doneText(c) : `${c.who === 'me' ? 'я' : c.who_name} · ${c.section === 'overdue' ? 'был срок ' : ''}${dueText(c)}${c.repeat ? ' · ' + REPEAT[c.repeat] : ''}`}</small></span>›
     </div>)
   const block = (label: string, s: string, red = false) => { const xs = sec(s); return xs.length > 0 && <div className="blk"><label className={red ? 'red' : ''}>{label}</label>{xs.map(row)}</div> }
@@ -88,12 +94,12 @@ export function ChoreCard({ id, home, from }: { id: number; home: HomeV2 | null;
       {head}<h2>{c.title}</h2>
       {c.state === 'done' ? <div className="v-card"><b>Сделано</b><p className="m">{doneText(c)}. Лежит во вкладке, потом уходит в историю профиля.</p></div>
         : <div className="v-card v-list flds">
-          <div className="fld"><small>Делает</small><span>{c.who === 'me' ? 'я' : c.who_name}{c.state === 'ask' ? ' · ждём ответа' : c.state === 'declined' ? ' · не может' : ''}</span></div>
+          <div className="fld"><small>Делает</small><span>{c.who === 'me' ? 'я' : c.who_name}{c.state === 'ask' ? (c.asked_by === 'me' ? ' · ждём ответа' : ` · ${pn} просит`) : c.state === 'declined' ? ' · не может' : ''}</span></div>
           <div className="fld"><small>Срок</small><span className={c.section === 'overdue' ? 'red' : ''}>{c.section === 'overdue' ? 'был ' : ''}{dueText(c)}</span></div>
           <div className="fld"><small>Повтор</small><span>{REPEAT[c.repeat]}</span></div>
           {c.note && <div className="fld"><small>Заметка</small><span>{c.note}</span></div>}
         </div>}
-      {c.actions.map((a, k) => <button key={a} className={'b w' + (k === 0 ? ' a' : '')} data-testid={'act-' + a} onClick={() => choreAct(c.id, a, after)}>{LABEL(pn)[a]}</button>)}
+      {c.actions.map((a, k) => <button key={a} className={'b w' + (k === 0 ? ' a' : '')} data-testid={'act-' + a} onClick={() => choreAct(c.id, a, after)}>{a === 'take' && c.who === 'partner' ? 'Забрать себе' : LABEL(pn)[a]}</button>)}
       <Sheet open={edit} onClose={() => setEdit(false)} testid="chore-sheet"><ChoreForm partner="" chore={c} onDone={r => { setEdit(false); if (r) after(r) }} /></Sheet>
     </div>)
 }

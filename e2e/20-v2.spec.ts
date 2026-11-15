@@ -696,3 +696,325 @@ test('E66 данные: файл приходит в бот без чужого;
   await say(n, '/start')
   await waitMsg(n, /Пригласи партнёра/, 15000, after)
 })
+
+test('E67 помощник: под ответом «Все N списком», подборка открывается и возвращает в чат', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const space = (await api(v, 'GET', '/me')).space.id
+  const today = new Date((await api(v, 'GET', '/calendar')).today + 'T12:00')
+  const at = (k: number) => { const d = new Date(today.getTime() + k * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T19:00` }
+  const picks = [...Array(8)].map((_, k) => ({ title: `Концерт E67 номер ${k + 1}`, category: 'culture', starts: at(2 + k % 4), price_rub: 1000 + k * 300, why: 'живая музыка', score: 7, url: `https://afisha.example/e67/${space}/${k}`, image: '' }))
+  await fetch(BASE + '/agent/picks', { method: 'POST', body: JSON.stringify({ space, picks }) })
+  const p = await openV2(await phone(browser), v, 'assistant')
+  await p.getByTestId('chat-input').fill('что есть на неделе?')
+  await p.getByTestId('chat-send').click()
+  const all = p.getByTestId('pick-open')
+  await expect(all).toBeVisible({ timeout: 30000 })
+  await expect(all).toContainText(/Все \d+ списком/)
+  const total = Number((await all.innerText()).match(/Все (\d+)/)![1])
+  expect(total).toBeGreaterThan(4)
+  await shot(p, 'E67-chat')
+  await all.click()
+  await expect(p.getByTestId('v2-pick')).toBeVisible()
+  await expect(p.getByTestId('pick-row')).toHaveCount(total)
+  await expect(p.getByRole('button', { name: 'Назад' })).toContainText('Помощник')
+  await expect(p.getByTestId('tab-assistant')).toHaveAttribute('aria-current', 'page')
+  await shot(p, 'E67-pick')
+  await p.getByTestId('pick-row').first().click()
+  await expect(p.getByTestId('v2-idea')).toContainText('Концерт E67')
+  await expect(p.getByRole('button', { name: 'Назад' })).toContainText('Подборка')
+  await p.getByRole('button', { name: 'Назад' }).click()
+  await p.getByRole('button', { name: 'Назад' }).click()
+  await expect(p.getByTestId('v2-assistant')).toBeVisible()
+  await expect(p.getByTestId('pick-open')).toBeVisible()
+})
+
+// a microphone for the test: the browser's recorder is replaced by one that gives a recording at once
+const fakeMic = `(() => {
+  navigator.mediaDevices.getUserMedia = async () => {
+    if (window.__micDeny) throw new DOMException('denied', 'NotAllowedError')
+    return { getTracks: () => [{ stop() { window.__micStopped = (window.__micStopped || 0) + 1 } }] }
+  }
+  window.MediaRecorder = class {
+    constructor() { this.state = 'inactive'; this.mimeType = 'audio/webm' }
+    start() { this.state = 'recording' }
+    stop() { if (this.state !== 'recording') return; this.state = 'inactive'
+      this.ondataavailable && this.ondataavailable({ data: new Blob([new Uint8Array(window.__recBytes || 4000)], { type: 'audio/webm' }) }); this.onstop && this.onstop() }
+  }
+})()`
+
+test('E68 голос в помощнике: кнопки нет без сервера речи; запись, «Распознаю», ответ; отказ в доступе и «не расслышал» простыми словами', async ({ browser }) => {
+  test.setTimeout(150_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  await addIdeas(n, ['Ужин в грузинском ресторане'])
+  // the server of this run has no speech: there is no button that would not work
+  const plain = await openV2(await phone(browser), v, 'assistant')
+  await expect(plain.getByTestId('chat-input')).toBeVisible()
+  if (!(await api(v, 'GET', '/assistant')).voice) await expect(plain.getByTestId('chat-mic')).toHaveCount(0)
+  // the same screen when the server can hear: its answer to the recording is played here by the test
+  const ctx = await phone(browser)
+  await ctx.addInitScript(fakeMic)
+  let voiceAnswer: (file: string) => Promise<{ status: number; body: unknown }> = async () => ({ status: 200, body: { heard: '' } })
+  let release: () => void = () => {}
+  await ctx.route('**/api/assistant', async r => {
+    if (r.request().method() !== 'GET') return r.fallback()
+    const res = await r.fetch()
+    await r.fulfill({ response: res, json: { ...(await res.json()), voice: true } })
+  })
+  await ctx.route('**/api/assistant/voice', async r => {
+    const hold = new Promise<void>(ok => { release = ok })
+    const file = r.request().postData() || ''
+    await hold
+    const a = await voiceAnswer(file)
+    await r.fulfill({ status: a.status, json: a.body })
+  })
+  const p = await openV2(ctx, v, 'assistant')
+  const mic = p.getByTestId('chat-mic')
+  await expect(mic).toHaveAttribute('aria-label', 'Сказать голосом')
+  const box = (await mic.boundingBox())!
+  expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44)
+  // no access: said in plain words, the field stays
+  await p.evaluate(() => { (window as any).__micDeny = true })
+  await mic.click()
+  await expect(p.getByTestId('voice-err')).toContainText('Нет доступа к микрофону')
+  await expect(p.getByTestId('chat-input')).toBeVisible()
+  await shot(p, 'E68-denied')
+  // recording: the field shows it, the same button stops it
+  await p.evaluate(() => { (window as any).__micDeny = false })
+  await mic.click()
+  await expect(p.getByTestId('voice-err')).toHaveCount(0)
+  await expect(p.getByTestId('voice-state')).toContainText('Слушаю')
+  await expect(mic).toHaveAttribute('aria-label', 'Остановить запись')
+  await expect(p.getByTestId('chat-send')).toHaveCount(0)
+  await shot(p, 'E68-rec')
+  // stopped: «Распознаю…» until the server answers, the buttons wait
+  let sent = ''
+  voiceAnswer = async file => { sent = file; const r = await api(v, 'POST', '/assistant', { text: 'куда поужинать?' }); return { status: 200, body: { heard: 'куда поужинать?', reply: r.reply } } }
+  await mic.click()
+  await expect(p.getByTestId('voice-state')).toHaveText('Распознаю…')
+  await expect(mic).toBeDisabled()
+  await shot(p, 'E68-wait')
+  release()
+  await expect(p.locator('.v-msg.me').last()).toHaveText('куда поужинать?', { timeout: 30000 })
+  await expect(p.getByTestId('chat-reply').last()).toBeVisible()
+  await expect(p.getByTestId('voice-state')).toHaveCount(0)
+  await expect(p.getByTestId('chat-input')).toBeVisible()
+  expect(sent).toContain('name="audio"; filename="rec.webm"') // the same upload the old screen makes
+  expect(await p.evaluate(() => (window as any).__micStopped)).toBeGreaterThan(0) // the microphone is let go
+  // nothing heard
+  voiceAnswer = async () => ({ status: 200, body: { heard: '' } })
+  await mic.click(); await mic.click(); release()
+  await expect(p.getByTestId('voice-err')).toContainText('Не расслышал. Повтори или напиши текстом.')
+  // the speech server failed
+  voiceAnswer = async () => ({ status: 502, body: { error: 'voice_failed' } })
+  await mic.click(); await expect(p.getByTestId('voice-err')).toHaveCount(0)
+  await mic.click(); release()
+  await expect(p.getByTestId('voice-err')).toContainText('Не получилось разобрать голос. Напиши текстом.')
+  // a tap instead of speech is not sent at all
+  await p.evaluate(() => { (window as any).__recBytes = 100 })
+  await mic.click(); await mic.click()
+  await expect(p.getByTestId('voice-err')).toContainText('Ничего не записалось')
+  await expect(mic).toBeEnabled()
+})
+
+// a tap zone: the place where a finger lands counts for the control at least 21 px from its centre every way
+const tapZone = (p: Page, sel: string) => p.locator(sel).first().evaluate(e => {
+  const r = e.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2
+  const hit = (x: number, y: number) => { const t = document.elementFromPoint(x, y); return !!t && (t === e || e.contains(t)) }
+  return hit(cx, cy) && hit(cx - 21, cy) && hit(cx + 21, cy) && hit(cx, cy - 21) && hit(cx, cy + 21)
+})
+
+test('E69 проход по экранам: лист поверх панели и на прокрученном экране, главная не шире телефона, зоны нажатия от 44 px, помощник над панелью', async ({ browser }) => {
+  test.setTimeout(150_000)
+  const [v, n] = people('Вова', 'Анастасия')
+  await pair(v, n)
+  const [id] = await addIdeas(n, ['Планетарий на Баррикадной: ночная программа «Звёздное небо» для двоих'])
+  await api(n, 'POST', `/ideas/${id}/wish`, { wish: 'want' })
+  await api(v, 'POST', `/ideas/${id}/wish`, { wish: 'want' })
+  await addIdeas(n, ['Каток в Парке Горького'])
+  const f = await api(v, 'GET', '/free')
+  const { round } = await api(v, 'POST', '/rounds/with/' + id, { day: f.days[1].day, part: 1 })
+  const offer = (await api(n, 'GET', '/inbox')).rows.find((r: any) => r.kind === 'time')
+  await api(n, 'POST', `/proposals/${offer.id}/answer`, { yes: true })
+  await api(n, 'POST', '/chores', { title: 'Забрать торт', who: 'partner' })
+  const p = await openV2(await phone(browser), v)
+  // the home screen: a long name of the meeting is cut in its tile, nothing goes off the side
+  await expect(p.getByTestId('tile-meet')).toContainText('Планетарий')
+  const home = await p.getByTestId('v2-home').evaluate(e => ({ sw: e.scrollWidth, cw: e.clientWidth, over: e.scrollHeight - e.clientHeight }))
+  expect(home.sw).toBeLessThanOrEqual(home.cw)
+  expect(home.over).toBeLessThanOrEqual(0)
+  const vw = p.viewportSize()!.width
+  const tile = (await p.getByTestId('tile-chores').boundingBox())!
+  expect(tile.x + tile.width).toBeLessThanOrEqual(vw)
+  // small controls keep their look and still take a finger
+  for (const sel of ['[aria-label="Добавить идею или дело"]', '[aria-label="Профиль"]', '.dtabs [role=tab]', '.dtabs .back', '[data-testid=inbox-row] .qb button', '[data-testid=tab-assistant]', '[data-testid=tab-plans]'])
+    expect(await tapZone(p, sel), 'зона нажатия ' + sel).toBe(true)
+  // the meeting card scrolled to its end: the sheet covers the bottom panel and its last button is in sight
+  await p.getByTestId('tile-meet').click()
+  await expect(p.getByTestId('meet-status')).toHaveText('в планах')
+  expect(await tapZone(p, '.subh .back')).toBe(true)
+  await p.getByTestId('v2-meet').evaluate(e => { e.scrollTop = e.scrollHeight })
+  await p.getByTestId('cancel-meet').click()
+  const sheet = p.getByTestId('cancel-sheet')
+  await expect(sheet).toBeVisible()
+  await p.waitForTimeout(700) // the sheet slides in
+  const st = await sheet.evaluate(e => {
+    const r = e.getBoundingClientRect(), nav = document.querySelector('.v2 .nav')!.getBoundingClientRect()
+    const last = [...e.querySelectorAll('button')].pop()!, b = last.getBoundingClientRect()
+    const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
+    const onNav = document.elementFromPoint(nav.left + nav.width / 2, nav.top + nav.height / 2)
+    return { bottom: r.bottom, top: r.top, vh: innerHeight, lastSeen: top === last, lastText: last.innerText, navCovered: !!onNav?.closest('.v-scrim'), masked: getComputedStyle(e.parentElement!.parentElement!).maskImage }
+  })
+  expect(st.lastText).toBe('Оставить')
+  expect(st.lastSeen).toBe(true)
+  expect(st.navCovered).toBe(true)
+  expect(st.top).toBeGreaterThanOrEqual(0)
+  expect(Math.round(st.bottom)).toBe(st.vh)
+  expect(st.masked).toBe('none') // the fade at the bottom of a screen does not eat the sheet
+  await shot(p, 'E69-sheet')
+  await sheet.getByRole('button', { name: 'Оставить' }).click()
+  await expect(sheet).toHaveCount(0)
+  // the time grid: every slot takes a finger
+  await p.getByRole('button', { name: 'Перенести' }).click()
+  const slot = (await p.getByTestId('time-sheet').locator('.slot').first().boundingBox())!
+  expect(slot.height).toBeGreaterThanOrEqual(44)
+  await p.keyboard.press('Escape')
+  // the assistant: the field stays above the bottom panel, the answer ends above the field
+  await p.getByTestId('tab-assistant').click()
+  await p.getByTestId('chat-input').fill('что у нас запланировано?')
+  await p.getByTestId('chat-send').click()
+  await expect(p.getByTestId('chat-reply').last()).toBeVisible({ timeout: 30000 })
+  await p.getByTestId('chat-input').fill('куда сходить на выходных?')
+  await p.getByTestId('chat-send').click()
+  await expect(p.getByTestId('chat-reply')).toHaveCount(2, { timeout: 30000 })
+  await p.waitForTimeout(300)
+  const chat = await p.evaluate(() => {
+    const c = document.querySelector('.v2 .v-composer')!.getBoundingClientRect(), nav = document.querySelector('.v2 .nav')!.getBoundingClientRect()
+    const g = document.querySelector('.v2 .nav .ai .g')!.getBoundingClientRect(), log = document.querySelector('[data-testid=chat-log]')!
+    return { composerBottom: c.bottom, navTop: Math.min(nav.top, g.top), atEnd: log.scrollHeight - log.scrollTop - log.clientHeight, logBottom: log.getBoundingClientRect().bottom, composerTop: c.top }
+  })
+  expect(chat.composerBottom).toBeLessThanOrEqual(chat.navTop)
+  expect(chat.logBottom).toBeLessThanOrEqual(chat.composerTop)
+  expect(chat.atEnd).toBeLessThan(2)
+  const send = (await p.getByTestId('chat-send').boundingBox())!
+  expect(Math.min(send.width, send.height)).toBeGreaterThanOrEqual(44)
+  await shot(p, 'E69-chat')
+})
+
+test('E70 проход по сценариям: чужое дело «Забрать себе», повтор называет следующую дату, просрочено красным, афишу не правят, история не теряет «назад», без пары в планах зовут партнёра', async ({ browser }) => {
+  test.setTimeout(150_000)
+  const [v, n] = people('Вова', 'Анастасия')
+  await pair(v, n)
+  const now = Math.floor(Date.now() / 1000), d0 = Math.floor(new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' })).setHours(0, 0, 0, 0) / 1000)
+  await api(v, 'POST', '/chores', { title: 'Оплатить интернет', who: 'me', due: now - 2 * 86400, has_due: true })
+  await api(v, 'POST', '/chores', { title: 'Купить корм', who: 'me', due: now + 3600, has_due: true, repeat: 'month' })
+  await api(n, 'POST', '/chores', { title: 'Полить цветы', who: 'me' })
+  void d0
+  const p = await openV2(await phone(browser), v, 'chores')
+  // «Просрочено» is red in the light theme too
+  const over = p.locator('.blk > label', { hasText: 'Просрочено' })
+  await expect(over).toBeVisible()
+  const red = (c: string) => { const m = c.match(/\d+/g)!.map(Number); return m[0] > 150 && m[1] < 90 && m[2] < 90 }
+  expect(red(await over.evaluate(e => getComputedStyle(e).color))).toBe(true)
+  expect(red(await p.getByTestId('chore-row').filter({ hasText: 'Оплатить' }).locator('small').evaluate(e => getComputedStyle(e).color))).toBe(true)
+  // the tick takes a finger; the whole row opens the card
+  expect(await tapZone(p, '[data-testid=chore-row] .ck')).toBe(true)
+  // a repeat: the line says when the next one is
+  await p.getByTestId('chore-row').filter({ hasText: 'Купить корм' }).locator('.ck').click()
+  await expect(p.getByTestId('toast')).toContainText(/Сделано\. Следующее: \d+ [а-я]+/)
+  await expect(p.getByTestId('v2-chores')).toBeVisible() // the tick did not open the card
+  // the partner's chore: «Напомнить» and «Забрать себе», the name in the right case
+  await p.getByTestId('chore-row').filter({ hasText: 'Полить цветы' }).click({ position: { x: 300, y: 6 } }) // the edge of the row, not the text
+  await expect(p.getByTestId('v2-chore')).toContainText('Полить цветы')
+  await expect(p.getByTestId('act-nudge')).toHaveText('Напомнить Анастасии')
+  await expect(p.getByTestId('act-take')).toHaveText('Забрать себе')
+  await p.getByTestId('act-take').click()
+  await expect(p.getByTestId('toast')).toContainText('Дело твоё')
+  expect((await api(v, 'GET', '/chores')).chores.find((c: any) => c.title === 'Полить цветы').who).toBe('me')
+  // an event of the afisha has no author among the two: no «Изменить», no empty fields to fill
+  const space = (await api(v, 'GET', '/me')).space.id
+  const today = new Date((await api(v, 'GET', '/calendar')).today + 'T12:00'), d = new Date(today.getTime() + 2 * 86400_000)
+  const starts = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T19:00`
+  await fetch(BASE + '/agent/picks', { method: 'POST', body: JSON.stringify({ space, picks: [{ title: 'Органный концерт E70', category: 'culture', starts, price_rub: 3000, why: 'под ваши вкусы', score: 7, url: `https://afisha.example/e70/${space}/1`, image: '', address: 'Малая Грузинская, 27' }] }) })
+  await p.getByTestId('tab-ideas').click()
+  await p.getByRole('tab', { name: 'Афиша' }).click()
+  await p.getByTestId('afisha-row').filter({ hasText: 'Органный концерт E70' }).click()
+  await expect(p.getByTestId('fields')).toContainText('Малая Грузинская')
+  await expect(p.getByTestId('edit-idea')).toHaveCount(0)
+  await expect(p.getByTestId('fields')).not.toContainText('не заполнено')
+  // the two views of the history are one step: «назад» still leads to the profile
+  await p.getByTestId('tab-home').click()
+  await p.getByLabel('Профиль').click()
+  await p.getByTestId('hist-chores').click()
+  await p.getByRole('tab', { name: 'Встречи' }).click()
+  await expect(p.getByTestId('v2-history')).toContainText('Встреч ещё не было')
+  await expect(p.getByRole('button', { name: 'Назад' })).toContainText('Профиль')
+  await p.getByRole('button', { name: 'Назад' }).click()
+  await expect(p.getByTestId('v2-us')).toBeVisible()
+  // what quiet hours mean is said where they are switched
+  await p.getByTestId('to-settings').click()
+  await p.getByTestId('sec-notify').click()
+  await expect(p.getByTestId('quiet-note')).toContainText('с 23:00 до 9:00')
+  expect(await tapZone(p, '[data-testid="set-notify.quiet"]')).toBe(true)
+  // alone: the plans do not offer «совпавшее» and common time, they lead to the invitation
+  const [x] = people('Игорь', '-')
+  const px = await openV2(await phone(browser), x, 'plans')
+  await expect(px.getByTestId('v2-plans')).toContainText('Встречи появятся с партнёром')
+  await expect(px.getByTestId('to-free')).toHaveCount(0)
+  await px.getByRole('button', { name: 'Пригласить партнёра' }).click()
+  await expect(px.getByTestId('invite')).toBeVisible()
+})
+
+test('E71 после встречи: «Как прошло?» ждёт на главной у каждого; второй отвечает и после ответа первого; в истории видны обе оценки; новичку не пишут «Ждём партнёра»', async ({ browser }) => {
+  test.setTimeout(150_000)
+  const [v, n] = people('Вова', 'Анастасия')
+  await pair(v, n)
+  for (const u of [v, n]) await api(u, 'POST', '/ui', { v: 2 })
+  const [id] = await addIdeas(v, ['Каток в Парке Горького'])
+  const f = await api(v, 'GET', '/free')
+  const { round } = await api(v, 'POST', '/rounds/with/' + id, { day: f.days[1].day, part: 1 })
+  const offer = (await api(n, 'GET', '/inbox')).rows[0]
+  await api(n, 'POST', `/proposals/${offer.id}/answer`, { yes: true })
+  const planned = (await api(v, 'GET', `/rounds/${round.id}`)).round
+  const later = new Date(await advance({ to: planned.ends_at + 4 * 3600 }))
+  // the phones live in the same time as the server
+  const cv = await phone(browser), cn = await phone(browser)
+  await cv.clock.setFixedTime(later); await cn.clock.setFixedTime(later)
+  const p = await openV2(cv, v)
+  const row = p.getByTestId('after-row')
+  await expect(row).toContainText('Как прошло: Каток в Парке Горького?')
+  const fit = await p.getByTestId('v2-home').evaluate(e => e.scrollHeight - e.clientHeight)
+  expect(fit).toBeLessThanOrEqual(0)
+  await shot(p, 'E71-home')
+  await row.getByRole('button', { name: 'Понравилось' }).click()
+  await expect(p.getByTestId('toast')).toContainText('Записал в историю')
+  await expect(p.getByTestId('after-row')).toHaveCount(0)
+  // his answer made the meeting «прошла»; she is still asked, on the home screen and in the card
+  expect((await api(n, 'GET', `/rounds/${round.id}`)).round.state).toBe('done')
+  const q = await openV2(cn, n)
+  await expect(q.getByTestId('after-row')).toContainText('Как прошло: Каток в Парке Горького?')
+  await q.getByTestId('after-row').locator('.qt').click()
+  await expect(q.getByTestId('meet-status')).toHaveText('прошла')
+  await expect(q.getByTestId('after')).toContainText('Как тебе?')
+  await q.getByTestId('after').getByRole('button', { name: 'Не очень' }).click()
+  await expect(q.getByTestId('after')).toContainText('Твой ответ: не очень')
+  await expect(q.getByTestId('after')).toContainText('Вова: понравилось')
+  // the history shows both marks whole, not cut by the edge
+  await reopen(q, n, 'history/meets')
+  const rates = q.getByTestId('hist-rates').first()
+  await expect(rates).toHaveText('ты: не очень · Вова: понравилось')
+  expect(await rates.evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true)
+  await shot(q, 'E71-history')
+  // someone who has just come has sent nothing yet: the card calls to invite, and says «Ждём» only after it
+  const [x] = people('Игорь', '-')
+  const cx = await phone(browser)
+  const px = await openV2(cx, x)
+  px.on('popup', pp => { pp.close().catch(() => {}) })
+  await expect(px.getByTestId('v2-solo')).toContainText('Позови партнёра')
+  await expect(px.getByTestId('invite')).toHaveText('Пригласить')
+  await px.getByTestId('invite').click()
+  await expect(px.getByTestId('v2-solo')).toContainText('Ждём партнёра')
+  await expect(px.getByTestId('invite')).toHaveText('Отправить ещё раз')
+})

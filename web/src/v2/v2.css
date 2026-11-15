@@ -287,8 +287,38 @@
 /* sheets hold forms and grids: dense enough that the screen behind does not read through */
 .v2{--sheet:rgba(246,245,248,.93)}.v2.dark{--sheet:rgba(24,24,30,.92)}
 .v2 .grid4{grid-template-columns:66px repeat(3,1fr)}.v2 .grid4>span{font-size:12.5px;white-space:nowrap}
-.v2 .composer{position:sticky;bottom:0;margin-top:auto;display:flex;gap:8px;align-items:center;padding:8px 8px 8px 14px;border-radius:18px;background:var(--a-card);box-shadow:inset 0 0 0 1px var(--g-edge),0 6px 20px rgba(20,20,40,.12);flex:none}
-.v2 .composer input{flex:1;min-width:0}.v2 .composer .b{width:40px;height:40px;padding:0;border-radius:50%;font-size:17px}
+.v2 .v-composer{position:sticky;bottom:0;margin-top:auto;display:flex;gap:8px;align-items:center;padding:6px 6px 6px 14px;border-radius:22px;background:var(--a-card);box-shadow:inset 0 0 0 1px var(--g-edge),0 6px 20px rgba(20,20,40,.12);flex:none;min-height:56px}
+.v2 .v-composer input{flex:1;min-width:0;height:44px}.v2 .v-composer .b{width:44px;height:44px;padding:0;border-radius:50%;font-size:17px;flex:none;display:grid;place-items:center}
+.v2 .v-mic svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.v2 .v-composer .b.v-mic.on{background:#d43a2f;color:#fff;box-shadow:none;font-size:14px}
+.v2 .v-rec{flex:1;min-width:0;display:flex;align-items:center;gap:9px;font-weight:650;color:var(--a-mute)}
+.v2 .v-rec i{width:10px;height:10px;border-radius:50%;background:#d43a2f;flex:none}
+@media (prefers-reduced-motion:no-preference){.v2 .v-rec i{animation:v2blink 1.1s ease-in-out infinite}@keyframes v2blink{50%{opacity:.25}}}
 /* the invitation: who calls, on the gradient of the pair */
 .v2 .inv-top{min-height:170px;border-radius:24px;padding:18px;display:flex;align-items:flex-end;flex:none;color:#fff;font-weight:700;font-size:22px;line-height:1.15;letter-spacing:-.01em;background:linear-gradient(150deg,#ef6537,#31408f)}
 .v2 .b:disabled{opacity:.45}
+.v2 .scr.v-chat{overflow:hidden;gap:10px}
+.v2 .v-log{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;margin:0 -16px;padding:4px 16px 12px;scrollbar-width:none}
+.v2 .v-log::-webkit-scrollbar{display:none}
+.v2 .v-composer{position:static;margin-top:0}
+.v2 .v-chat .red{flex:none}
+/* ---------- the pass over the scenarios: what the walk through the real app found ---------- */
+/* the home tiles: a long meeting name is cut, it does not push the chores tile off the screen */
+.v2 .tiles{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.v2 .tiles.three{grid-template-columns:repeat(3,minmax(0,1fr))}.v2 .tiles .in{min-width:0}
+/* a name over a drawn scene or a photo reads on any picture */
+.v2 .pic{text-shadow:0 1px 6px rgba(0,0,0,.35)}
+.v2 .pic::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(0deg,rgba(0,0,0,.55),rgba(0,0,0,.16) 55%,transparent 82%)}
+/* red is red in both themes, on labels and small lines too */
+.v2 .blk>label.red,.v2 .in small.red,.v2 .srow.red b,.v2 button.red{color:#c8281d}
+.v2.dark .blk>label.red,.v2.dark .in small.red,.v2.dark .srow.red b,.v2.dark button.red{color:#ff8b7e}
+/* a field inside a block keeps the look of a field */
+.v2 .blk>label.fld{text-transform:none;letter-spacing:0;font-weight:inherit;font-size:inherit;color:inherit}
+/* tap zones: 44 px at least. Small buttons keep their look, the zone around them grows */
+.v2 .b.s,.v2 .v-chip,.v2 .back,.v2 .gb,.v2 .ck,.v2 .tg,.v2 .dtabs button,.v2 .v-seg button,.v2 .v-toast button,.v2 .q .qt{position:relative}
+.v2 .b.s::after,.v2 .v-chip::after,.v2 .back::after,.v2 .gb::after,.v2 .ck::after,.v2 .tg::before,.v2 .dtabs button::after,.v2 .v-seg button::after,.v2 .v-toast button::after,.v2 .q .qt::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,48px);height:max(100%,48px);transform:translate(-50%,-50%)}
+.v2 .v-chips{padding:5px 0;margin:-5px 0}
+.v2 .slot{height:44px}.v2 .cal button{min-height:44px}
+.v2 .nav button.ai{padding:0 0 5px}
+.v2 .dtabs{position:relative;z-index:3}
+.v2 .v-row,.v2 .v-chips{row-gap:13px}
+.v2 .q .qt{min-height:44px}

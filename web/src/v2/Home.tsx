@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { useLoad, emit } from '../lib/data'
+import { useLoad, useOn, emit } from '../lib/data'
 import { post, humanError } from '../lib/api'
 import { go } from '../lib/router'
 import { haptic, shareLink } from '../lib/tg'
 import { CATS, money, when as whenText, past } from '../lib/format'
-import type { Idea } from '../lib/types'
+import type { Idea, Round } from '../lib/types'
 import type { HomeV2, InboxRow } from './types'
 import { Sheet, Pic, Empty, say } from './ui'
 import { particles, still } from './particles'
@@ -14,12 +14,17 @@ import { particles, still } from './particles'
 export function Home({ home, onAddIdea }: { home: HomeV2 | null; onAddIdea: () => void }) {
   const [all, setAll] = useState(false)
   const [plus, setPlus] = useState(false)
+  // «как прошло»: a meeting that has passed and that I have not answered about waits here too, not only in the bot
+  const hist = useLoad<{ meetings: Round[] }>(home?.paired ? '/history' : null, 60000)
+  useOn('home', hist.refresh)
   if (!home) return <div className="scr fix" />
   if (!home.paired) return <Solo home={home} onAddIdea={onAddIdea} />
   const box = (home.inbox || []).filter(r => r.role !== 'waiting')
   const m = home.next || home.round
   const ch = home.chore_summary
-  const d = new Date()
+  const d = new Date(), t = d.getTime() / 1000
+  const asked = (hist.data?.meetings || []).filter(r => !r.again && (r.state === 'planned' || r.state === 'done') && !!r.starts_at && r.starts_at < t && r.starts_at > t - 14 * 86400)
+  const total = box.length + asked.length
   return (
     <div className="scr fix" data-testid="v2-home">
       <div className="v-row">
@@ -28,18 +33,18 @@ export function Home({ home, onAddIdea }: { home: HomeV2 | null; onAddIdea: () =
         <button className="b s" aria-label="Добавить идею или дело" onClick={() => setPlus(true)}>＋</button>
         <button className="b s" aria-label="Профиль" onClick={() => go('us')}>{home.me.name[0]}{home.partner?.name[0]}</button>
       </div>
-      {box.length > 0 && <>
-        <div className="lbl">Ждёт тебя · {box.length}{box.length > 1 && <button className="back" onClick={() => setAll(true)}>все {box.length}</button>}</div>
-        <InboxLine row={box[0]} />
+      {total > 0 && <>
+        <div className="lbl">Ждёт тебя · {total}{total > 1 && <button className="back" onClick={() => setAll(true)}>все {total}</button>}</div>
+        {box[0] ? <InboxLine row={box[0]} /> : <AfterLine r={asked[0]} />}
       </>}
       <Deck partner={home.partner?.name || 'партнёр'} onAddIdea={onAddIdea} />
       <div className="tiles">
         {m ? <button className="in" data-testid="tile-meet" onClick={() => go('meet/' + m.id)}><span><b>{m.chosen?.title || 'Встреча'}</b><small>{m.state === 'planned' && m.starts_at ? whenText(m.starts_at) : 'выбираем время'}</small></span></button>
           : <button className="in" data-testid="tile-meet" onClick={() => go('plans')}><span><b>Встреч нет</b><small>найти общее время</small></span></button>}
         <button className="in" data-testid="tile-chores" onClick={() => go('chores')}><span><b>Дела{ch && ch.today + ch.overdue > 0 ? ' · ' + (ch.today + ch.overdue) : ''}</b>
-          <small>{!ch || ch.today + ch.overdue === 0 ? 'на сегодня ничего' : <>{ch.today} на сегодня{ch.overdue > 0 && <>, <em className="red" style={{ fontStyle: 'normal' }}>{ch.overdue} просрочено</em></>}</>}</small></span></button>
+          <small>{!ch || ch.today + ch.overdue === 0 ? 'на сегодня ничего' : <>{ch.today > 0 && <>{ch.today} на сегодня</>}{ch.today > 0 && ch.overdue > 0 && ', '}{ch.overdue > 0 && <em className="red" style={{ fontStyle: 'normal' }}>{ch.overdue} просрочено</em>}</>}</small></span></button>
       </div>
-      <Sheet open={all} onClose={() => setAll(false)} testid="inbox-sheet"><h3>Ждёт тебя</h3>{box.map(r => <InboxLine key={r.id} row={r} />)}</Sheet>
+      <Sheet open={all} onClose={() => setAll(false)} testid="inbox-sheet"><h3>Ждёт тебя</h3>{box.map(r => <InboxLine key={r.id} row={r} />)}{asked.map(r => <AfterLine key={'a' + r.id} r={r} />)}</Sheet>
       <Sheet open={plus} onClose={() => setPlus(false)} testid="plus-sheet">
         <h3>Что добавить?</h3>
         <button className="in" onClick={() => { setPlus(false); onAddIdea() }}><i>♡</i><span><b>Идею</b><small>куда сходить: ссылка или название</small></span>›</button>
@@ -75,6 +80,20 @@ export function InboxLine({ row }: { row: InboxRow }) {
       <button className="qt" onClick={() => go(where)}><i>{ICONS[row.kind]}</i><span><b>{row.title}</b><small>{row.sub}</small></span></button>
       {row.actions.length > 0 && <div className="qb">{row.actions.map((a, k) =>
         <button key={a} className={'b s' + (k === 0 ? ' a' : '')} disabled={busy} onClick={() => act(a)}>{LABEL[row.kind]?.[a] || COMMON[a] || a}</button>)}</div>}
+    </div>)
+}
+
+function AfterLine({ r }: { r: Round }) {
+  const [busy, setBusy] = useState(false)
+  const rate = async (k: 'like' | 'soso' | 'skip') => {
+    setBusy(true)
+    try { await post(`/rounds/${r.id}/rate`, { answer: k }); haptic.ok(); say('Записал в историю'); emit('home') }
+    catch (e) { say(humanError(e)) } finally { setBusy(false) }
+  }
+  return (
+    <div className="q hot" data-testid="after-row">
+      <button className="qt" onClick={() => go('meet/' + r.id)}><i>★</i><span><b>Как прошло: {r.chosen?.title || 'встреча'}?</b><small>{r.starts_at ? whenText(r.starts_at) : ''}</small></span></button>
+      <div className="qb"><button className="b s a" disabled={busy} onClick={() => rate('like')}>Понравилось</button><button className="b s" disabled={busy} onClick={() => rate('soso')}>Не очень</button><button className="b s" disabled={busy} onClick={() => rate('skip')}>Не ходили</button></div>
     </div>)
 }
 
@@ -215,11 +234,14 @@ function burst(card: HTMLElement) {
 // ---------- before there is a partner ----------
 function Solo({ home, onAddIdea }: { home: HomeV2; onAddIdea: () => void }) {
   const [busy, setBusy] = useState(false)
-  const invited = !!home.invite_until
+  // a link exists from the first day; «Ждём партнёра» is true only after it was sent from here
+  const [sent, setSent] = useState(() => { try { return localStorage.getItem('vd2-invited') === '1' } catch { return false } })
+  useEffect(() => { if (!home.invite_until && sent) { setSent(false); try { localStorage.removeItem('vd2-invited') } catch { /* private mode */ } } }, [home.invite_until, sent])
+  const invited = sent && !!home.invite_until
   const text = `${home.me.name} зовёт тебя во «Вдвоём»: вместе выбирать, куда сходить, и делить дела`
   const invite = async () => {
     setBusy(true)
-    try { const { link } = await post<{ link: string }>('/invite'); shareLink(link, text); say('Ссылка готова: отправь её партнёру'); emit('home') }
+    try { const { link } = await post<{ link: string }>('/invite'); shareLink(link, text); say('Ссылка готова: отправь её партнёру'); setSent(true); try { localStorage.setItem('vd2-invited', '1') } catch { /* private mode */ } emit('home') }
     catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
   return (
@@ -229,7 +251,7 @@ function Solo({ home, onAddIdea }: { home: HomeV2; onAddIdea: () => void }) {
       {(home.inbox || []).filter(r => r.role !== 'waiting').map(r => <InboxLine key={r.id} row={r} />)}
       <div className="v-card" style={{ background: 'linear-gradient(150deg,#ef6537,#31408f)', color: '#fff', gap: 10, padding: 16 }}>
         <h2 style={{ color: '#fff' }}>{invited ? 'Ждём партнёра' : 'Позови партнёра'}</h2>
-        <p style={{ fontSize: 13.5 }}>{invited ? 'Ссылка живёт 3 дня и сработает один раз.' : 'Вдвоём приложение сводит ваши «хочу», помогает договориться о времени и делит дела.'}</p>
+        <p style={{ fontSize: 13.5 }}>{invited ? 'Ссылка живёт 3 дня и сработает один раз.' : 'Вдвоём приложение сводит ваши «хочу», помогает договориться о времени и делит дела. Ссылка живёт 3 дня и сработает один раз.'}</p>
         <div style={{ background: 'rgba(255,255,255,.16)', borderRadius: 12, padding: '9px 10px', fontSize: 13 }}>Партнёр получит: «{text}»</div>
         <div className="v-row"><button className="b" style={{ background: '#fff', color: '#141414', boxShadow: 'none' }} disabled={busy} data-testid="invite" onClick={invite}>{invited ? 'Отправить ещё раз' : 'Пригласить'}</button></div>
       </div>

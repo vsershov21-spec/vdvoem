@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { go } from '../lib/router'
 import { haptic } from '../lib/tg'
 import { sceneFor } from './art'
@@ -51,6 +52,8 @@ export function Toast() {
 }
 
 // ---------- sheet: glass, from the bottom; a tap on the dimmed area closes it ----------
+// It is drawn in the root of the shell, not inside the screen: a scrolled screen would carry it away, the fade
+// at the bottom of a screen would eat its last button, and the bottom panel would lie on top of it.
 export function Sheet({ open, onClose, children, testid }: { open: boolean; onClose: () => void; children: ReactNode; testid?: string }) {
   useEffect(() => {
     if (!open) return
@@ -59,10 +62,12 @@ export function Sheet({ open, onClose, children, testid }: { open: boolean; onCl
     return () => window.removeEventListener('keydown', f)
   }, [open, onClose])
   if (!open) return null
-  return (
+  const el = (
     <div className="v-scrim" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="v-sheet" role="dialog" aria-modal="true" data-testid={testid}>{children}</div>
     </div>)
+  const root = document.querySelector('.v2')
+  return root ? createPortal(el, root) : el
 }
 
 // ---------- a picture: the idea's photo, or a drawn scene over a tone until there is one ----------

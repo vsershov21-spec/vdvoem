@@ -49,8 +49,10 @@ export function Plans({ home }: { home: HomeV2 | null }) {
       <div className="lbl">Встречи</div>
       {open && <button className="in" data-testid="plan-open" onClick={() => go('meet/' + open.id)}>{open.chosen && <Pic idea={open.chosen} className="th" />}<span><b>{open.chosen?.title || 'Встреча'}</b><small>без времени: предложи или ответь</small></span>›</button>}
       {ahead.map(e => <button className="in" key={e.round_id} data-testid="plan-row" onClick={() => go('meet/' + e.round_id)}><Pic idea={{ title: e.title, category: e.category }} className="th" /><span><b>{e.title}</b><small>{new Date(e.date + 'T12:00').toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'short' })}{e.time ? ', ' + e.time : ''}</small></span>›</button>)}
-      {!open && !ahead.length && <Empty title="Встреч пока нет"><button className="b p w" onClick={() => go('ideas')}>Выбрать из совпавшего</button></Empty>}
-      <button className="b w" data-testid="to-free" onClick={() => go('free')}>Найти общее время</button>
+      {!open && !ahead.length && (home && !home.paired
+        ? <Empty title="Встречи появятся с партнёром"><button className="b p w" onClick={() => go('')}>Пригласить партнёра</button></Empty>
+        : <Empty title="Встреч пока нет"><button className="b p w" onClick={() => go('ideas')}>Выбрать из совпавшего</button></Empty>)}
+      {(!home || home.paired) && <button className="b w" data-testid="to-free" onClick={() => go('free')}>Найти общее время</button>}
       <Sheet open={sheet} onClose={() => setSheet(false)} testid="cal-sheet">
         <h3>Календарь телефона</h3>
         <div className="v-card"><div className="v-row"><b>Встречи → в телефон</b><span className="sp" /><span className={'v-chip' + (feed.data?.subscribed ? ' on' : '')}>{feed.data?.subscribed ? 'работает' : 'не подключено'}</span></div>
