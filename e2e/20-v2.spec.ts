@@ -170,6 +170,10 @@ test('E54 афиша: список, фильтр и дни; у события п
   await p.getByRole('button', { name: 'Списком' }).click()
   await p.getByTestId('afisha-row').filter({ hasText: 'Органный' }).click()
   await expect(p.getByTestId('fields').locator('.by').first()).toHaveText('скаут')
+  // the link of the event is a field of its own: the site by name, tapped to open
+  await expect(p.getByTestId('idea-link')).toContainText('afisha.example')
+  await expect(p.getByTestId('idea-link')).toContainText('Открыть')
+  await expect(p.getByTestId('fields')).not.toContainText('https://')
   await expect(p.getByTestId('go-meet')).toContainText('Позвать Настю')
   await shot(p, 'E54-event')
 })
@@ -1155,6 +1159,9 @@ test('E73 билеты на главной: после «Да» оба видя�
   }
   const fit = await p.getByTestId('v2-home').evaluate(e => e.scrollHeight - e.clientHeight)
   expect(fit).toBeLessThanOrEqual(0)
+  // one answer stays on the line of the row: the button is beside the text, not under it
+  const line = await p.getByTestId('tickets-row').evaluate(e => { const t = e.querySelector('.qt')!.getBoundingClientRect(), b = e.querySelector('.qb button')!.getBoundingClientRect(); return b.top < t.bottom && b.left >= t.right - 1 })
+  expect(line).toBe(true)
   await shot(p, 'E73-who-buys')
   await p.getByTestId('tickets-row').getByRole('button', { name: 'Куплю я' }).click()
   await expect(p.getByTestId('tickets-row')).toContainText('Купить билеты: Концерт в Зарядье')

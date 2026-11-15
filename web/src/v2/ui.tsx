@@ -79,6 +79,6 @@ export function Pic({ idea, className = 'pic', style, children, ...rest }: { ide
 
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => (
   <div className="v-card stub">
-    <svg className="eart" viewBox="0 0 120 64" aria-hidden="true"><circle cx="46" cy="32" r="22" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="2 6" strokeLinecap="round" /><circle cx="74" cy="32" r="22" fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="2 6" strokeLinecap="round" /><circle cx="60" cy="32" r="3.5" fill="var(--accent)" /></svg>
+    <svg className="eart" viewBox="0 0 120 64" aria-hidden="true"><path d="M30 54Q44 14 60 14" fill="none" stroke="var(--accent)" strokeWidth="3" strokeDasharray="1 7" strokeLinecap="round"/><path d="M90 54Q76 14 60 14" fill="none" stroke="var(--blue)" strokeWidth="3" strokeDasharray="1 7" strokeLinecap="round"/><circle cx="60" cy="14" r="3.5" fill="var(--accent)"/></svg>
     <h3>{title}</h3>{children}
   </div>)

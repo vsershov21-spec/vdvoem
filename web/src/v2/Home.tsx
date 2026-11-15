@@ -77,7 +77,7 @@ export function InboxLine({ row }: { row: InboxRow }) {
     } catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
   return (
-    <div className={'q' + (row.hot ? ' hot' : '')} data-testid={row.kind === 'after' ? 'after-row' : row.kind === 'tickets' ? 'tickets-row' : 'inbox-row'}>
+    <div className={'q' + (row.hot ? ' hot' : '') + (row.actions.length === 1 ? ' one' : '')} data-testid={row.kind === 'after' ? 'after-row' : row.kind === 'tickets' ? 'tickets-row' : 'inbox-row'}>
       <button className="qt" onClick={() => go(where)}><i>{ICONS[row.kind]}</i><span><b>{row.title}</b><small>{row.sub}</small></span></button>
       {row.actions.length > 0 && <div className="qb">{row.actions.map((a, k) =>
         <button key={a} className={'b s' + (k === 0 ? ' a' : '')} disabled={busy} onClick={() => act(a)}>{LABEL[row.kind]?.[a] || COMMON[a] || a}</button>)}</div>}
@@ -170,7 +170,7 @@ function Deck({ partner, onAddIdea }: { partner: string; onAddIdea: () => void }
             {i.partner_marked && <small className="who2">{partner} {past(partner, 'отметил')}</small>}
             <b className="ttl">{i.title}</b>
             <p>{[CATS[i.category]?.name, i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</p>
-            {(i.address || i.info?.about || i.why) && <p className="dim">{[i.address, i.info?.about || i.why].filter(Boolean).join(' · ').slice(0, 110)}</p>}
+            {(i.address || i.info?.about || i.why) && <p className="dim">{[i.address, (i.info?.about || i.why || '').replace(/https?:\/\/\S+/g, '').trim()].filter(Boolean).join(' · ').slice(0, 110)}</p>}
             <div className="v-row">
               <button className="gb" onClick={() => go('idea/' + i.id)}>Подробнее</button><span className="sp" />
               <span className="acts"><button aria-label="Не моё" data-testid="deck-skip" onClick={() => fling(false)}>✕</button><button className="y" aria-label="Хочу" data-testid="deck-want" onClick={() => fling(true)}>♥</button></span>

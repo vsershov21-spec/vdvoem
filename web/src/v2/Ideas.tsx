@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLoad, useOn, emit } from '../lib/data'
 import { post, patch, humanError, ApiError } from '../lib/api'
 import { go, back } from '../lib/router'
-import { haptic } from '../lib/tg'
+import { haptic, openLink } from '../lib/tg'
 import { CATS, money, when as whenText, ncase } from '../lib/format'
 import type { Idea, Round } from '../lib/types'
 import type { HomeV2 } from './types'
@@ -102,10 +102,15 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
   const by = (f: string) => filled[f] === 'me' ? 'я' : filled[f] === 'partner' ? pn : filled[f] === 'scout' ? 'скаут' : ''
   const wait = collecting(i)
   const own = i.mine && i.ours // an event the scout found has no author among the two: nobody edits it
+  // the link is a field of its own, tapped to open the event; it is not left inside the text of the programme
+  const inAbout = (i.info?.about || '').match(/https?:\/\/[^\s<>"']+/)?.[0].replace(/[.,;:!?)»]+$/, '') || ''
+  const link = i.url || inAbout
+  const about = (inAbout ? (i.info?.about || '').replace(inAbout, '') : i.info?.about || '').replace(/\s{2,}/g, ' ').trim()
+  const host = (() => { try { return new URL(link).hostname.replace(/^www\./, '') } catch { return link } })()
   const rows: [string, string, string][] = [
     ['Когда', i.starts_at ? whenText(i.starts_at, i.ends_at) : '', 'when'], ['Где', i.address || '', 'where'],
     ['Цена на двоих', i.price_min ? money(i.price_min) + (i.price_max && i.price_max !== i.price_min ? '–' + money(i.price_max) : '') : '', 'price'],
-    ['Программа', i.info?.about || '', 'about'], ['Заметка', i.note || '', 'note'],
+    ['Программа', about, 'about'], ['Заметка', i.note || '', 'note'],
   ]
   const miss = rows.filter(([, v, f]) => !v && (f === 'where' || f === 'price')).map(([l]) => l.toLowerCase())
   const meet = home?.next?.chosen?.id === i.id ? home.next : home?.round?.chosen?.id === i.id ? home.round : null
@@ -124,9 +129,10 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
       {wait ? <div className="v-card prop" data-testid="collecting"><b>🔭 Скаут собирает остальное</b><p className="m">Название взято из ссылки сразу. Даты, адрес и цена: обычно до часа. Напишу на главной и в боте.</p></div>
         : data.enriching ? <div className="v-card prop" data-testid="enriching"><b>🔭 Скаут дополняет</b><p className="m">Ищет: {miss.join(', ')}. Напишу на главной и в боте.</p></div>
           : own && miss.length > 0 ? <div className="v-card"><p className="m">Не хватает: {miss.join(', ')}</p><div className="v-row"><button className="b s" onClick={() => setEdit(true)}>Дописать</button><button className="b s" data-testid="ask-scout" onClick={enrich}>Попросить скаута</button></div></div> : null}
-      {rows.some(([, v]) => v || own) && <div className="v-card v-list flds" data-testid="fields">
+      {(link || rows.some(([, v]) => v || own)) && <div className="v-card v-list flds" data-testid="fields">
         {rows.filter(([, v]) => v || own).map(([l, v, f]) =>
           <div className="fld" key={f}><small>{l}{v && by(f) && <span className="by">{by(f)}</span>}</small><span className={v ? '' : 'v-empty'}>{v || (wait && f !== 'note' && f !== 'about' ? 'скаут собирает' : 'не заполнено')}</span></div>)}
+        {link && <div className="fld" key="link"><small>Ссылка</small><button className="lnk" data-testid="idea-link" onClick={() => openLink(link)}><span>{host}</span><em>Открыть ↗</em></button></div>}
       </div>}
       {home?.paired && <>
         <div className="blk"><label>Отметка</label><div className="v-row">

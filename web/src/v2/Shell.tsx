@@ -112,7 +112,7 @@ export function Shell() {
     </div>)
 }
 
-// the loading mark: dots gather into two rings, once per launch
+// the loading screen: dots scattered all over it gather into the mark (the arch) in the middle, once per launch
 let splashed = false
 function Splash() {
   const [on, setOn] = useState(!splashed)
@@ -121,10 +121,10 @@ function Splash() {
   useEffect(() => {
     if (!on) return
     splashed = true
-    if (cv.current) particles(cv.current, 'rings', 1300)
+    if (cv.current) particles(cv.current, 'arch', 1400, true)
     const a = setTimeout(() => setOut(true), still() ? 500 : 1900), b = setTimeout(() => setOn(false), still() ? 800 : 2400)
     return () => { clearTimeout(a); clearTimeout(b) }
   }, [on])
   if (!on) return null
-  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} width={440} height={340} /><b>Вдвоём</b></div>
+  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} /><b>Вдвоём</b></div>
 }
