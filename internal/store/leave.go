@@ -156,6 +156,7 @@ func freeChores(ctx context.Context, tx execer, me Member) error {
 	return run(ctx, tx, []step{
 		{`UPDATE chores SET state='open', proposal_id=0 WHERE space_id=? AND state IN ('ask','declined')`, []any{me.SpaceID}},
 		{`UPDATE chores SET assignee_id=0 WHERE space_id=? AND assignee_id=? AND state='open'`, []any{me.SpaceID, me.ID}},
+		{`UPDATE chores SET assignee_id=0 WHERE space_id=? AND assignee_id=? AND state='open'`, []any{me.SpaceID, domain.ChoreTogether}}, // «вместе» needs two
 	})
 }
 
@@ -222,7 +223,7 @@ FROM ideas WHERE id=?`
 	}
 	// the chores that were theirs: a copy goes along, the original stays for «кто угодно»
 	r, err := tx.ExecContext(ctx, `INSERT INTO chores(space_id, author_id, assignee_id, title, note, due_at, due_time, repeat, state, created_at)
-SELECT ?, ?, ?, title, note, due_at, due_time, repeat, 'open', created_at FROM chores WHERE space_id=? AND assignee_id=? AND state IN ('open','ask','declined')`, solo, me.ID, me.ID, pair, me.ID)
+SELECT ?, ?, ?, title, note, due_at, due_time, repeat, 'open', created_at FROM chores WHERE space_id=? AND assignee_id IN (?,?) AND state IN ('open','ask','declined')`, solo, me.ID, me.ID, pair, me.ID, domain.ChoreTogether)
 	if err != nil {
 		return out, err
 	}

@@ -30,7 +30,7 @@ const (
 
 type Chore struct {
 	ID, SpaceID, AuthorID int64
-	Assignee              int64 // 0 — anyone
+	Assignee              int64 // 0 — anyone, ChoreTogether — the two of them together
 	Title, Note           string
 	Due                   *time.Time
 	DueTime               bool // the deadline has a time of day, not only a date
@@ -40,6 +40,15 @@ type Chore struct {
 	DoneBy                int64
 	DoneAt                *time.Time
 	CreatedAt             time.Time
+}
+
+// ChoreTogether: a chore the two do together («Вместе»). Either of them ticks it; it counts as each one's.
+// (−1 is taken: it stands for a partner who deleted their data, see store.GoneMember.)
+const ChoreTogether int64 = -2
+
+// mine: the chore is on me — mine, anyone's, or ours together
+func (c Chore) mine(me int64) bool {
+	return c.Assignee == me || c.Assignee == 0 || c.Assignee == ChoreTogether
 }
 
 func ValidRepeat(r string) bool { return r == RepeatNone || r == RepeatWeek || r == RepeatMonth }
@@ -95,7 +104,7 @@ func (c Chore) InTab(now time.Time, keepDays int) bool {
 
 // CanTick: mine or anyone's. The partner's chore is first taken over («Забрать себе»), never ticked for them.
 func (c Chore) CanTick(me int64) bool {
-	return c.State == ChoreOpen && (c.Assignee == me || c.Assignee == 0)
+	return c.State == ChoreOpen && c.mine(me)
 }
 
 // Actions: the buttons of the card, by whose chore it is
@@ -120,6 +129,8 @@ func (c Chore) Actions(me int64, now time.Time, loc *time.Location) []string {
 			a = []string{"done", "pass"}
 		case 0:
 			a = []string{"take", "done"}
+		case ChoreTogether:
+			a = []string{"done"}
 		default:
 			a = []string{"nudge", "take"}
 		}
@@ -166,7 +177,7 @@ func SummarizeChores(cs []Chore, me int64, now time.Time, loc *time.Location) Ch
 	s := ChoreSummary{Titles: []string{}}
 	var over, today []string
 	for _, c := range cs {
-		if c.State != ChoreOpen || (c.Assignee != me && c.Assignee != 0) {
+		if c.State != ChoreOpen || !c.mine(me) {
 			continue
 		}
 		switch {

@@ -181,21 +181,24 @@ function EditIdea({ idea: i, onDone }: { idea: Idea; onDone: () => void }) {
 // ---------- a new idea: a link or a name; the card is there at once, the scout fills the rest ----------
 export function AddIdea({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [text, setText] = useState('')
+  const [more, setMore] = useState('') // «Подробнее»: what it is and why, right away; it lands in the card's «Заметка»
   const [busy, setBusy] = useState(false)
   const add = async () => {
     setBusy(true)
     try {
       const r = await post<{ idea?: Idea; existing?: Idea }>('/ideas', { text })
       const i = r.idea || r.existing
-      setText(''); onClose(); emit('ideas'); emit('home')
-      say(r.existing ? 'Такая идея уже есть' : 'Идея добавлена')
+      if (r.idea && more.trim()) await patch('/ideas/' + r.idea.id, { note: more.trim() }).catch(() => say('Идея есть, описание не сохранилось: допиши в карточке'))
+      setText(''); setMore(''); onClose(); emit('ideas'); emit('home')
+      say(r.existing ? (more.trim() ? 'Такая идея уже есть: описание допиши в её карточке' : 'Такая идея уже есть') : 'Идея добавлена')
       if (i) go('idea/' + i.id)
     } catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
   return (
     <Sheet open={open} onClose={onClose} testid="add-sheet">
       <h3>Новая идея</h3>
-      <label className="fld"><small>Ссылка или название</small><input autoFocus value={text} onChange={e => setText(e.target.value)} placeholder="afisha.yandex.ru/… или «Каток на ВДНХ»" onKeyDown={e => { if (e.key === 'Enter' && text.trim()) add() }} /></label>
+      <label className="fld"><small>Ссылка или название</small><input autoFocus value={text} onChange={e => setText(e.target.value)} placeholder="afisha.yandex.ru/… или «Каток на ВДНХ»" /></label>
+      <label className="fld"><small>Подробнее <span className="opt">можно пропустить</span></small><textarea rows={3} maxLength={500} value={more} data-testid="add-more" onChange={e => setMore(e.target.value)} placeholder="что это, почему хочется, когда удобно" /></label>
       <p className="m">Карточка появится сразу. По ссылке скаут сам соберёт даты, адрес и цену, потом сможешь поправить любое поле.</p>
       <button className="b p w" disabled={busy || !text.trim()} data-testid="add-save" onClick={add}>Добавить</button>
     </Sheet>)
