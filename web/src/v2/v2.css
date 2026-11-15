@@ -316,6 +316,8 @@
 /* tap zones: 44 px at least. Small buttons keep their look, the zone around them grows */
 .v2 .b.s,.v2 .v-chip,.v2 .back,.v2 .gb,.v2 .ck,.v2 .tg,.v2 .dtabs button,.v2 .v-seg button,.v2 .v-toast button,.v2 .q .qt{position:relative}
 .v2 .b.s::after,.v2 .v-chip::after,.v2 .back::after,.v2 .gb::after,.v2 .ck::after,.v2 .tg::before,.v2 .dtabs button::after,.v2 .v-seg button::after,.v2 .v-toast button::after,.v2 .q .qt::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,48px);height:max(100%,48px);transform:translate(-50%,-50%)}
+/* «все N» sits right under the profile button: its zone grows down, into its own row, not up into the header */
+.v2 .lbl .back::after{top:0;transform:translate(-50%,0)}
 .v2 .v-chips{padding:5px 0;margin:-5px 0}
 .v2 .slot{height:44px}.v2 .cal button{min-height:44px}
 .v2 .nav button.ai{padding:0 0 5px}
