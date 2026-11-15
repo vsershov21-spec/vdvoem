@@ -879,7 +879,9 @@ test('E69 проход по экранам: лист поверх панели �
   await p.getByTestId('cancel-meet').click()
   const sheet = p.getByTestId('cancel-sheet')
   await expect(sheet).toBeVisible()
-  await p.waitForTimeout(700) // the sheet slides in
+  // the sheet slides in on a spring: measured once it stands on the bottom edge (a slow runner takes longer than 0.7 s)
+  await expect.poll(() => sheet.evaluate(e => Math.abs(e.getBoundingClientRect().bottom - innerHeight) <= 1), { timeout: 5000 }).toBe(true)
+  await p.waitForTimeout(150)
   const st = await sheet.evaluate(e => {
     const r = e.getBoundingClientRect(), nav = document.querySelector('.v2 .nav')!.getBoundingClientRect()
     const last = [...e.querySelectorAll('button')].pop()!, b = last.getBoundingClientRect()
