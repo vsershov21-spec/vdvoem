@@ -47,7 +47,11 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
   const badge = (i: Idea) => collecting(i) ? 'скаут собирает' : matched(i) ? 'совпало' : i.mine && !i.price_min ? 'нет цены' : ''
   const cats = [...new Set(afisha.map(i => i.category))].filter(c => CATS[c])
   const now = new Date(), first = new Date(now.getFullYear(), now.getMonth(), 1), days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const shownAf = afisha.filter(i => (!cat || i.category === cat) && (!byDay || !day || (i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + day)))
+  // the calendar follows the filter: a dot only on the days that have something of the chosen kind
+  const inCat = afisha.filter(i => !cat || i.category === cat)
+  const hasOn = (d: number, list = inCat) => list.some(i => !!i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + d)
+  const pickCat = (c: string) => { setCat(c); if (day && !hasOn(day, afisha.filter(i => !c || i.category === c))) setDay(0) }
+  const shownAf = inCat.filter(i => !byDay || !day || (i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + day))
   const oursList = ours.filter(i => who === 'all' || (who === 'mine') === i.mine)
   return (
     <div className="scr" data-testid="v2-ideas">
@@ -62,17 +66,17 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
         : <Empty title="Пока не совпало"><button className="b p w" onClick={() => go('')}>Отмечать идеи</button></Empty>)
         : v === 'afisha' ? <>
           <div className="v-row"><div className="v-chips">
-            <button className={'v-chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Всё</button>
-            {cats.map(c => <button key={c} className={'v-chip' + (cat === c ? ' on' : '')} onClick={() => setCat(c)}>{CATS[c].name}</button>)}
+            <button className={'v-chip' + (!cat ? ' on' : '')} onClick={() => pickCat('')}>Всё</button>
+            {cats.map(c => <button key={c} className={'v-chip' + (cat === c ? ' on' : '')} onClick={() => pickCat(c)}>{CATS[c].name}</button>)}
           </div><button className="back" style={{ flex: 'none' }} onClick={() => { setByDay(!byDay); setDay(0) }}>{byDay ? 'Списком' : 'По дням'}</button></div>
           {byDay && <div className="v-card"><b>{now.toLocaleDateString('ru', { month: 'long' })}</b><div className="cal">
             {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(d => <span className="wd" key={d}>{d}</span>)}
             {Array.from({ length: (first.getDay() + 6) % 7 }, (_, k) => <span key={'e' + k} />)}
-            {Array.from({ length: days }, (_, k) => { const d = k + 1, has = afisha.some(i => i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + d)
+            {Array.from({ length: days }, (_, k) => { const d = k + 1, has = hasOn(d)
               return <button key={d} className={(d === now.getDate() ? 'today ' : '') + (day === d ? 'sel' : '')} onClick={() => setDay(day === d ? 0 : d)}>{d}{has && <i className="d" />}</button> })}
           </div></div>}
           {shownAf.length ? shownAf.map(i => <button className="in" key={i.id} data-testid="afisha-row" onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</small></span>{matched(i) ? <span className="badge">совпало</span> : wants(i.my_wish) ? '♥' : '›'}</button>)
-            : <Empty title={day ? 'В этот день событий нет' : 'Афиша пока пуста'}><p className="m">Скаут ищет события каждый день.</p></Empty>}
+            : <Empty title={day ? 'В этот день событий нет' : cat ? 'Таких событий пока нет' : 'Афиша пока пуста'}><p className="m">Скаут ищет события каждый день.</p></Empty>}
         </> : <>
           {paired && <div className="v-chips">{([['all', 'Все'], ['mine', 'Мои'], ['their', ncase(pn, 'gen')]] as ['all' | 'mine' | 'their', string][]).map(([k, l]) =>
             <button key={k} className={'v-chip' + (who === k ? ' on' : '')} onClick={() => setWho(k)}>{l}</button>)}</div>}

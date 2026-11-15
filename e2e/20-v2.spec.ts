@@ -152,6 +152,21 @@ test('E54 афиша: список, фильтр и дни; у события п
   await p.getByRole('button', { name: 'По дням' }).click()
   await expect(p.locator('.cal .d').first()).toBeVisible()
   await shot(p, 'E54-days')
+  // the calendar follows the filter: dots only on the days of the chosen kind, a day without them is let go
+  const inMonth = (k: number) => new Date(today.getTime() + k * 86400_000).getMonth() === today.getMonth() ? 1 : 0
+  await expect(p.locator('.cal .d')).toHaveCount(inMonth(1) + inMonth(2))
+  if (inMonth(1)) {
+    await p.locator('.cal button', { hasText: new RegExp('^' + new Date(today.getTime() + 86400_000).getDate() + '$') }).click()
+    await expect(p.getByTestId('afisha-row')).toHaveCount(1)
+    await expect(p.locator('.cal .sel')).toHaveCount(1)
+  }
+  await p.getByRole('button', { name: 'Еда' }).click()
+  await expect(p.locator('.cal .d')).toHaveCount(inMonth(2))
+  await expect(p.locator('.cal .sel')).toHaveCount(0)
+  await expect(p.getByTestId('afisha-row')).toHaveCount(1)
+  await expect(p.getByTestId('afisha-row')).toContainText('Ужин')
+  await shot(p, 'E54-days-food')
+  await p.getByRole('button', { name: 'Всё' }).click()
   await p.getByRole('button', { name: 'Списком' }).click()
   await p.getByTestId('afisha-row').filter({ hasText: 'Органный' }).click()
   await expect(p.getByTestId('fields').locator('.by').first()).toHaveText('скаут')
