@@ -1,0 +1,23 @@
+{
+	"appId": "com.vershov.vdvoem",
+	"appName": "Вдвоём",
+	"webDir": "www",
+	"backgroundColor": "#0b0b0d",
+	"server": {
+		"url": "https://vdvoem.vershov.com/app/",
+		"errorPath": "index.html",
+		"allowNavigation": [
+			"vdvoem.vershov.com"
+		]
+	},
+	"ios": {
+		"contentInset": "never",
+		"scrollEnabled": false,
+		"backgroundColor": "#0b0b0d",
+		"limitsNavigationsToAppBoundDomains": false
+	},
+	"android": {
+		"backgroundColor": "#0b0b0d",
+		"allowMixedContent": false
+	}
+}
