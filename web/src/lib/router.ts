@@ -13,6 +13,7 @@ export function go(path: string, replace = false) {
   subs.forEach(f => f())
 }
 const depth = () => (history.state?.d as number) || 0
+export const navDepth = depth
 export const canBack = () => depth() > 0
 // the tab a sub-screen was opened from: its name is the back button's label, like iOS («‹ Идеи»)
 let fromTab = ''

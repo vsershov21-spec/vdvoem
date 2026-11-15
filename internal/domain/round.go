@@ -230,6 +230,40 @@ func (r *Round) SetAgain(who, answer string) error {
 	return nil
 }
 
+var ErrBadRate = errors.New("bad_rate")
+
+// AgainSkip: «Не ходили» — the mark of one person, kept next to «yes» / «no» of «как прошло»
+const AgainSkip = "skip"
+
+// Rate: «как прошло», each for themselves: like | soso | skip. The first answer of a person stands (the same
+// one again changes nothing, another one is refused). The meeting becomes «прошла» as soon as one of the two
+// says they went; «Не ходили» of one never cancels it for the other.
+func (r *Round) Rate(who, k string) (bool, error) {
+	mark := map[string]string{"like": "yes", "soso": "no", "skip": AgainSkip}[k]
+	if mark == "" {
+		return false, ErrBadRate
+	}
+	if r.State != StatePlanned && r.State != StateDone {
+		return false, ErrWrongState
+	}
+	mine := &r.AgainA
+	if who != "a" {
+		mine = &r.AgainB
+	}
+	if *mine == mark {
+		return false, nil
+	}
+	if *mine != "" {
+		return false, ErrWrongState
+	}
+	*mine = mark
+	if mark != AgainSkip {
+		r.State = StateDone
+	}
+	r.bump()
+	return true, nil
+}
+
 // Tick expires a silent round. Returns true when it expired now.
 func (r *Round) Tick(now time.Time) bool {
 	if r.State.Open() && !now.Before(r.ExpiresAt) {

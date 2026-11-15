@@ -38,7 +38,7 @@ export const CATS: Record<string, { name: string; tone: string; emoji: string }>
 export function ncase(name: string, c: 'gen' | 'acc' | 'ins' | 'dat'): string {
   const n = name.trim()
   if (!/^[А-ЯЁ][а-яё]+$/.test(n)) return n
-  if (c === 'dat') { const l = n.slice(-1); return l === 'а' || l === 'я' ? n.slice(0, -1) + 'е' : l === 'й' || l === 'ь' ? n.slice(0, -1) + 'ю' : /[бвгджзклмнпрстфхцчшщ]/.test(l) ? n + 'у' : n }
+  if (c === 'dat') { const l = n.slice(-1); if (/ия$/.test(n)) return n.slice(0, -1) + 'и'; return l === 'а' || l === 'я' ? n.slice(0, -1) + 'е' : l === 'й' || l === 'ь' ? n.slice(0, -1) + 'ю' : /[бвгджзклмнпрстфхцчшщ]/.test(l) ? n + 'у' : n }
   const stem = n.slice(0, -1), last = n.slice(-1), pre = n.slice(-2, -1)
   const hush = /[жшщчц]/.test(pre), soft = /[гкхжшщч]/.test(pre)
   if (last === 'я') return stem + (c === 'gen' ? 'и' : c === 'acc' ? 'ю' : 'ей')

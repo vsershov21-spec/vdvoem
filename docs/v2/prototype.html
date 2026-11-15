@@ -1,0 +1,751 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><title>Вдвоём 2.0 Проект</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* layout: a working desk — the clickable phone stays put on the left, the map and the scenarios drive it from the right */
+:root{
+  --bg:#f3f1ee; --panel:#fffdfa; --ink:#17161a; --mute:#6b6870; --line:#e2ded7; --accent:#ef6537; --accent-ink:#fff; --blue:#3d6ef5; --ok:#1f9d61;
+  --a-bg:#f4f4f4; --a-card:#fff; --a-ink:#141414; --a-mute:#6a6a70; --a-line:#e7e7ea; --a-dark:#17171a; --a-soft:#ececef;
+  --font:"Plus Jakarta Sans",-apple-system,system-ui,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121114;--panel:#1b1a1e;--ink:#f1eff2;--mute:#a09ca6;--line:#2e2c33;--accent:#f4764a;--accent-ink:#17161a;--blue:#7f9dff;--ok:#4cc38a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121114;--panel:#1b1a1e;--ink:#f1eff2;--mute:#a09ca6;--line:#2e2c33;--accent:#f4764a;--accent-ink:#17161a;--blue:#7f9dff;--ok:#4cc38a;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header.top h1{margin:0;font-size:28px;letter-spacing:-.6px;text-wrap:balance}
+header.top p{margin:6px 0 0;color:var(--mute);max-width:62ch}
+.desk{display:grid;grid-template-columns:392px minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:900px){.desk{grid-template-columns:minmax(0,1fr)}}
+.left{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:10px;align-items:center}
+@media (max-width:900px){.left{position:static}}
+.who{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+.who button{border:0;background:none;border-radius:999px;padding:7px 14px;font-weight:650;font-size:13.5px;color:var(--mute)}
+.who button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.crumb{font-size:12.5px;color:var(--mute);min-height:18px;text-align:center}
+/* phone */
+.phone{width:360px;max-width:100%;height:720px;border-radius:44px;background:var(--a-bg);color:var(--a-ink);position:relative;overflow:hidden;box-shadow:0 0 0 9px #1b1b1f,0 24px 60px rgba(0,0,0,.28);font-size:14px}
+.scr{position:absolute;inset:0;overflow-y:auto;padding:46px 14px 96px;display:flex;flex-direction:column;gap:12px;scrollbar-width:none}
+.scr::-webkit-scrollbar{display:none}
+.scr.sub{padding-bottom:24px}
+.phone h2{margin:0;font-size:24px;letter-spacing:-.5px;line-height:1.15}
+.phone h3{margin:0;font-size:16px}
+.phone p{margin:0}
+.m{color:var(--a-mute);font-size:12.5px}
+.row{display:flex;align-items:center;gap:8px}
+.sp{flex:1}
+.card{background:var(--a-card);border-radius:20px;padding:12px;box-shadow:0 1px 2px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:8px}
+.b{border:0;border-radius:14px;padding:11px 14px;font-weight:650;background:var(--a-soft);color:var(--a-ink);text-align:center}
+.b.p{background:var(--a-dark);color:#fff}.b.a{background:var(--accent);color:#fff}.b.s{padding:7px 12px;border-radius:11px;font-size:13px}.b.w{width:100%}
+.b.ghost{background:none;color:var(--a-mute)}
+.chip{border:1px solid var(--a-line);background:var(--a-card);border-radius:999px;padding:6px 11px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.chip.on{background:var(--a-dark);color:#fff;border-color:var(--a-dark)}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:none}
+.seg{display:flex;background:var(--a-soft);border-radius:999px;padding:3px;flex:none}
+.seg button{flex:1;border:0;background:none;border-radius:999px;padding:8px 6px;font-weight:650;font-size:13px;color:var(--a-mute)}
+.seg button.on{background:var(--a-card);color:var(--a-ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.in{display:flex;align-items:center;gap:10px;background:var(--a-card);border-radius:16px;padding:9px 11px;border:0;width:100%;text-align:left;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.in.hot{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.in i{width:32px;height:32px;border-radius:11px;background:color-mix(in srgb,var(--accent) 15%,transparent);display:grid;place-items:center;font-style:normal;flex:none}
+.in span{display:flex;flex-direction:column;min-width:0;flex:1}.in b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.in small{color:var(--a-mute);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.in .chip{flex:none;display:inline-block;min-width:auto}
+.pic{border-radius:16px;min-height:150px;display:flex;flex-direction:column;justify-content:flex-end;padding:12px;color:#fff;font-weight:700;font-size:19px;line-height:1.15;gap:6px}
+.pic small{font-size:11.5px;font-weight:600;background:rgba(0,0,0,.35);align-self:flex-start;padding:3px 8px;border-radius:999px}
+.t1{background:linear-gradient(160deg,#3c57d6,#1a2a78)}.t2{background:linear-gradient(160deg,#f08a55,#9c3518)}.t3{background:linear-gradient(160deg,#46b98a,#135c41)}.t4{background:linear-gradient(160deg,#55555c,#1c1c20)}.t5{background:linear-gradient(160deg,#c9a23a,#6e5210)}
+.th{width:54px;height:54px;border-radius:13px;flex:none}
+.acts{display:flex;justify-content:center;gap:14px}
+.acts button{width:54px;height:54px;border-radius:50%;border:0;background:var(--a-card);box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:20px}
+.acts button.y{background:var(--a-dark);color:#fff}
+.nav{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:var(--a-card);border-radius:999px;padding:5px;display:flex;gap:2px;box-shadow:0 8px 24px rgba(0,0,0,.16);z-index:5}
+.nav button{border:0;background:none;border-radius:999px;padding:9px 12px;font-size:12.5px;font-weight:650;color:var(--a-mute)}
+.nav button.on{background:var(--a-dark);color:#fff}
+.nav{align-items:center}.nav button.ai{width:46px;height:46px;padding:0;border-radius:50%;background:var(--accent);color:#fff;font-size:18px;margin:-6px 2px;box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 45%,transparent)}.nav button.ai.on{background:var(--a-dark)}
+.ck{width:24px;height:24px;border-radius:8px;border:1.5px solid var(--a-line);background:var(--a-card);flex:none;font-size:13px;padding:0}.ck.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.done b{text-decoration:line-through;opacity:.5}
+.badge{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);white-space:nowrap;flex:none}
+.fld{display:flex;flex-direction:column;gap:3px;background:var(--a-card);border-radius:12px;padding:8px 10px}.fld small{color:var(--a-mute);font-size:11px}.fld .empty{color:var(--a-mute)}
+.back{border:0;background:none;color:var(--accent);font-weight:650;padding:0;font-size:14px}
+.subh{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;flex:none}.subh b{font-size:15px}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.38);z-index:8;display:flex;align-items:flex-end}
+.sheet{background:var(--a-bg);border-radius:26px 26px 0 0;padding:16px 14px 22px;width:100%;display:flex;flex-direction:column;gap:10px;max-height:86%;overflow-y:auto}
+.blk{display:flex;flex-direction:column;gap:8px}.blk>label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--a-mute)}
+.prop{background:color-mix(in srgb,var(--accent) 10%,var(--a-card));box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 50%,transparent)}
+.steps3{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}.steps3 li{display:flex;gap:9px;align-items:center;opacity:.55}.steps3 li.now{opacity:1;font-weight:650}.steps3 li.done{opacity:.85}
+.steps3 li::before{content:attr(data-n);width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}.steps3 li.now::before{background:#fff;color:var(--accent)}
+.msg{max-width:84%;padding:9px 12px;border-radius:16px;background:var(--a-card);align-self:flex-start}.msg.me{align-self:flex-end;background:var(--a-dark);color:#fff}
+.slot{border:1px solid var(--a-line);background:var(--a-card);border-radius:10px;height:34px;font-size:11px}.slot.on{background:var(--accent);color:#fff;border-color:var(--accent)}.slot.busy{background:repeating-linear-gradient(45deg,var(--a-soft),var(--a-soft) 4px,var(--a-card) 4px,var(--a-card) 8px);color:var(--a-mute)}
+.grid4{display:grid;grid-template-columns:44px repeat(3,1fr);gap:5px;align-items:center;font-size:12px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:12px}.cal span{padding:7px 0;border-radius:9px}.cal .ev{background:var(--accent);color:#fff;font-weight:700}.cal .bz{background:var(--a-soft);color:var(--a-mute)}
+/* right side */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 14px;font-weight:650}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;min-width:0}
+.panel h2{margin:0 0 4px;font-size:18px}
+.panel>p{margin:0 0 12px;color:var(--mute);max-width:65ch}
+.mapbox{overflow-x:auto}
+svg text{font-family:var(--font)}
+.node rect{fill:var(--panel);stroke:var(--line);stroke-width:1.5}
+.node text{fill:var(--ink);font-size:12.5px;font-weight:650}
+.node .s{fill:var(--mute);font-size:9.5px;font-weight:500}
+.node{cursor:pointer}.node:hover rect{stroke:var(--accent)}
+.node.on rect{fill:var(--accent);stroke:var(--accent)}.node.on text,.node.on .s{fill:var(--accent-ink)}
+.node.tab rect{stroke:var(--ink)}
+.edge{stroke:var(--mute);stroke-width:1.2;fill:none}
+.elab{fill:var(--mute);font-size:10px}
+.scn{display:flex;flex-direction:column;gap:14px}
+.scn h3{margin:0;font-size:15px}
+.scn ol{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;counter-reset:s}
+.scn li{counter-increment:s}
+.scn li button{width:100%;text-align:left;border:1px solid transparent;background:none;border-radius:11px;padding:7px 9px;display:flex;gap:9px;align-items:baseline}
+.scn li button::before{content:counter(s);font-size:11.5px;font-weight:700;color:var(--mute);min-width:14px}
+.scn li button:hover{border-color:var(--line)}
+.scn li button.on{background:color-mix(in srgb,var(--accent) 12%,transparent);border-color:var(--accent)}
+.tag{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;flex:none}
+.tag.v{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}.tag.n{background:color-mix(in srgb,var(--blue) 18%,transparent);color:var(--blue)}.tag.b{background:var(--line);color:var(--mute)}
+.playbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.playbar button{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 12px;font-weight:650}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--mute)}
+.tw{overflow-x:auto}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .28s ease-out}@keyframes up{from{transform:translateY(40%);opacity:.4}to{transform:none;opacity:1}}}
+/* v3 */
+.scr{padding-bottom:104px}
+.nav{left:10px;right:10px;bottom:10px;transform:none;border-radius:24px;padding:6px 4px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;align-items:end}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 0;font-size:10.5px;border-radius:14px;position:relative}
+.nav button .g{font-size:17px;line-height:20px}
+.nav button.on{background:none;color:var(--a-ink)}
+.nav button.on .g{color:var(--accent)}
+.nav button.ai{width:auto;height:auto;margin:0;background:none;color:var(--a-mute);box-shadow:none;border-radius:14px;font-size:10.5px}
+.nav button.ai .g{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;margin-top:-22px;box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 45%,transparent);font-size:18px}
+.nav button.ai.on .g{background:var(--a-dark);color:#fff}
+.nav .cnt{position:absolute;top:0;right:18%;min-width:16px;height:16px;border-radius:8px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+.q{background:var(--a-card);border-radius:16px;padding:10px 11px;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.q.hot{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.q .qt{display:flex;gap:10px;align-items:flex-start;border:0;background:none;padding:0;text-align:left;width:100%}
+.q .qt i{width:30px;height:30px;border-radius:10px;background:color-mix(in srgb,var(--accent) 15%,transparent);display:grid;place-items:center;font-style:normal;flex:none}
+.q .qt span{display:flex;flex-direction:column;min-width:0}.q .qt b{font-size:13.5px;line-height:1.25}.q .qt small{color:var(--a-mute);font-size:11.5px}
+.q .qb{display:flex;gap:6px;justify-content:flex-end}
+.lbl{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--a-mute);display:flex;align-items:center;gap:6px}
+.lbl .back{font-size:12px;text-transform:none;letter-spacing:0;margin-left:auto}
+.toast{position:absolute;left:14px;right:14px;bottom:92px;background:var(--a-dark);color:#fff;border-radius:14px;padding:10px 12px;font-size:13px;z-index:9;display:flex;gap:10px;align-items:center;box-shadow:0 8px 20px rgba(0,0,0,.25)}
+.toast button{border:0;background:none;color:#ffb598;font-weight:700;margin-left:auto;padding:0}
+.tg{width:42px;height:26px;border-radius:13px;border:0;background:var(--a-line);position:relative;flex:none;padding:0}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+.tg.on{background:var(--ok)}.tg.on::after{left:19px}
+.srow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--a-line);border-left:0;border-right:0;border-top:0;background:none;width:100%;text-align:left}
+.srow:last-child{border-bottom:0}.srow span.tx{display:flex;flex-direction:column;flex:1;min-width:0}.srow small{color:var(--a-mute);font-size:11.5px}
+.card.list{gap:0;padding:2px 12px}
+.cal button{border:0;background:none;padding:6px 0 9px;border-radius:9px;font-size:12px;position:relative;color:inherit}
+.cal button.ev{background:var(--accent);color:#fff;font-weight:700}.cal button.evw{box-shadow:inset 0 0 0 1.5px var(--accent);font-weight:700}
+.cal button.bz{background:var(--a-soft);color:var(--a-mute)}.cal button.sel{outline:2px solid var(--a-dark);outline-offset:-2px}.cal button.today{font-weight:800;text-decoration:underline}
+.cal button .d{position:absolute;left:50%;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--blue);transform:translateX(-50%)}
+.cal .wd{color:var(--a-mute);font-size:10.5px;padding:2px 0}
+.slot.their{box-shadow:inset 0 0 0 1.5px var(--blue)}
+.red{color:#d43a2f}
+.sheet{background:var(--a-bg);opacity:1}
+.scrim{background:rgba(0,0,0,.5)}
+.th{display:inline-block}
+.fld .by{font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;background:var(--a-soft);color:var(--a-mute);margin-left:6px}
+.ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.panel h3{margin:14px 0 6px;font-size:14.5px}
+.in span.th{flex:none;width:54px}.in span.ck{flex:none;width:24px}
+.chips{min-width:0}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up3 .22s ease-out}@keyframes up3{from{transform:translateY(30%)}to{transform:none}}}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g2>.card{grid-column:1/-1}
+.gcard{border:0;background:var(--a-card);border-radius:16px;padding:6px 6px 8px;display:flex;flex-direction:column;gap:5px;text-align:left;box-shadow:0 1px 2px rgba(0,0,0,.05);min-width:0}
+.gcard .pic{min-height:92px;font-size:14px;padding:9px;border-radius:12px}.gcard .pic small{font-size:10px}.gcard>small{color:var(--a-mute);font-size:11.5px;padding:0 3px}
+.swipe{touch-action:pan-y;user-select:none;cursor:grab;transition:transform .15s,opacity .15s}
+.dtabs{display:flex;align-items:center;gap:14px;flex:none}
+.dtabs button:not(.back){border:0;background:none;padding:2px 0;font-weight:700;font-size:15px;color:var(--a-mute);border-bottom:2px solid transparent}
+.dtabs button.on{color:var(--a-ink);border-bottom-color:var(--accent)}.dtabs i{font-style:normal;font-size:11.5px;font-weight:600;color:var(--a-mute)}
+.swipe .acts{gap:8px;flex:none}.swipe .acts button{width:46px;height:46px;font-size:18px}
+.scr.fix{overflow:hidden;padding-bottom:94px;gap:9px}
+.scr.fix .swipe,.scr.fix .swipe0{flex:1;min-height:0}.scr.fix .swipe .pic{flex:1;min-height:0}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:none}.tiles .in{padding:8px 11px}.tiles .in em{display:inline}
+.scr.fix .q{padding:8px 10px;gap:6px}.scr.fix h2{font-size:22px}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Вдвоём 2.0: проект приложения</h1>
+    <p>Версия 3, после арены из пяти человек. Телефон слева кликается. Карта, сценарии и таблицы справа управляют им. До твоего «да» код не пишу.</p>
+  </header>
+  <div class="desk">
+    <div class="left">
+      <div class="who" role="group" aria-label="Чей телефон">
+        <button id="who-v" aria-pressed="true" data-who="v">Телефон Вовы</button>
+        <button id="who-n" aria-pressed="false" data-who="n">Телефон Насти</button>
+      </div>
+      <div class="phone" id="phone" aria-label="Прототип приложения"></div>
+      <div class="crumb" id="crumb"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div class="tabs" role="tablist">
+        <button id="tab-map" role="tab" aria-selected="true" data-view="map">Карта экранов</button>
+        <button id="tab-scn" role="tab" aria-selected="false" data-view="scn">Сценарии</button>
+        <button id="tab-rules" role="tab" aria-selected="false" data-view="rules">Правила</button>
+        <button id="tab-mech" role="tab" aria-selected="false" data-view="mech">Механика дел</button>
+        <button id="tab-sett" role="tab" aria-selected="false" data-view="sett">Настройки</button>
+        <button id="tab-arena" role="tab" aria-selected="false" data-view="arena">Арена</button>
+      </div>
+
+      <section class="panel" id="view-map">
+        <h2>Карта экранов и переходов</h2>
+        <p>Пять вкладок, помощник по центру. Профиль открывается с аватаров на главной. Нажми на экран, чтобы открыть его в телефоне. Стрелки показывают основные пути, полный список переходов в таблице ниже.</p>
+        <div class="mapbox"><svg id="map" viewBox="0 0 752 650" style="width:100%;min-width:560px;height:auto;display:block" role="img" aria-label="Карта экранов"></svg></div>
+        <h3>Все переходы</h3>
+        <div class="tw"><table>
+          <tr><th>Откуда</th><th>Чем</th><th>Куда</th></tr>
+          <tr><td>Бот</td><td>«Открыть» или кнопка в сообщении</td><td>Главная, приглашение, карточка встречи, «Как прошло»</td></tr>
+          <tr><td>Главная</td><td>строка «Ждёт тебя»</td><td>ответ на месте или карточка встречи, дела, идеи</td></tr>
+          <tr><td>Главная</td><td>колода: тап, свайп или «Хочу» при совпадении</td><td>карточка идеи, лист «Совпало» → встреча</td></tr>
+          <tr><td>Главная</td><td>строка встречи, строка дел</td><td>карточка встречи или «Общее время»; вкладка «Дела»</td></tr>
+          <tr><td>Главная</td><td>«＋»</td><td>лист «Идея или дело» → новая идея, новое дело</td></tr>
+          <tr><td>Главная</td><td>аватары</td><td>Профиль</td></tr>
+          <tr><td>Идеи</td><td>строка, «Идём» в «Совпало»</td><td>карточка идеи, карточка встречи</td></tr>
+          <tr><td>Карточка идеи</td><td>«Идём» / «Позвать»</td><td>карточка встречи</td></tr>
+          <tr><td>Помощник</td><td>карточка в ответе, «Идём»</td><td>карточка идеи, карточка встречи</td></tr>
+          <tr><td>Карточка встречи</td><td>время, «А потом», отмена</td><td>листы: время, место, подтверждение отмены</td></tr>
+          <tr><td>Дела</td><td>строка, «＋ Дело», «Вся история»</td><td>карточка дела, лист нового дела, история дел</td></tr>
+          <tr><td>Планы</td><td>день, встреча, «Найти общее время», календарь</td><td>панель дня, карточка встречи, «Общее время», лист календаря</td></tr>
+          <tr><td>Планы</td><td>прошедшая встреча</td><td>«Как прошло» → история встреч</td></tr>
+          <tr><td>Общее время</td><td>«Идём» у совпавшей идеи</td><td>карточка встречи с этим временем</td></tr>
+          <tr><td>Профиль</td><td>строки</td><td>история, мой вкус, настройки → раздел настроек</td></tr>
+        </table></div>
+      </section>
+
+      <section class="panel" id="view-scn" hidden>
+        <h2>Сценарии по шагам</h2>
+        <p>Пятнадцать путей, включая отказы и возвраты. У шага метка: чей телефон. Нажми на шаг или иди кнопкой «Дальше».</p>
+        <div class="playbar"><button id="prev">Назад</button><button id="next">Дальше</button><span class="crumb" id="where"></span></div>
+        <div class="scn" id="scn"></div>
+      </section>
+
+      <section class="panel" id="view-rules" hidden>
+        <h2>Правила</h2>
+        <p>По ним проверяется каждый экран. Экран, который нарушает правило, не готов.</p>
+        <div class="tw"><table>
+          <tr><th>Правило</th><th>Что это значит на экране</th></tr>
+          <tr><td>Одно предложение, один механизм</td><td>Время встречи, перенос, место «а потом», просьба о деле устроены одинаково: один предложил, второй отвечает «Да» или «Нет» прямо в строке. Автор видит «ждём», потом «да» или «нет» и что делать дальше.</td></tr>
+          <tr><td>Три места, один ответ</td><td>Предложение лежит на главной в «Ждёт тебя», в карточке и в боте. Ответил в одном месте: в двух других оно гаснет.</td></tr>
+          <tr><td>«Идём» ведёт в одно место</td><td>Из «Совпало», карточки идеи, чата помощника и «Общего времени» открывается карточка встречи этой идеи. Если партнёр идею ещё не отмечал, кнопка называется «Позвать» и ведёт туда же.</td></tr>
+          <tr><td>Ничего не решается за пару</td><td>Встреча попадает в планы после «Да» второго. Место обеда выбирают люди: свои идеи, находки скаута, подбор помощника или своё.</td></tr>
+          <tr><td>Нет тупиков</td><td>У пустого состояния одна кнопка дальше. После любого действия есть строка-подтверждение, у обратимых действий «Вернуть».</td></tr>
+          <tr><td>Назад всегда слева</td><td>Вложенный экран показывает «‹ откуда пришёл» и возвращает на шаг назад, а не на вкладку. Нижняя панель видна всегда.</td></tr>
+          <tr><td>Помощник честный</td><td>Есть в данных: карточки. Нет: «нет», ссылка «посмотреть сейчас» и запрос скауту. Ответ скаута получает тот, кто спрашивал: в чате, на главной и в боте. Не нашёл: так и пишет.</td></tr>
+          <tr><td>Одно слово на одну вещь</td><td>Идея, отметка («Хочу» / «Не моё»), совпало, встреча, место «а потом», дело, предложение. Афиша всегда «Афиша». Скаут: тот, кто ищет события в сети. Помощник: чат.</td></tr>
+        </table></div>
+        <h3>Статусы встречи</h3>
+        <div class="tw"><table>
+          <tr><th>Статус</th><th>Как попадает</th><th>Где видно</th></tr>
+          <tr><td>Без времени</td><td>нажали «Идём» или «Позвать»</td><td>Планы, блок «Без времени»</td></tr>
+          <tr><td>Ждём ответа</td><td>один предложил время</td><td>Главная у обоих, Планы (контуром), бот</td></tr>
+          <tr><td>В планах</td><td>второй ответил «Да»</td><td>Планы, календарь телефона, напоминание за 2 часа</td></tr>
+          <tr><td>Перенос</td><td>новое время = новое предложение; старое действует до «Да»</td><td>как «Ждём ответа»</td></tr>
+          <tr><td>Отменена</td><td>подтверждение в листе; партнёр получает строку</td><td>Главная партнёра, бот. Билеты остаются в карточке с пометкой «вернуть»</td></tr>
+          <tr><td>Прошла</td><td>наступила дата</td><td>«Как прошло?» каждому отдельно → история встреч в профиле</td></tr>
+        </table></div>
+        <h3>Пара: случаи вне счастливого пути</h3>
+        <div class="tw"><table>
+          <tr><th>Случай</th><th>Что видит человек</th></tr>
+          <tr><td>Ссылка устарела (3 дня)</td><td>«Ссылка устарела» и кнопка «Попросить новую»: автору уходит строка</td></tr>
+          <tr><td>Ссылка уже использована</td><td>«Вова уже в паре». Без кнопок входа</td></tr>
+          <tr><td>Открыл тот, кто уже в паре</td><td>«Ты в паре с …. Чтобы принять, выйди из неё в настройках»</td></tr>
+          <tr><td>Партнёр не отвечает</td><td>У автора «Ждём Настю» и «Отправить ещё раз». Через 3 дня ссылка гаснет</td></tr>
+          <tr><td>Выход из пары</td><td>Лист с последствиями и подтверждением. Правило раздела данных ждёт твоего решения</td></tr>
+        </table></div>
+      </section>
+
+      <section class="panel" id="view-mech" hidden>
+        <h2>Механика дел</h2>
+        <p>Дело живёт только во вкладке «Дела». В Планах дел нет. На главной одна строка-сводка: сколько на сегодня и сколько просрочено. Ничего не пропадает молча: у каждого состояния есть место.</p>
+        <div class="tw"><table>
+          <tr><th>Состояние</th><th>Как попадает</th><th>Где лежит</th><th>Что дальше</th></tr>
+          <tr><td>Открыто</td><td>создали себе, «кто угодно» или партнёр ответил «Беру»</td><td>Дела: «Сегодня» или «Позже»</td><td>галочка, передать, изменить, удалить</td></tr>
+          <tr><td>Ждёт ответа</td><td>попросили партнёра или передали ему</td><td>у адресата: главная, бот, верх вкладки. У автора: верх вкладки, «ждём Настю»</td><td>«Беру» → открыто у адресата. «Не могу» → вернулось автору</td></tr>
+          <tr><td>Вернулось</td><td>партнёр ответил «Не могу»</td><td>у автора: главная и верх вкладки, «Настя не может»</td><td>«Беру сам» или «Кто угодно»</td></tr>
+          <tr><td>Просрочено</td><td>срок прошёл, галочки нет</td><td>верх вкладки красным, сводка на главной у исполнителя, утреннее сообщение бота</td><td>галочка или «Перенести срок». Само не исчезает</td></tr>
+          <tr><td>Сделано</td><td>галочка в строке или в карточке</td><td>блок «Сделано» внизу вкладки, с именем и днём. 7 дней (срок меняется в настройках)</td><td>«Вернуть» сразу в подсказке или галочкой в блоке</td></tr>
+          <tr><td>В истории</td><td>прошло 7 дней после «Сделано»</td><td>Профиль → История → Дела. Поиск по слову, фильтр по человеку</td><td>только чтение; можно создать такое же</td></tr>
+          <tr><td>Повтор</td><td>у дела стоит «каждую неделю» или «каждый месяц»</td><td>после галочки сделанное уходит в «Сделано», в списке сразу следующее с новой датой</td><td>повтор снимается в карточке</td></tr>
+          <tr><td>Удалено</td><td>«Удалить» в листе правки</td><td>нигде; 5 секунд висит «Вернуть»</td><td>в историю не попадает</td></tr>
+        </table></div>
+        <h3>Кнопки карточки зависят от того, чьё дело</h3>
+        <div class="tw"><table>
+          <tr><th>Дело</th><th>Кнопки</th></tr>
+          <tr><td>Моё</td><td>«Сделано», «Передать Насте» (это просьба: она отвечает)</td></tr>
+          <tr><td>Партнёра</td><td>«Напомнить» (сообщение в бот), «Забрать себе»</td></tr>
+          <tr><td>Кто угодно</td><td>«Беру», «Сделано»</td></tr>
+          <tr><td>Просроченное</td><td>те же и «Перенести срок»</td></tr>
+          <tr><td>Сделанное</td><td>«Вернуть в работу»</td></tr>
+        </table></div>
+        <h3>Что не входит в первую версию</h3>
+        <p>Списки покупок, вложения и суммы, третьи исполнители (дети, родители), категории. Шаги внутри дела убраны: арена показала, что они одинаковые у любого дела.</p>
+      </section>
+
+      <section class="panel" id="view-sett" hidden>
+        <h2>Архитектура настроек</h2>
+        <p>Один экран, три группы: моё, общее для пары, данные. В строке видно текущее значение. Внутри раздела только переключатели и выбор, без текста-объяснения на полэкрана. Общую настройку меняет любой, второй получает строку на главной.</p>
+        <div class="tw"><table>
+          <tr><th>Раздел</th><th>Чьё</th><th>Что настраивается</th><th>По умолчанию</th><th>Где действует</th></tr>
+          <tr><td>Уведомления</td><td>моё</td><td>что дублировать в бот: предложения, напоминание о встрече, дела, находки скаута, «как прошло»; тихие часы</td><td>всё, кроме находок скаута; тихо 23–8</td><td>бот. Главная показывает всё всегда</td></tr>
+          <tr><td>Календарь</td><td>моё</td><td>встречи в телефон; занятость: отмечаю сам или из календаря</td><td>встречи да, занятость вручную</td><td>Планы, выбор времени</td></tr>
+          <tr><td>Вход и устройства</td><td>моё</td><td>список устройств, выход на остальных</td><td>вход через Telegram</td><td>весь аккаунт</td></tr>
+          <tr><td>Встречи</td><td>пары</td><td>бюджет на встречу, город, как добираться между местами</td><td>до 5 000 ₽, пешком до 15 минут</td><td>колода, помощник, подбор места «а потом»</td></tr>
+          <tr><td>Скаут и афиша</td><td>пары</td><td>виды событий, как часто искать, чего не предлагать</td><td>кино, концерты, еда; каждый день</td><td>Афиша, ответы помощника</td></tr>
+          <tr><td>Дела</td><td>пары</td><td>время утреннего напоминания, сколько держать сделанные во вкладке, просроченные на главной</td><td>9:00, 7 дней, да</td><td>вкладка «Дела», главная, бот</td></tr>
+          <tr><td>Пара</td><td>пары</td><td>партнёр, выход из пары с подтверждением</td><td></td><td>всё приложение</td></tr>
+          <tr><td>Данные</td><td>моё</td><td>скачать мои идеи и историю, удалить мои данные</td><td></td><td>аккаунт</td></tr>
+        </table></div>
+        <p style="margin-top:12px">Чего в настройках нет: «Мой вкус» (это профиль, не настройка), подключение календаря по шагам (открывается из раздела «Календарь» и из Планов одним и тем же листом).</p>
+      </section>
+
+      <section class="panel" id="view-arena" hidden>
+        <h2>Арена: пять человек прошли версию 2</h2>
+        <p>Каждый прошёл все шаги сценариев и свободно обошёл прототип. Оценки: понятность / удобство по десятибалльной шкале. Прочерк: сценарий не входил в роль.</p>
+        <div class="tw"><table id="arena-t"></table></div>
+        <h3>Что нашли и что изменено в версии 3</h3>
+        <div class="tw"><table>
+          <tr><th>Проблема</th><th>Кто</th><th>Исправление</th></tr>
+          <tr><td>Время встречи решал один, второго не спрашивали</td><td>Настя, Лена, Олег</td><td>Время стало предложением: «Вова зовёт… Да / Другое время». В планы после «Да»</td></tr>
+          <tr><td>«Нет» и «Не могу» пропадали молча</td><td>Настя, Марина, Олег, Лена</td><td>Отказ возвращается автору строкой с действием: «Другое место», «Беру сам»</td></tr>
+          <tr><td>Роли в предложении путались, встречное не работало</td><td>Олег, Настя</td><td>У предложения есть автор; встречное время меняет автора</td></tr>
+          <tr><td>«Идём» вело в разные места и всегда в «Планетарий»</td><td>Лена, Олег</td><td>Одна кнопка, карточка встречи той идеи, на которой нажали</td></tr>
+          <tr><td>Главная перегружена, кнопки уезжали под панель</td><td>Лена, Настя</td><td>Главная не листается. Одна строка «Ждёт тебя» (остальные открываются листом), карточка свайпа на всё свободное место, внизу две плитки: ближайшая встреча и сводка дел. Помощник с главной убран</td></tr>
+          <tr><td>Без пары не спроектировано; у приглашённой нет экрана</td><td>Игорь, Настя, Олег, Лена</td><td>Главная одиночки, экран приглашения, случаи со ссылкой</td></tr>
+          <tr><td>Дела: карточка не различала, чьё дело; нет дат, просроченных, сделанных</td><td>Марина, Лена</td><td>Вся механика во вкладке «Механика дел»</td></tr>
+          <tr><td>Планы не показывали дела, дни не нажимались</td><td>Марина, Лена</td><td>Дни нажимаются, «Я занят» одним касанием. Дела в Планы не добавлял: по твоему решению они живут только в «Делах»</td></tr>
+          <tr><td>Две разные карточки идеи, три входа в правку</td><td>Лена, Олег</td><td>Одна карточка с полями, одна кнопка «Изменить» у автора, лист с текущими значениями</td></tr>
+          <tr><td>Кружок по центру без подписи читался как «создать»</td><td>Игорь, Лена</td><td>Подписи и значки у всех пунктов, у кружка «Помощник»</td></tr>
+          <tr><td>«Секретная iCal-ссылка»</td><td>все пятеро</td><td>Занятость по умолчанию отмечается руками в Планах. Календарь телефона: необязательный шаг с инструкцией</td></tr>
+          <tr><td>Три уровня отметки, три тапа во «Вкусе»</td><td>Настя, Игорь, Лена, Олег</td><td>«Хочу» / «Не моё»; во вкусе одно касание</td></tr>
+          <tr><td>«После встречи» недостижим, оценка одна на пару</td><td>Лена, Олег</td><td>Вход с главной и из Планов, каждый оценивает сам, есть «Не ходили»</td></tr>
+          <tr><td>Нет сообщений бота</td><td>Настя</td><td>Экран бота показывает те же предложения с теми же кнопками</td></tr>
+          <tr><td>«Назад» перескакивал экраны</td><td>Лена, Игорь, Олег</td><td>Возврат по шагам, подпись совпадает с местом</td></tr>
+        </table></div>
+        <h3>Осталось за рамками прототипа</h3>
+        <p>Одновременные действия двоих (оба выбрали время в одну секунду), несколько встреч в один день, таймаут предложения без ответа (предлагаю: напоминание через сутки, через трое суток строка «без ответа» у автора), дубль ссылки при добавлении идеи. Эти правила опишу в спецификации сервера.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s)
+const T1='вс 15 ноя, 13:00',T2='сб 21 ноя, 19:00'
+const IDEAS=[
+ {id:6,t:'«Щелкунчик» в Кремлёвском дворце',c:'t4',kind:'Балет',src:'ours',by:'v',wv:true},
+ {id:1,t:'Планетарий',c:'t1',kind:'Культура',src:'ours',by:'n',wn:true,f:{where:'Садовая-Кудринская, 5',price:'≈ 1 600 ₽',prog:'Звёздный зал и интерактивный музей, 2 часа'}},
+ {id:2,t:'Ресторан «Хачапури и вино»',c:'t2',kind:'Еда',src:'ours',by:'v',wv:true,wn:true,f:{where:'Большая Бронная, 2',price:'≈ 2 500 ₽',prog:'Хинкали, хачапури на углях, домашнее вино'}},
+ {id:3,t:'Каток на ВДНХ',c:'t3',kind:'Активное',src:'ours',by:'v',wv:true,f:{prog:'Большой каток, прокат на месте, 1,5 часа'}},
+ {id:4,t:'«Анора» в «Художественном»',c:'t4',kind:'Кино',src:'afisha',by:'s',fix:'вс 15 ноя, 19:30',f:{when:'вс 15 ноя, 19:30',where:'Арбатская площадь, 14',price:'≈ 1 400 ₽',prog:'Драма, 2024, 2 ч 19 мин'}},
+ {id:5,t:'Органный концерт при свечах',c:'t5',kind:'Концерт',src:'afisha',by:'s',wn:true,fix:'ср 18 ноя, 20:00',f:{when:'ср 18 ноя, 20:00',where:'Собор на Малой Грузинской',price:'≈ 3 000 ₽',prog:'Бах и Вивальди, 60 минут'}},
+ {id:8,t:'Стендап в «Брюсове»',c:'t3',kind:'Стендап',src:'afisha',by:'s',fix:'чт 19 ноя, 20:00',f:{when:'чт 19 ноя, 20:00',where:'Брюсов переулок, 2',price:'≈ 2 000 ₽',prog:'Открытый микрофон, 1,5 часа'}},
+ {id:7,t:'Кафе у Патриарших',c:'t5',kind:'Еда',src:'place',by:'s',f:{where:'Малая Бронная, 20'}},
+]
+const CH0=[
+ {id:5,t:'Отвезти вещи в химчистку',who:'v',d:'был срок чт 12 ноя',day:12,over:true},
+ {id:1,t:'Купить билеты на поезд',who:'v',d:'сегодня',day:14},
+ {id:2,t:'Записаться к стоматологу',who:'n',d:'сегодня',day:14},
+ {id:3,t:'Забрать посылку',who:'',d:'до пт 20 ноя',day:20},
+ {id:4,t:'Оплатить интернет',who:'v',d:'пт 20 ноя',day:20,rep:'каждый месяц'},
+ {id:9,t:'Заказать воду',who:'n',d:'пт 13 ноя',st:'done',doneBy:'n',doneAt:'вчера'},
+]
+const TG0={n_prop:1,n_meet:1,n_chore:1,n_scout:0,n_after:1,quiet:1,c_meet:1,c_chore:0,k_kino:1,k_conc:1,k_theatre:0,k_food:1,k_sport:0,ch_over:1}
+const CHO0={meetWhen:'за 2 часа',busy:'Отмечаю сам',budget:'до 5 000 ₽',walk:'пешком до 15 мин',freq:'каждый день',remind:'в 9:00',keep:'7 дней'}
+const freshMeet=()=>({idea:null,time:'',timeBy:'',timeSt:'',stop:null,stopBy:'',stopSt:'',tix:'',cancelBy:'',past:false,rated:{}})
+const fresh=()=>({paired:true,invited:false,joinErr:false,sheet:'',marks:{},matchId:1,meet:freshMeet(),chores:CH0.map(c=>({st:'open',...c})),src:'',chView:'all',chore:1,chShowDone:false,
+ newIdea:'',scoutAsk:{},chat:0,ideasView:'ours',ideasWho:'all',afDay:false,idea:1,stopKind:'Пообедать',pick:'',free:{v:{},n:{'1-1':true,'2-2':true}},busy:{n18:true},day:null,inboxAll:false,
+ histView:'meet',histWho:'all',setKey:'notif',tg:{...TG0},cho:{...CHO0},toast:'',undo:null})
+const S={who:'v',screen:'home',stack:[],step:null,...fresh()}
+const NAMES={start:'Бот',join:'Приглашение',home:'Главная',ideas:'Идеи',idea:'Идея',meet:'Встреча',free:'Общее время',assistant:'Помощник',chores:'Дела',chore:'Дело',plans:'Планы',us:'Профиль',history:'История',settings:'Настройки',set:'Раздел настроек',taste:'Мой вкус',after:'Как прошло'}
+const TABS=['home','ideas','assistant','chores','plans']
+const NM={v:['Вова','Вовы','Вове','Вову','Вовой'],n:['Настя','Насти','Насте','Настю','Настей']}
+const o=()=>S.who==='v'?'n':'v'
+const nm=(w,c=0)=>NM[w][c]
+const idea=id=>IDEAS.find(i=>i.id===id)
+const vis=i=>i.src!=='place'&&(i.id!==6||S.newIdea)&&(i.id!==8||S.chat===2)
+const want=(w,id)=>{const m=S.marks[w+id];return m===undefined?idea(id)['w'+w]:m}
+const both=()=>IDEAS.filter(i=>vis(i)&&want('v',i.id)&&want('n',i.id))
+const deckAll=()=>IDEAS.filter(i=>vis(i)&&want(S.who,i.id)===undefined&&!(i.id===6&&S.newIdea==='scouting'))
+const curSrc=()=>S.src||(deckAll().some(i=>i.src==='ours')?'ours':'afisha')
+const deck=()=>deckAll().filter(i=>i.src===curSrc())
+const mi=()=>idea(S.meet.idea)||idea(1)
+const short=t=>t.split(',')[0]
+const fields=i=>{
+  if(i.id===6){const sc=S.newIdea==='scouting',ed=S.newIdea==='edited',w=sc?'':'скаут'
+    return [['Когда',sc?'':'18, 20, 27 декабря, 19:00',w],['Где',sc?'':'Кремлёвский дворец',w],['Цена на двоих',sc?'':ed?'9 000 ₽, партер':'от 6 000 ₽',ed?'я':w],['Программа',ed?'2 действия с антрактом, сбор в 18:30':'',ed?'я':''],['Заметка',ed?'Насте хотелось именно в декабре':'',ed?'я':'']]}
+  const f=i.f||{},by=i.by==='s'?'скаут':i.by===S.who?'я':nm(i.by)
+  return [['Когда',f.when||(i.src==='ours'?'любой день':''),f.when?by:''],['Где',f.where,f.where?by:''],['Цена на двоих',f.price,f.price?by:''],['Программа',f.prog,f.prog?by:''],['Заметка',f.note,'']]}
+const F=(l,v,by,ph)=>`<div class="fld"><small>${l}${by?`<span class="by">${by}</span>`:''}</small><span class="${v?'':'empty'}">${v||ph||'не заполнено'}</span></div>`
+const sub=(title,right='')=>`<div class="subh"><button class="back" data-back>‹ ${NAMES[S.stack[S.stack.length-1]]||'Главная'}</button><b>${title}</b><span style="justify-self:end">${right}</span></div>`
+const TG=(k,l,s='')=>`<div class="srow"><span class="tx"><b>${l}</b>${s?`<small>${s}</small>`:''}</span><button class="tg ${S.tg[k]?'on':''}" data-tg="${k}" role="switch" aria-checked="${!!S.tg[k]}" aria-label="${l}"></button></div>`
+const CHO=(k,l,opts)=>`<div class="blk"><label>${l}</label><div class="row" style="flex-wrap:wrap">${opts.map(x=>`<button class="chip ${S.cho[k]===x?'on':''}" data-cho="${k}|${x}">${x}</button>`).join('')}</div></div>`
+
+// ---------- what waits for a person: one list for the home, the bot and the tab badge ----------
+function inbox(w){const m=S.meet,ot=w==='v'?'n':'v',r=[],t=m.idea?mi().t:''
+  if(m.cancelBy&&m.cancelBy!==w)r.push({hot:1,ic:'✕',t:`${nm(m.cancelBy)} отменил${m.cancelBy==='n'?'а':''} встречу: ${t}`,s:short(m.time||''),btn:[['Понятно','ackCancel',1]]})
+  if(m.idea&&!m.cancelBy){
+    if(m.timeSt==='wait'&&m.timeBy!==w)r.push({hot:1,ic:'📅',t:`${nm(m.timeBy)} зовёт: ${t}`,s:m.time,go:'meet',btn:[['Да','timeYes',1],['Другое время','timeOther']]})
+    if(m.timeSt==='no'&&m.timeBy===w)r.push({hot:1,ic:'📅',t:`${nm(ot)} не может ${m.time}`,s:t,go:'meet',btn:[['Другое время','timeOther',1]]})
+    if(m.stopSt==='wait'&&m.stopBy!==w)r.push({hot:1,ic:'📍',t:`${nm(m.stopBy)} предлагает после: ${idea(m.stop).t}`,s:`${t} · ${m.time}`,go:'meet',btn:[['Да','stopYes',1],['Нет','stopNo']]})
+    if(m.stopSt==='no'&&m.stopBy===w)r.push({hot:1,ic:'📍',t:`${nm(ot)}: нет, не «${idea(m.stop).t}»`,s:`после «${t}»`,go:'meet',btn:[['Другое место','stopOther',1]]})
+    if(m.timeSt==='ok'&&!m.past&&!m.tix)r.push({ic:'🎟',t:`Билеты: ${t}`,s:'кто покупает?',go:'meet',btn:[['Куплю я','tixMe',1]]})
+    if(m.timeSt==='ok'&&!m.past&&m.tix===w)r.push({ic:'🎟',t:`Купить билеты: ${t}`,s:m.time,go:'meet',btn:[['Куплены','tixDone',1]]})
+    if(m.past&&!m.rated[w])r.push({hot:1,ic:'★',t:`Как прошло: ${t}?`,s:short(m.time),go:'after'})
+  }
+  const a=S.chores.find(c=>c.id===6)
+  if(a&&a.st==='ask'&&a.by!==w)r.push({hot:1,ic:'☑',t:`${nm(a.by)} просит: ${a.t.toLowerCase()}`,s:a.d,go:'chores',btn:[['Беру','chTake',1],['Не могу','chNo']]})
+  if(a&&a.st==='no'&&a.by===w)r.push({hot:1,ic:'☑',t:`${nm(ot)} не может: ${a.t.toLowerCase()}`,s:a.d,go:'chores',btn:[['Беру сам','chSelf',1],['Кто угодно','chAny']]})
+  if(S.newIdea==='ready'&&w==='v')r.push({hot:1,ic:'🔭',t:'Скаут заполнил «Щелкунчик»',s:'проверь цену и программу',idea:6})
+  if(S.chat===2&&w==='v')r.push({hot:1,ic:'🔭',t:'Скаут нашёл стендап на этой неделе',s:'ответ на твой вопрос',go:'assistant'})
+  return r}
+const qrow=x=>`<div class="q ${x.hot?'hot':''}"><button class="qt" ${x.idea?`data-idea="${x.idea}"`:x.go?`data-go="${x.go}"`:''}><i>${x.ic}</i><span><b>${x.t}</b><small>${x.s||''}</small></span></button>${x.btn?`<div class="qb">${x.btn.map(([l,a,p])=>`<button class="b s ${p?'a':''}" data-act="${a}">${l}</button>`).join('')}</div>`:''}</div>`
+const chWho=c=>c.who?nm(c.who):'кто угодно'
+const chRow=c=>`<div class="in ${c.st==='done'?'done':''}"><button class="ck ${c.st==='done'?'on':''}" data-act="chDone" data-id="${c.id}" aria-label="${c.st==='done'?'Вернуть в работу':'Сделано'}">${c.st==='done'?'✓':''}</button><span data-chore="${c.id}" style="cursor:pointer"><b>${c.t}</b><small class="${c.over&&c.st!=='done'?'red':''}">${c.st==='done'?`${nm(c.doneBy)} · ${c.doneAt}`:`${chWho(c)} · ${c.d}${c.rep?' · '+c.rep:''}`}</small></span>›</div>`
+const nav=()=>{const cnt=inbox(S.who).filter(x=>x.hot).length,chn=S.chores.filter(c=>c.st==='open'&&(c.who===S.who||!c.who)&&(c.day===14||c.over)).length
+  return `<div class="nav">${[['home','Главная','⌂',cnt],['ideas','Идеи','♡',0],['assistant','Помощник','✦',0],['chores','Дела','☑',chn],['plans','Планы','▦',0]].map(([k,l,g,c])=>`<button class="${k==='assistant'?'ai ':''}${S.screen===k?'on':''}" data-go="${k}"><span class="g">${g}</span>${l}${c&&S.screen!==k?`<span class="cnt">${c}</span>`:''}</button>`).join('')}</div>`}
+const calGrid=mark=>`<div class="cal">${['пн','вт','ср','чт','пт','сб','вс'].map(d=>`<span class="wd">${d}</span>`).join('')}${'<span></span>'.repeat(6)}${Array.from({length:30},(_,k)=>mark(k+1)).join('')}</div>`
+const meetDay=()=>{const m=S.meet;if(!m.idea||!m.time||m.cancelBy)return 0;return +m.time.match(/\d+/)[0]}
+
+const SCREENS={
+ start:()=>{const w=S.who,box=inbox(w)
+  if(!S.paired)return `<div class="scr sub" style="background:#dfe7f0;color:#141414"><p class="m" style="text-align:center">Чат с ботом в Telegram</p><div class="sp"></div>
+   ${w==='n'?`<div class="msg">Привет, Настя! Вова зовёт тебя во «Вдвоём»: вместе выбирать, куда сходить, и делить дела.</div><button class="b a w" data-go="join">Посмотреть приглашение</button>`
+   :`<div class="msg">Привет, Вова! Здесь пара решает, куда сходить и когда, и делит домашние дела.</div><div class="msg">Сюда я пишу, когда нужен твой ответ. Всё остальное в приложении.</div><button class="b a w" data-go="home">Открыть «Вдвоём»</button>`}</div>`
+  return `<div class="scr sub" style="background:#dfe7f0;color:#141414"><p class="m" style="text-align:center">Чат с ботом в Telegram · ${nm(w)}</p><div class="sp"></div>
+   ${box.length?box.map(x=>`<div class="msg" style="max-width:92%"><b>${x.t}</b>${x.s?`<br><span class="m">${x.s}</span>`:''}${x.btn?`<div class="row" style="margin-top:8px">${x.btn.map(([l,a,p])=>`<button class="b s ${p?'a':''}" data-act="${a}">${l}</button>`).join('')}</div>`:''}</div>`).join(''):'<div class="msg">Пока тихо. Напишу, когда понадобится твой ответ.</div>'}
+   <p class="m" style="text-align:center">Те же строки лежат на главной. Ответил здесь: там погасло.</p><button class="b p w" data-go="home">Открыть «Вдвоём»</button></div>`},
+ join:()=>S.joinErr?`<div class="scr sub"><div class="sp"></div><div class="card" style="align-items:center;text-align:center;padding:22px 14px;gap:10px"><h2>Ссылка устарела</h2><p class="m">Приглашение живёт 3 дня и срабатывает один раз.</p><button class="b p w" data-act="askLink">Попросить Вову прислать новую</button></div><div class="sp"></div></div>`
+  :`<div class="scr sub"><div class="pic t2" style="min-height:170px;background:linear-gradient(150deg,#ef6537,#31408f)">Вова зовёт тебя во «Вдвоём»</div>
+  <div class="card"><b>Что тут делают вдвоём</b><ul class="ul"><li>Отмечают, куда хочется. Совпало: назначают встречу.</li><li>Предлагают время и место. Второй отвечает «Да» или «Нет».</li><li>Делят дела: кто что берёт и к какому сроку.</li></ul></div>
+  <p class="m">Твои идеи, если ты уже что-то добавляла, переедут в пару вместе с тобой.</p><button class="b a w" data-act="joined">Принять приглашение</button><button class="b ghost w" data-go="start">Не сейчас</button></div>`,
+ home:()=>{const w=S.who,d=deck(),i=d[0],all=deckAll(),src=curSrc(),m=S.meet
+  if(!S.paired)return `<div class="scr"><div><h2>Привет, ${nm(w)}</h2><p class="m">Пока ты здесь один</p></div>
+   <div class="card" style="background:linear-gradient(150deg,#ef6537,#31408f);color:#fff;gap:10px;padding:16px"><h2 style="color:#fff">${S.invited?'Ждём партнёра':'Позови партнёра'}</h2>
+   <p style="font-size:13px">${S.invited?'Ссылка ушла. Она живёт 3 дня и сработает один раз.':'Вдвоём приложение сводит ваши «хочу», помогает договориться о времени и делит дела.'}</p>
+   <div style="background:rgba(255,255,255,.16);border-radius:12px;padding:9px 10px;font-size:12.5px">Партнёр получит: «Вова зовёт тебя во «Вдвоём»: вместе выбирать, куда сходить, и делить дела»</div>
+   <div class="row"><button class="b" style="background:#fff;color:#141414" data-act="invite">${S.invited?'Отправить ещё раз':'Пригласить'}</button>${S.invited?'<button class="b ghost" style="color:#fff" data-act="joined">Партнёр принял →</button>':''}</div></div>
+   <div class="lbl">Пока ждёшь</div><div class="row"><button class="b p" style="flex:1" data-sheet="add">＋ Идея</button><button class="b" style="flex:1" data-sheet="addchore">＋ Дело</button></div>
+   <button class="in" data-go="ideas"><i>♡</i><span><b>Отметь, что нравится в афише</b><small>отметки останутся, когда партнёр придёт</small></span>›</button>${nav()}</div>`
+  const box=inbox(w),show=S.inboxAll?box:box.slice(0,3)
+  const ch=S.chores.filter(c=>c.st==='open'&&(c.who===w||!c.who)&&(c.day===14||c.over))
+  const pm=i&&want(o(),i.id)
+  return `<div class="scr fix"><div class="row"><div><h2>Привет, ${nm(w)}</h2><p class="m">сб, 14 ноября</p></div><span class="sp"></span><button class="b s" data-sheet="plus" aria-label="Добавить идею или дело">＋</button><button class="b s" data-go="us" aria-label="Профиль">${nm(w)[0]}${nm(o())[0]}</button></div>
+  ${box.length?`<div class="lbl">Ждёт тебя · ${box.length}${box.length>1?`<button class="back" data-sheet="inbox">все ${box.length}</button>`:''}</div>${qrow(box[0])}`:''}
+  <div class="dtabs">${[['ours','Наши'],['afisha','Афиша']].map(([k,l])=>`<button class="${src===k?'on':''}" data-src="${k}">${l} <i>${all.filter(x=>x.src===k).length}</i></button>`).join('')}<span class="sp"></span><button class="back" data-go="ideas">Все идеи</button></div>
+  ${i?`<div class="card swipe" style="padding:8px"><button class="pic ${i.c}" style="border:0;text-align:left" data-idea="${i.id}">${i.id===6?`<small>${nm(i.by)} добавил</small>`:pm?`<small>${nm(o())} хочет</small>`:''}${i.t}</button><div class="row" style="padding:0 2px 0 6px"><span style="flex:1;min-width:0"><b>${i.kind}${i.fix?' · '+i.fix:''}</b><p class="m">${(i.f&&i.f.price)||(i.id===6?'от 6 000 ₽':'цена не указана')}${(i.f&&i.f.where)?' · '+i.f.where:i.id===6?' · Кремлёвский дворец':''}</p><p class="m">${(i.f&&i.f.prog)||(i.id===6?'Балет в двух действиях':'')}</p></span><span class="acts"><button data-act="skip" aria-label="Не моё">✕</button><button class="y" data-act="want" aria-label="Хочу">♥</button></span></div></div>`
+  :`<div class="card swipe0" style="align-items:center;justify-content:center;text-align:center;padding:18px 14px"><h3>${src==='ours'?'Наши разобраны':'Афиша разобрана'}</h3>${all.length?`<button class="b p w" data-src="${src==='ours'?'afisha':'ours'}">${src==='ours'?'Смотреть афишу':'К нашим идеям'} · ${all.length}</button>`:`<p class="m">Совпало: ${both().length}</p><button class="b p w" data-act="toBoth">Выбрать из совпавшего</button>`}</div>`}
+  <div class="tiles">${m.idea&&!m.cancelBy?`<button class="in" data-go="${m.past?'after':'meet'}"><span><b>${mi().t}</b><small>${m.past?'как прошло?':!m.time?'без времени':short(m.time)+' · '+(m.timeSt==='ok'?m.time.split(', ')[1]:m.timeSt==='no'?'не подошло':m.timeBy===w?'ждём '+nm(o(),3):'ответь')}</small></span></button>`
+  :`<button class="in" data-go="free"><span><b>Встреч нет</b><small>найти общее время</small></span></button>`}
+  <button class="in" data-go="chores"><span><b>Дела · ${ch.length}</b><small>${ch.length?`${ch.filter(c=>!c.over).length} на сегодня${ch.some(c=>c.over)?`, <em class="red" style="font-style:normal">${ch.filter(c=>c.over).length} просрочено</em>`:''}`:'на сегодня ничего'}</small></span></button></div>
+  ${nav()}</div>`},
+ ideas:()=>{const b=both(),w=S.who,v=S.paired?S.ideasView:(S.ideasView==='both'?'ours':S.ideasView)
+  const mark=i=>want('v',i.id)&&want('n',i.id)?'<span class="badge">совпало</span>':want(w,i.id)?'♥':''
+  const st=i=>i.id===6?(S.newIdea==='scouting'?'скаут собирает':S.newIdea==='ready'?'проверь':''):S.scoutAsk[i.id]?'скаут дополняет':(i.by===w&&!(i.f&&i.f.price))?'нет цены':''
+  return `<div class="scr"><div class="row"><h2>Идеи</h2><span class="sp"></span><button class="b p s" data-sheet="add">＋ Идея</button></div><div class="seg">${[['ours','Наши'],['afisha','Афиша']].concat(S.paired?[['both','Совпало · '+b.length]]:[]).map(([k,l])=>`<button class="${v===k?'on':''}" data-iv="${k}">${l}</button>`).join('')}</div>
+  ${v==='both'?(b.length?b.map(i=>`<div class="in"><span class="th ${i.c}"></span><span data-idea="${i.id}" style="cursor:pointer"><b>${i.t}</b><small>${i.kind}${i.fix?' · '+i.fix:''}</small></span><button class="b p s" data-act="go" data-id="${i.id}">Идём</button></div>`).join(''):`<div class="card" style="align-items:center;text-align:center"><h3>Пока не совпало</h3><button class="b p w" data-go="home">Отмечать идеи</button></div>`)
+  :v==='afisha'?`<div class="row"><div class="chips">${['Всё','Кино','Концерт','Стендап'].map(k=>`<button class="chip ${(S.afKind||'Всё')===k?'on':''}" data-afk="${k}">${k}</button>`).join('')}</div><span class="sp"></span><button class="back" data-act="afday">${S.afDay?'Списком':'По дням'}</button></div>
+   ${S.afDay?`<div class="card">${calGrid(d=>{const has=IDEAS.some(i=>vis(i)&&i.fix&&+i.fix.match(/\d+/)[0]===d);return `<button class="${d===14?'today ':''}${S.day===d?'sel':''}" data-day="${d}">${d}${has?'<i class="d"></i>':''}</button>`})}</div>`:''}
+   ${IDEAS.filter(i=>vis(i)&&i.src==='afisha'&&(!S.afKind||S.afKind==='Всё'||i.kind===S.afKind)&&(!S.afDay||!S.day||+i.fix.match(/\d+/)[0]===S.day)).map(i=>`<button class="in" data-idea="${i.id}"><span class="th ${i.c}"></span><span><b>${i.t}</b><small>${i.fix} · ${i.f.price}</small></span>${mark(i)||'›'}</button>`).join('')||'<p class="m">В этот день событий нет</p>'}`
+  :`<div class="chips">${[['all','Все'],['mine','Мои']].concat(S.paired?[['their',nm(o(),1)]]:[]).map(([k,l])=>`<button class="chip ${S.ideasWho===k?'on':''}" data-iw="${k}">${l}</button>`).join('')}</div>
+   <div class="g2">${IDEAS.filter(i=>vis(i)&&i.src==='ours'&&(S.ideasWho==='all'||(S.ideasWho==='mine')===(i.by===w))).map(i=>`<button class="gcard" data-idea="${i.id}"><span class="pic ${i.c}">${i.by===w&&st(i)?`<small>${st(i)}</small>`:want('v',i.id)&&want('n',i.id)?'<small>совпало</small>':''}${i.t}</span><small>${i.kind} · ${i.by===w?'моя':'от '+nm(i.by,1)}${want(w,i.id)?' · ♥':''}</small></button>`).join('')||`<div class="card" style="align-items:center;text-align:center"><h3>Здесь пусто</h3><button class="b p w" data-sheet="add">Добавить идею</button></div>`}</div>`}${nav()}</div>`},
+ idea:()=>{const i=idea(S.idea),w=S.who,mine=i.by===w,sc=i.id===6&&S.newIdea==='scouting',my=want(w,i.id),pw=want(o(),i.id),has=S.meet.idea===i.id&&!S.meet.cancelBy
+  const miss=fields(i).filter(([l,v])=>!v&&l!=='Заметка'&&l!=='Программа').map(([l])=>l.toLowerCase())
+  return `<div class="scr">${sub('Идея')}<div class="pic ${i.c}" style="min-height:150px">${i.t}<small>${i.kind} · ${i.by==='s'?'афиша':mine?'моя идея':'от '+nm(i.by,1)}</small></div>
+  ${sc?`<div class="card prop"><b>🔭 Скаут собирает остальное</b><p class="m">Название и фото взяты из ссылки сразу. Даты, адрес и цена: обычно до часа. Напишу на главной и в боте.</p><button class="b s" data-act="scoutDone" style="align-self:flex-start">Прошёл час →</button></div>`:i.id===6&&S.newIdea==='ready'&&mine?`<div class="card prop"><b>Скаут заполнил карточку</b><p class="m">У каждого поля видно, кто его заполнил.</p></div>`:''}
+  ${S.scoutAsk[i.id]?`<div class="card prop"><b>🔭 Скаут дополняет</b><p class="m">Ищет: ${miss.join(', ')}. Напишу на главной и в боте.</p></div>`:mine&&miss.length&&!sc?`<div class="card"><p class="m">Не хватает: ${miss.join(', ')}</p><div class="row"><button class="b s" data-sheet="edit">Дописать</button><button class="b s" data-act="askScout">Попросить скаута</button></div></div>`:''}
+  <div class="blk">${fields(i).filter(([l,v])=>v||mine).map(([l,v,by])=>F(l,v,by,sc&&l!=='Заметка'&&l!=='Программа'?'скаут собирает':'')).join('')}</div>
+  ${S.paired?`<div class="blk"><label>Отметка</label><div class="row"><button class="chip ${my===true?'on':''}" data-act="markY">♥ Хочу</button><button class="chip ${my===false?'on':''}" data-act="markN">Не моё</button><span class="sp"></span><span class="m">${pw===true?nm(o())+' хочет':pw===false?nm(o())+': не моё':nm(o())+' ещё не смотрел'+(o()==='n'?'а':'')}</span></div></div>
+  ${sc?'':`<button class="b a w" data-act="go" data-id="${i.id}">${has?'Открыть встречу':pw?'Идём':'Позвать '+nm(o(),3)}</button>`}`:''}
+  ${mine?`<button class="b w" data-sheet="edit">Изменить</button>`:''}${nav()}</div>`},
+ meet:()=>{const m=S.meet,i=mi(),w=S.who,st=m.stop?idea(m.stop):null,mineT=m.timeBy===w
+  const status=m.cancelBy?'отменена':m.past?'прошла':!m.time?'без времени':m.timeSt==='ok'?'в планах':m.timeSt==='no'?'время не подошло':mineT?'ждём '+nm(o(),3):'ждёт твоего ответа'
+  if(m.cancelBy)return `<div class="scr">${sub('Встреча')}<div class="pic ${i.c}" style="filter:grayscale(1)">${i.t}<small>отменена</small></div><div class="card"><p>${nm(m.cancelBy)} отменил${m.cancelBy==='n'?'а':''} встречу${m.time?' на '+m.time:''}.</p>${m.tix?'<p class="m">Билеты отмечены «вернуть».</p>':''}<button class="b w" data-act="uncancel">Вернуть встречу</button></div>${nav()}</div>`
+  return `<div class="scr">${sub('Встреча')}<div class="pic ${i.c}" style="min-height:120px">${i.t}<small>${status}</small></div>
+  ${m.timeSt==='wait'&&!mineT?`<div class="card prop"><b style="color:var(--accent);font-size:12px">${nm(m.timeBy)} зовёт</b><b>${m.time}</b><div class="row"><button class="b a s" data-act="timeYes">Да</button><button class="b s" data-act="timeOther">Другое время</button><button class="b s ghost" data-act="timeNo">Не могу</button></div></div>`:''}
+  ${m.stopSt==='wait'&&m.stopBy!==w?`<div class="card prop"><b style="color:var(--accent);font-size:12px">${nm(m.stopBy)} предлагает после</b><div class="row"><span style="flex:1;min-width:0"><b>${st.t}</b><p class="m">${st.f.where}</p></span><button class="b a s" data-act="stopYes">Да</button><button class="b s" data-act="stopNo">Нет</button></div></div>`:''}
+  <div class="blk"><label>Когда</label><div class="card">${!m.time?`<p class="m">Время не выбрано. Предложи, ${nm(o())} ответит.</p><button class="b p w" data-sheet="time">Предложить время</button>`
+   :m.timeSt==='ok'?`<div class="row"><b>${m.time}</b><span class="sp"></span><button class="back" data-sheet="time">Перенести</button></div><p class="m">Оба согласны. В календаре телефона у обоих.</p>`
+   :m.timeSt==='no'?`<p>${nm(mineT?o():w)} не может ${m.time}</p><button class="b p w" data-sheet="time">Другое время</button>`
+   :`<div class="row"><b>${m.time}</b><span class="sp"></span>${mineT?'<button class="back" data-sheet="time">Изменить</button>':''}</div><p class="m">${mineT?`Ждём ответа ${nm(o(),1)}. Строка у неё на главной и в боте.`.replace('неё',o()==='n'?'неё':'него'):'Ответь выше'}</p>`}</div></div>
+  <div class="blk"><label>Где</label><div class="card"><b>${(i.f&&i.f.where)||'адрес не указан'}</b><p class="m">открыть на карте ↗</p></div></div>
+  <div class="blk"><label>А потом</label><div class="card">${st?`<div class="row"><span class="th ${st.c}"></span><span style="flex:1;min-width:0"><b>${st.t}</b><p class="m">${m.stopSt==='ok'?'договорились':m.stopSt==='no'?(m.stopBy===w?nm(o())+': нет':'ты ответил'+(w==='n'?'а':'')+' «нет»'):m.stopBy===w?'ждём '+nm(o(),3):'ответь выше'} · после «${i.t}»</p></span></div><button class="back" style="align-self:flex-start" data-act="stopOther">Другое место</button>`
+   :`<p class="m">Место выбираете вы, второй подтверждает.</p><div class="chips">${['Пообедать','Кофе','Прогуляться'].map(k=>`<button class="chip" data-act="stopKind" data-id="${k}">${k}</button>`).join('')}</div>`}</div></div>
+  ${m.timeSt==='ok'?`<div class="blk"><label>Билеты</label><div class="card">${!m.tix?`<p class="m">Кто покупает?</p><div class="row"><button class="b a s" data-act="tixMe">Куплю я</button><button class="b s" data-act="tixDone">Уже есть</button></div>`:m.tix==='done'?'<b>Билеты куплены</b>':`<div class="row"><b>Покупает ${nm(m.tix)}</b><span class="sp"></span>${m.tix===w?'<button class="b a s" data-act="tixDone">Куплены</button>':''}</div>`}</div></div>`:''}
+  <button class="b ghost w" data-sheet="cancel">Отменить встречу</button>${nav()}</div>`},
+ free:()=>{const w=S.who,rows=['Сб 14','Вс 15','Сб 21'],cols=['Утро','День','Вечер'],my=S.free[w],th=S.free[o()]
+  const hit=Object.keys(my).find(k=>my[k]&&th[k]),tm=hit==='1-1'?T1:hit==='2-2'?T2:hit?`${rows[hit[0]].toLowerCase()}, ${cols[hit[2]].toLowerCase()}`:''
+  return `<div class="scr">${sub('Общее время')}<p class="m">Отметь, когда свободен. Синяя рамка: свободн${o()==='n'?'а':''} ${nm(o())}. Штриховка: ты занят.</p>
+  <div class="card"><div class="grid4"><span></span>${cols.map(c=>`<b>${c}</b>`).join('')}${rows.map((d,r)=>`<span>${d}</span>${[0,1,2].map(c=>{const k=r+'-'+c,bz=r===0&&c<2;return `<button class="slot ${my[k]?'on':bz?'busy':''} ${th[k]?'their':''}" ${bz?'disabled':`data-free="${k}"`} aria-label="${d} ${cols[c]}">${my[k]?'✓':''}</button>`}).join('')}`).join('')}</div></div>
+  ${hit?`<div class="card prop"><b style="color:var(--accent);font-size:12px">Оба свободны: ${tm}</b>${both().length?both().map(i=>`<div class="row"><span class="th ${i.c}"></span><span style="flex:1;min-width:0"><b>${i.t}</b><p class="m">хотите оба</p></span><button class="b p s" data-act="goAt" data-id="${i.id}" data-t="${tm}">Идём</button></div>`).join(''):'<button class="b p w" data-go="home">Пока не совпало. Отмечать идеи</button>'}</div>`
+  :`<div class="card"><p class="m">${nm(o())} отметил${o()==='n'?'а':''} ${Object.keys(th).length} окна. Общего пока нет: отметь свои.</p></div>`}${nav()}</div>`},
+ assistant:()=>`<div class="scr"><h2>Помощник</h2>${S.chat===0?`<p class="m">Ищу по вашим идеям и афише. Чего нет, спрошу у скаута: он ищет события в сети.</p><div class="chips"><button class="chip" data-act="ask">Есть стендап на этой неделе?</button><button class="chip" data-act="askFood">Куда поужинать?</button></div>`
+  :S.chat==='f'?`<div class="msg me">куда поужинать?</div><div class="msg">Вы оба хотите в это место:</div><div class="in"><span class="th t2"></span><span data-idea="2" style="cursor:pointer"><b>Ресторан «Хачапури и вино»</b><small>≈ 2 500 ₽ на двоих</small></span><button class="b p s" data-act="go" data-id="2">Идём</button></div>`
+  :`<div class="msg me">есть стендап на этой неделе?</div><div class="msg">В вашей афише стендапа нет. Спросил скаута.</div>
+  ${S.chat===1?`<button class="b w">Посмотреть сейчас в Яндекс Афише ↗</button><div class="in"><i>🔭</i><span><b>Скаут ищет: стендап, эта неделя</b><small>обычно до часа · отвечу сюда и в бот</small></span></div><button class="b ghost w" data-act="scout">Прошёл час →</button>`
+  :`<div class="msg">Скаут нашёл один вечер:</div><div class="in"><span class="th t3"></span><span data-idea="8" style="cursor:pointer"><b>Стендап в «Брюсове»</b><small>чт 19 ноя, 20:00 · ≈ 2 000 ₽</small></span><button class="b p s" data-act="go" data-id="8">${want('n',8)?'Идём':'Позвать'}</button></div>`}`}
+  <div class="sp"></div><div class="in"><span><small>Спроси про идеи, афишу, планы…</small></span><i>↑</i></div>${nav()}</div>`,
+ chores:()=>{const w=S.who,f=c=>S.chView==='all'||(S.chView==='mine'?c.who===w:S.chView==='their'?c.who===o():!c.who)
+  const L=S.chores.filter(f),open=L.filter(c=>c.st==='open'),ask=S.chores.filter(c=>c.st==='ask'||c.st==='no'),done=L.filter(c=>c.st==='done')
+  const sec=(l,a,red)=>a.length?`<div class="blk"><label class="${red?'red':''}">${l}</label>${a.map(chRow).join('')}</div>`:''
+  return `<div class="scr"><div class="row"><h2>Дела</h2><span class="sp"></span><button class="b p s" data-sheet="addchore">＋ Дело</button></div><div class="seg">${[['all','Все'],['mine','Мои']].concat(S.paired?[['their',nm(o(),1)]]:[]).concat([['any','Общие']]).map(([k,l])=>`<button class="${S.chView===k?'on':''}" data-cv="${k}">${l}</button>`).join('')}</div>
+  ${ask.length?`<div class="blk"><label>Ждёт ответа</label>${ask.map(c=>{const toMe=c.st==='ask'&&c.by!==w,back=c.st==='no'&&c.by===w
+    return `<div class="q ${toMe||back?'hot':''}"><button class="qt" data-chore="${c.id}"><i>☑</i><span><b>${c.t}</b><small>${toMe?nm(c.by)+' просит · '+c.d:back?nm(o())+' не может · '+c.d:c.st==='ask'?'ждём ответа '+nm(o(),1)+' · '+c.d:'ты ответил'+(w==='n'?'а':'')+' «не могу»'}</small></span></button>${toMe?'<div class="qb"><button class="b a s" data-act="chTake">Беру</button><button class="b s" data-act="chNo">Не могу</button></div>':back?'<div class="qb"><button class="b a s" data-act="chSelf">Беру сам</button><button class="b s" data-act="chAny">Кто угодно</button></div>':''}</div>`}).join('')}</div>`:''}
+  ${sec('Просрочено',open.filter(c=>c.over),1)}${sec('Сегодня',open.filter(c=>c.day===14))}${sec('Позже',open.filter(c=>!c.over&&c.day!==14))}
+  ${!open.length&&!ask.length?`<div class="card" style="align-items:center;text-align:center"><h3>Здесь дел нет</h3><button class="b p w" data-sheet="addchore">Добавить дело</button></div>`:''}
+  <button class="b w" data-act="chShowDone">Сделано за 7 дней · ${done.length} ${S.chShowDone?'▴':'▾'}</button>${S.chShowDone?done.map(chRow).join('')+`<button class="back" style="align-self:flex-start" data-act="toHistCh">Вся история дел</button>`:''}${nav()}</div>`},
+ chore:()=>{const c=S.chores.find(x=>x.id===S.chore),w=S.who,mine=c.who===w,their=c.who===o()
+  return `<div class="scr">${sub('Дело',c.st==='done'?'':'<button class="back" data-sheet="editchore">Изменить</button>')}<h2>${c.t}</h2>
+  ${c.st==='done'?`<div class="card"><b>Сделано</b><p class="m">${nm(c.doneBy)} · ${c.doneAt}. Ещё 7 дней во вкладке, потом в истории профиля.</p></div><button class="b w" data-act="chDone" data-id="${c.id}">Вернуть в работу</button>`
+  :`<div class="blk">${F('Делает',chWho(c)+(c.st==='ask'?' · ждём ответа':''))}<div class="fld"><small>Срок</small><span class="${c.over?'red':''}">${c.d}</span></div>${F('Повтор',c.rep||'нет')}${F('Заметка',c.id===1?'Туда 28-го, обратно 3-го':'')}</div>
+  ${c.st==='ask'?`<p class="m">${c.by===w?nm(o())+' ещё не ответил'+(o()==='n'?'а':''):'Ответь в строке «Ждёт ответа»'}</p>`:`${mine||!c.who?`<button class="b a w" data-act="chDone" data-id="${c.id}">Сделано</button>`:''}
+  <div class="row">${mine?`<button class="b" style="flex:1" data-act="chPass" data-id="${c.id}">Передать ${nm(o(),2)}</button>`:their?`<button class="b" style="flex:1" data-act="chNudge">Напомнить ${nm(o(),2)}</button><button class="b" style="flex:1" data-act="chMine" data-id="${c.id}">Забрать себе</button>`:`<button class="b" style="flex:1" data-act="chMine" data-id="${c.id}">Беру</button>`}${c.over?`<button class="b" style="flex:1" data-act="chMove" data-id="${c.id}">Перенести срок</button>`:''}</div>`}`}${nav()}</div>`},
+ plans:()=>{const m=S.meet,md=meetDay(),w=S.who,d=S.day,has=m.idea&&!m.cancelBy
+  const chD=k=>S.chores.filter(c=>c.st==='open'&&c.day===k)
+  return `<div class="scr"><div class="row"><h2>Планы</h2><span class="sp"></span><button class="b s" data-sheet="cal" aria-label="Календарь телефона">Календарь</button></div>
+  <div class="card"><b>Ноябрь</b>${calGrid(k=>`<button class="${k===md?(m.timeSt==='ok'?'ev ':'evw '):''}${S.busy['v'+k]||S.busy['n'+k]?'bz ':''}${k===14?'today ':''}${d===k?'sel':''}" data-day="${k}">${k}</button>`)}<p class="m">Заливка: встреча. Контур: ждём ответа. Серый: кто-то занят.</p></div>
+  ${d?`<div class="card"><div class="row"><b>${d} ноября</b><span class="sp"></span><button class="back" data-day="0">Закрыть</button></div>
+   ${d===md?`<button class="in" data-go="meet" style="box-shadow:none;padding:4px 0"><span class="th ${mi().c}"></span><span><b>${mi().t}</b><small>${m.time.split(', ')[1]} · ${m.timeSt==='ok'?'в планах':'ждём ответа'}</small></span>›</button>`:''}
+   ${d!==md&&!S.busy[o()+d]?'<p class="m">Встреч нет</p>':''}${S.busy[o()+d]?`<p class="m">${nm(o())} занят${o()==='n'?'а':''}</p>`:''}
+   <div class="srow"><span class="tx"><b>Я занят${w==='n'?'а':''} в этот день</b><small>${nm(o())} увидит только «занят${w==='n'?'а':''}»</small></span><button class="tg ${S.busy[w+d]?'on':''}" data-act="busy" role="switch" aria-checked="${!!S.busy[w+d]}" aria-label="Я занят"></button></div>
+   <button class="b w" data-act="dayAfisha">Что можно в этот день</button></div>`:''}
+  <div class="lbl">Встречи</div>
+  ${has?`<button class="in" data-go="${m.past?'after':'meet'}"><span class="th ${mi().c}"></span><span><b>${mi().t}</b><small>${m.past?'прошла · как прошло?':!m.time?'без времени':m.time+(m.timeSt==='ok'?'':' · ждём ответа')}${m.stopSt==='ok'?' · потом '+idea(m.stop).t:''}</small></span>›</button>`
+  :`<div class="card" style="align-items:center;text-align:center"><h3>Встреч пока нет</h3><button class="b p w" data-act="toBoth">Выбрать из совпавшего</button></div>`}
+  <button class="b w" data-go="free">Найти общее время</button>${nav()}</div>`},
+ us:()=>{const dn=S.chores.filter(c=>c.st==='done').length+14
+  return `<div class="scr">${sub('Профиль')}<div class="card"><div class="row"><span class="th t2" style="border-radius:50%"></span><span><b>Вова и Настя</b><p class="m">в паре с 7 ноября</p></span></div></div>
+  <div class="blk"><label>История</label><div class="card list"><button class="srow" data-act="histMeet"><span class="tx"><b>Встречи</b><small>где были и кому понравилось</small></span><span class="m">${S.meet.past&&Object.keys(S.meet.rated).length?3:2}</span>›</button><button class="srow" data-act="histCh"><span class="tx"><b>Дела</b><small>кто что сделал и когда</small></span><span class="m">${dn}</span>›</button></div></div>
+  <div class="blk"><label>Я</label><div class="card list"><button class="srow" data-go="taste"><span class="tx"><b>Мой вкус</b><small>кино, еда, прогулки</small></span>›</button><button class="srow" data-go="settings"><span class="tx"><b>Настройки</b><small>уведомления, календарь, пара</small></span>›</button></div></div>${nav()}</div>`},
+ history:()=>{const m=S.meet,w=S.histWho,rt=x=>x==='like'?'понравилось':x==='no'?'не очень':x==='skip'?'не ходили':'ещё не оценил'
+  const meets=(m.past&&Object.keys(m.rated).length?[[mi().t,short(m.time),`Вова: ${rt(m.rated.v)} · Настя: ${rt(m.rated.n)}${m.rated.n?'':'а'}`,mi().c]]:[]).concat([['Органный концерт','сб 7 ноя','понравилось обоим','t5'],['Ресторан «Хачапури и вино»','вс 1 ноя','Вова: понравилось · Настя: не очень','t2']])
+  const chs=S.chores.filter(c=>c.st==='done').map(c=>[c.t,c.doneBy,c.doneAt]).concat([['Починить кран','v','ср 11 ноя'],['Купить подарок маме','n','вт 10 ноя'],['Оплатить интернет','v','20 окт'],['Заказать продукты','n','пн 9 ноя']]).filter(x=>w==='all'||x[1]===w)
+  return `<div class="scr">${sub('История')}<div class="seg"><button class="${S.histView==='meet'?'on':''}" data-hv="meet">Встречи</button><button class="${S.histView==='ch'?'on':''}" data-hv="ch">Дела</button></div>
+  ${S.histView==='meet'?meets.map(([t,d,r,c])=>`<div class="in"><span class="th ${c}"></span><span><b>${t}</b><small>${d} · ${r}</small></span></div>`).join('')
+  :`<div class="in"><i>⌕</i><span><small>Найти: «кран», «подарок»</small></span></div><div class="chips">${[['all','Все'],['v','Вова'],['n','Настя']].map(([k,l])=>`<button class="chip ${w===k?'on':''}" data-hw="${k}">${l}</button>`).join('')}</div>
+   ${chs.map(([t,by,d])=>`<div class="in"><span class="ck on" style="display:grid;place-items:center">✓</span><span><b>${t}</b><small>${nm(by)} · ${d}</small></span></div>`).join('')}<p class="m">Сюда дело попадает через 7 дней после галочки. Удалённые не попадают.</p>`}${nav()}</div>`},
+ settings:()=>{const t=S.tg,c=S.cho,nb=['n_prop','n_meet','n_chore','n_scout','n_after'].filter(k=>t[k]).length
+  const row=(k,l,v)=>`<button class="srow" data-set="${k}"><span class="tx"><b>${l}</b><small>${v}</small></span>›</button>`
+  return `<div class="scr">${sub('Настройки')}
+  <div class="blk"><label>Для меня</label><div class="card list">${row('notif','Уведомления',`в бот: ${nb} из 5${t.quiet?' · тихо 23–8':''}`)}${row('cal','Календарь',`встречи: ${t.c_meet?'да':'нет'} · занятость: ${c.busy.toLowerCase()}`)}${row('login','Вход и устройства','Telegram · 2 устройства')}</div></div>
+  <div class="blk"><label>Для пары</label><div class="card list">${row('meetdef','Встречи',`${c.budget} · Москва · ${c.walk}`)}${row('scout','Скаут и афиша',`${['k_kino','k_conc','k_theatre','k_food','k_sport'].filter(k=>t[k]).length} вида событий · ${c.freq}`)}${row('chores','Дела',`напоминание ${c.remind} · сделанные ${c.keep}`)}${row('pair','Пара','Настя · с 7 ноября')}</div></div>
+  <div class="blk"><label>Данные</label><div class="card list">${row('data','Мои данные','скачать, удалить')}</div></div>${nav()}</div>`},
+ set:()=>{const k=S.setKey,T={notif:'Уведомления',cal:'Календарь',login:'Вход и устройства',meetdef:'Встречи',scout:'Скаут и афиша',chores:'Дела',pair:'Пара',data:'Мои данные'}[k]
+  const B={
+   notif:()=>`<p class="m">На главной видно всё. Здесь: что дублировать в бот.</p><div class="card list">${TG('n_prop','Предложения партнёра','время, место, просьбы о делах')}${TG('n_meet','Напоминание о встрече')}${TG('n_chore','Дела на сегодня и просроченные','одним сообщением утром')}${TG('n_scout','Находки скаута')}${TG('n_after','Как прошла встреча')}</div>${S.tg.n_meet?CHO('meetWhen','Напоминать о встрече',['за 2 часа','за день','оба раза']):''}<div class="card list">${TG('quiet','Тихие часы','с 23:00 до 8:00 бот молчит')}</div>`,
+   cal:()=>`<div class="card list">${TG('c_meet','Встречи в календарь телефона','появляются и переносятся сами')}</div>${CHO('busy','Моя занятость',['Отмечаю сам','Из календаря'])}${S.cho.busy==='Из календаря'?`<button class="b w" data-sheet="cal">Подключить календарь: 3 шага</button>`:`<p class="m">Отмечается в Планах: тап по дню, «Я занят».</p>`}`,
+   login:()=>`<div class="card list"><div class="srow"><span class="tx"><b>Telegram</b><small>основной вход</small></span><span class="m">подключён</span></div></div><div class="blk"><label>Устройства</label><div class="card list"><div class="srow"><span class="tx"><b>iPhone</b><small>это устройство</small></span></div><div class="srow"><span class="tx"><b>MacBook, браузер</b><small>был 12 ноября</small></span><button class="back" data-act="say" data-id="Устройство отключено">Выйти</button></div></div></div>`,
+   meetdef:()=>`${CHO('budget','Бюджет на встречу',['до 3 000 ₽','до 5 000 ₽','без лимита'])}<div class="fld"><small>Город</small><span>Москва</span></div>${CHO('walk','Между местами',['пешком до 15 мин','пешком до 30 мин','на транспорте'])}<p class="m">Общая настройка. Изменил один: второй видит строку на главной.</p>`,
+   scout:()=>`<div class="blk"><label>Что искать</label><div class="card list">${TG('k_kino','Кино')}${TG('k_conc','Концерты')}${TG('k_theatre','Театр')}${TG('k_food','Еда')}${TG('k_sport','Активное')}</div></div>${CHO('freq','Как часто',['каждый день','по будням','раз в неделю'])}<div class="fld"><small>Не предлагать</small><span>караоке, квесты</span></div>`,
+   chores:()=>`${CHO('remind','Утреннее напоминание',['в 9:00','в 19:00','не напоминать'])}${CHO('keep','Сделанные видны во вкладке',['7 дней','30 дней'])}<div class="card list">${TG('ch_over','Просроченные на главной')}</div>`,
+   pair:()=>`<div class="card list"><div class="srow"><span class="tx"><b>Настя</b><small>в паре с 7 ноября</small></span></div></div><button class="b w red" data-sheet="leave">Выйти из пары</button>`,
+   data:()=>`<div class="card list"><button class="srow" data-act="say" data-id="Файл придёт в бот"><span class="tx"><b>Скачать мои идеи и историю</b><small>файл придёт в бот</small></span>›</button><button class="srow red" data-sheet="wipe"><span class="tx"><b>Удалить мои данные</b></span>›</button></div>`}
+  return `<div class="scr">${sub(T)}${B[k]()}${nav()}</div>`},
+ taste:()=>`<div class="scr">${sub('Мой вкус')}<p class="m">Отметь, что нравится. По этому скаут и помощник подбирают идеи.</p><div class="row" style="flex-wrap:wrap">${['Театр','Кино','Музыка','Музеи','Еда','Прогулки','Активное','Игры','Стендап','Выставки'].map((x,k)=>`<button class="chip ${S.tg['t'+k]??(k%3===1)?'on':''}" data-tg="t${k}">${x}</button>`).join('')}</div>${nav()}</div>`,
+ after:()=>{const i=mi(),r=S.meet.rated[S.who]
+  return `<div class="scr">${sub('Как прошло')}<div class="pic ${i.c}" style="min-height:120px">${i.t}<small>${short(S.meet.time||T1)}</small></div><div class="card" style="gap:10px"><h3>Как тебе?</h3><p class="m">Каждый отвечает за себя. Ответ уточняет твой вкус и попадает в историю.</p><div class="row" style="flex-wrap:wrap">${[['like','Понравилось'],['no','Не очень'],['skip','Не ходили']].map(([k,l])=>`<button class="b ${r===k?'a':''}" data-act="rate" data-id="${k}">${l}</button>`).join('')}</div></div>${nav()}</div>`},
+}
+const SHEETS={
+ inbox:()=>`<h3>Ждёт тебя</h3>${inbox(S.who).map(qrow).join('')}`,
+ plus:()=>`<h3>Что добавить?</h3><button class="in" data-sheet="add"><i>♡</i><span><b>Идею</b><small>куда сходить: ссылка или название</small></span>›</button><button class="in" data-sheet="addchore"><i>☑</i><span><b>Дело</b><small>что сделать, кто и к какому сроку</small></span>›</button>`,
+ add:()=>`<h3>Новая идея</h3><div class="fld"><small>Ссылка или название</small><span>afisha.yandex.ru/moscow/ballet/shchelkunchik</span></div><div class="in"><span class="th t4"></span><span><b>«Щелкунчик» в Кремлёвском дворце</b><small>название и фото из ссылки</small></span></div><p class="m">Остальное соберёт скаут: даты, адрес, цену. Потом сможешь поправить любое поле.</p><button class="b p w" data-act="addIdea">Добавить</button><p class="m">Ссылка не открылась или без ссылки: карточка создаётся с названием, поля заполняешь сам.</p>`,
+ edit:()=>{const i=idea(S.idea);return `<h3>Изменить идею</h3><div class="fld"><small>Название</small><span>${i.t}</span></div>${fields(i).map(([l,v])=>`<div class="fld"><small>${l}</small><span class="${v?'':'empty'}">${v||(l==='Программа'?'что входит, во сколько сбор':'добавить')}</span></div>`).join('')}<button class="b p w" data-act="saveEdit">Сохранить</button>`},
+ addchore:()=>`<h3>Новое дело</h3><div class="fld"><small>Что сделать</small><span>Забрать торт</span></div><div class="blk"><label>Кто</label><div class="row"><span class="chip">Я</span>${S.paired?`<span class="chip on">${nm(o())}</span>`:''}<span class="chip">Кто угодно</span></div></div><div class="blk"><label>Срок</label><div class="row" style="flex-wrap:wrap"><span class="chip">Сегодня</span><span class="chip">Завтра</span><span class="chip on">сб 21 ноя</span><span class="chip">Дата и время…</span><span class="chip">Без срока</span></div></div><div class="blk"><label>Повтор</label><div class="row"><span class="chip on">Нет</span><span class="chip">Каждую неделю</span><span class="chip">Каждый месяц</span></div></div><button class="b p w" data-act="chAsk">${S.paired?'Попросить '+nm(o(),3):'Добавить'}</button>${S.paired?`<p class="m">${nm(o())} ответит «Беру» или «Не могу». Откажется: дело вернётся тебе.</p>`:''}`,
+ editchore:()=>{const c=S.chores.find(x=>x.id===S.chore);return `<h3>Изменить дело</h3><div class="fld"><small>Что сделать</small><span>${c.t}</span></div><div class="fld"><small>Кто</small><span>${chWho(c)}</span></div><div class="fld"><small>Срок</small><span>${c.d}</span></div><div class="fld"><small>Повтор</small><span>${c.rep||'нет'}</span></div><button class="b p w" data-act="say" data-id="Сохранено">Сохранить</button><button class="b ghost w red" data-act="chDel" data-id="${c.id}">Удалить дело</button>`},
+ match:()=>`<h2 style="text-align:center">Совпало</h2><p style="text-align:center">${nm(o())} тоже хочет: <b>${idea(S.matchId).t}</b></p><button class="b p w" data-act="go" data-id="${S.matchId}">Идём</button><button class="b w" data-close>Смотреть дальше</button><p class="m" style="text-align:center">${nm(o())} увидит совпадение у себя в «Идеях»</p>`,
+ time:()=>{const w=S.who,rows=['Сб 14','Вс 15','Сб 21'],th=S.free[o()],opt={'1-1':T1,'2-2':T2},cur=S.meet.timeSt==='ok'
+  return `<h3>${cur?'Перенести':'Когда'}: ${mi().t}</h3><p class="m">Синяя рамка: ${nm(o())} свободн${o()==='n'?'а':''}. Штриховка: ты занят.</p><div class="grid4"><span></span><b>Утро</b><b>День</b><b>Вечер</b>${rows.map((d,r)=>`<span>${d}</span>${[0,1,2].map(c=>{const k=r+'-'+c,bz=r===0&&c<2;return `<button class="slot ${S.pick===k?'on':bz?'busy':''} ${th[k]?'their':''}" ${opt[k]?`data-act="pick" data-id="${k}"`:'disabled'}>${opt[k]?opt[k].split(', ')[1]:''}</button>`}).join('')}`).join('')}</div>
+  <button class="b a w" ${S.pick?'':'disabled style="opacity:.45"'} data-act="propTime">${S.pick?`Предложить ${nm(o(),2)}: ${opt[S.pick]}`:'Выбери время'}</button><p class="m">${cur?'Старое время действует, пока '+nm(o())+' не ответит «Да».':'Встреча попадёт в планы после ответа «Да».'}</p>`},
+ stop:()=>{const q={'Пообедать':'Где пообедать','Кофе':'Где выпить кофе','Прогуляться':'Где прогуляться'}[S.stopKind]
+  return `<h3>${q} после «${mi().t}»?</h3><p class="m">Выбери место. ${nm(o())} подтвердит.</p>${S.stopKind==='Прогуляться'?`<div class="blk"><label>Рядом</label><button class="in" data-act="stop" data-id="7"><span class="th t3"></span><span><b>Патриаршие пруды</b><small>10 минут пешком</small></span>＋</button></div>`
+  :`<div class="blk"><label>Вы оба хотите</label><button class="in" data-act="stop" data-id="2"><span class="th t2"></span><span><b>Ресторан «Хачапури и вино»</b><small>12 минут пешком</small></span>＋</button></div><div class="blk"><label>Нашёл скаут</label><button class="in" data-act="stop" data-id="7"><span class="th t5"></span><span><b>Кафе у Патриарших</b><small>8 минут пешком</small></span>＋</button></div>`}
+  <button class="b w" data-go="assistant">✦ Спросить помощника: что рядом</button><div class="in"><span><small>Своё: ссылка или название</small></span>＋</div>`},
+ cancel:()=>`<h3>Отменить встречу?</h3><p>${mi().t}${S.meet.time?' · '+S.meet.time:''}</p><ul class="ul m"><li>${nm(o())} получит строку на главной и сообщение в боте.</li><li>Встреча исчезнет из календаря телефона у обоих.</li>${S.meet.stop?'<li>Место «а потом» отменится вместе с ней.</li>':''}${S.meet.tix?'<li>Билеты останутся в карточке с пометкой «вернуть».</li>':''}</ul><button class="b w red" data-act="cancel">Отменить встречу</button><button class="b w" data-close>Оставить</button>`,
+ cal:()=>`<h3>Календарь телефона</h3><div class="card"><div class="row"><b>Встречи → в телефон</b><span class="sp"></span><span class="chip on">работает</span></div><p class="m">Договорились: появилась. Перенесли: поменялась.</p></div><div class="card"><div class="row"><b>Занятость ← из телефона</b><span class="sp"></span><span class="chip">не подключено</span></div><p class="m">Не обязательно: занятые дни можно отмечать прямо в Планах. Подключение нужно, если календарь ведётся в телефоне.</p><ol class="ul m"><li>Открой настройки своего календаря (Google, iPhone, Яндекс).</li><li>Скопируй там «ссылку на календарь» (в Google она называется «секретный адрес iCal»).</li><li>Вставь сюда.</li></ol><div class="fld"><small>Ссылка на календарь</small><span class="empty">вставить</span></div><p class="m">${nm(o())} увидит только «занят», без названий событий.</p></div><button class="b ghost w" data-close>Закрыть</button>`,
+ leave:()=>`<h3>Выйти из пары?</h3><ul class="ul m"><li>Общие идеи, встречи и история останутся у Насти.</li><li>Ты получишь копию своих идей.</li><li>Назначенные встречи отменятся, Настя узнает об этом.</li></ul><p class="m">Правило раздела данных: предложение, ждёт твоего решения.</p><button class="b w red" data-act="say" data-id="В прототипе пара остаётся">Выйти из пары</button><button class="b w" data-close>Остаться</button>`,
+ wipe:()=>`<h3>Удалить мои данные?</h3><p class="m">Удалятся твои идеи, отметки, вкус и входы. Общая история останется у партнёра без твоих оценок. Вернуть нельзя.</p><button class="b w red" data-act="say" data-id="В прототипе данные остаются">Удалить</button><button class="b w" data-close>Отмена</button>`,
+}
+function render(){
+  if(!SCREENS[S.screen])S.screen='home'
+  if(S.sheet==='inbox'&&!inbox(S.who).length)S.sheet=''
+  const sc=$('#phone .scr'),keep=sc&&sc.dataset.s===S.screen?sc.scrollTop:0
+  $('#phone').innerHTML=SCREENS[S.screen]()+(S.toast?`<div class="toast"><span>${S.toast}</span>${S.undo?'<button data-act="undo">Вернуть</button>':''}</div>`:'')+(S.sheet?`<div class="scrim" data-close><div class="sheet" data-stop>${SHEETS[S.sheet]()}</div></div>`:'')
+  const ns=$('#phone .scr');ns.dataset.s=S.screen;ns.scrollTop=keep
+  $('#crumb').textContent=`${nm(S.who)} · ${NAMES[S.screen]}${S.sheet?' · лист':''}`
+  $('#who-v').setAttribute('aria-pressed',S.who==='v');$('#who-n').setAttribute('aria-pressed',S.who==='n')
+  const cur=S.screen==='home'&&!S.paired?'pair':S.screen==='set'?'settings':S.screen
+  document.querySelectorAll('.node').forEach(n=>n.classList.toggle('on',n.dataset.n===cur))
+  document.querySelectorAll('#scn button').forEach(b=>b.classList.toggle('on',b.dataset.i===String(S.step)))
+  LAST=S.undo;S.toast='';S.undo=null
+}
+let LAST=null
+function go(s){S.sheet='';if(TABS.includes(s)||s==='start')S.stack=[];else if(s!==S.screen)S.stack.push(S.screen);S.screen=s;S.step=null;render()}
+const say=(t,undo)=>{S.toast=t;S.undo=undo||null}
+function doChore(id){const c=S.chores.find(x=>x.id===+id);if(!c)return
+  if(c.st==='done'){c.st='open';say('Вернул в работу');return}
+  if(c.rep){S.chores.push({...c,id:c.id+100,st:'done',doneBy:S.who,doneAt:'сегодня',rep:''});c.d='вс 20 дек';c.day=0;c.over=false;say('Сделано. Следующее: 20 декабря');return}
+  c.st='done';c.doneBy=S.who;c.doneAt='сегодня';say('Сделано',{id:c.id})}
+function swipe(yes){const i=deck()[0];if(!i)return;S.src=curSrc();S.marks[S.who+i.id]=yes;if(yes&&want(o(),i.id)){S.matchId=i.id;S.sheet='match'}}
+function addAsk(st){S.chores.push({id:6,t:'Забрать торт',who:st==='no'?'':'n',by:'v',st,d:'до сб 21 ноя',day:21})}
+function startMeet(id,t){id=+id;S.marks[S.who+id]=true
+  if(S.meet.idea!==id||S.meet.cancelBy){S.meet={...freshMeet(),idea:id};const fx=t||idea(id).fix;if(fx){S.meet.time=fx;S.meet.timeBy=S.who;S.meet.timeSt='wait';say(`Время предложено: ${nm(o())} ответит`)}}
+  S.sheet='';if(S.screen!=='meet'){S.stack.push(S.screen);S.screen='meet'}}
+let drag=null,moved=false
+$('#phone').addEventListener('pointerdown',e=>{const c=e.target.closest('.swipe');if(c)drag={c,x:e.clientX,dx:0}})
+$('#phone').addEventListener('pointermove',e=>{if(!drag)return;drag.dx=e.clientX-drag.x;if(Math.abs(drag.dx)>6){moved=true;drag.c.style.transform=`translateX(${drag.dx}px) rotate(${drag.dx/18}deg)`;drag.c.style.opacity=1-Math.min(Math.abs(drag.dx)/260,.5)}})
+const endDrag=()=>{if(!drag)return;const dx=drag.dx,c=drag.c;drag=null;if(Math.abs(dx)>70){swipe(dx>0);S.step=null;render()}else{c.style.transform='';c.style.opacity=''}}
+$('#phone').addEventListener('pointerup',endDrag);$('#phone').addEventListener('pointerleave',endDrag)
+$('#phone').addEventListener('click',e=>{
+  if(moved){moved=false;return}
+  const t=e.target.closest('[data-go],[data-act],[data-sheet],[data-close],[data-back],[data-src],[data-iv],[data-iw],[data-cv],[data-hv],[data-hw],[data-afk],[data-chore],[data-idea],[data-day],[data-free],[data-tg],[data-cho],[data-set],[data-stop]');if(!t)return
+  if(t.hasAttribute('data-stop'))return
+  const d=t.dataset,m=S.meet,w=S.who
+  if('go' in d)return go(d.go)
+  if('back' in d){S.sheet='';S.screen=S.stack.pop()||'home';return render()}
+  if('close' in d){if(e.target!==t&&!e.target.closest('button[data-close]'))return;S.sheet='';return render()}
+  if('sheet' in d){S.sheet=d.sheet;S.pick='';return render()}
+  if('src' in d){S.src=d.src;return render()}
+  if('iv' in d){S.ideasView=d.iv;return render()}
+  if('iw' in d){S.ideasWho=d.iw;return render()}
+  if('cv' in d){S.chView=d.cv;return render()}
+  if('hv' in d){S.histView=d.hv;return render()}
+  if('hw' in d){S.histWho=d.hw;return render()}
+  if('afk' in d){S.afKind=d.afk;return render()}
+  if('day' in d){S.day=+d.day||null;return render()}
+  if('free' in d){S.free[w][d.free]=!S.free[w][d.free];return render()}
+  if('tg' in d){const k=d.tg;S.tg[k]=k[0]==='t'&&S.tg[k]===undefined?!(+k.slice(1)%3===1):!S.tg[k];return render()}
+  if('cho' in d){const[k,v]=d.cho.split('|');S.cho[k]=v;return render()}
+  if('set' in d){S.setKey=d.set;return go('set')}
+  if('chore' in d){S.chore=+d.chore;return go('chore')}
+  if('idea' in d){S.idea=+d.idea;return go('idea')}
+  const a=d.act
+  if(a==='invite'){S.invited=true;say('Ссылка отправлена')}
+  if(a==='joined'){S.paired=true;S.screen='home';S.stack=[];say('Вы в паре. Идеи каждого переехали')}
+  if(a==='askLink'){say('Вова получит просьбу прислать новую ссылку')}
+  if(a==='inboxAll'){S.inboxAll=!S.inboxAll}
+  if(a==='skip')swipe(false)
+  if(a==='want')swipe(true)
+  if(a==='markY'){S.marks[w+S.idea]=true;if(want(o(),S.idea))say('Совпало: идея в «Совпало»')}
+  if(a==='markN'){S.marks[w+S.idea]=false}
+  if(a==='go')startMeet(d.id)
+  if(a==='goAt')startMeet(d.id,d.t)
+  if(a==='pick'){S.pick=d.id}
+  if(a==='propTime'){m.time={'1-1':T1,'2-2':T2}[S.pick];m.timeBy=w;m.timeSt='wait';S.sheet='';S.pick='';say(`Отправлено ${nm(o(),2)}: на главную и в бот`)}
+  if(a==='timeYes'){m.timeSt='ok';say('Встреча в планах у обоих')}
+  if(a==='timeNo'){m.timeSt='no';say(`${nm(o())} увидит отказ и предложит другое время`)}
+  if(a==='timeOther'){if(S.screen!=='meet'){S.stack.push(S.screen);S.screen='meet'}S.sheet='time';S.pick=''}
+  if(a==='stopKind'){S.stopKind=d.id;S.sheet='stop'}
+  if(a==='stop'){m.stop=+d.id;m.stopBy=w;m.stopSt='wait';S.sheet='';say(`Отправлено ${nm(o(),2)}`)}
+  if(a==='stopYes'){m.stopSt='ok';say('Место в маршруте')}
+  if(a==='stopNo'){m.stopSt='no';say(`${nm(o())} увидит «нет» и выберет другое`)}
+  if(a==='stopOther'){if(S.screen!=='meet'){S.stack.push(S.screen);S.screen='meet'}S.sheet='stop'}
+  if(a==='tixMe'){m.tix=w;say(`${nm(o())} видит: покупаешь ты`)}
+  if(a==='tixDone'){m.tix='done';say('Билеты отмечены')}
+  if(a==='cancel'){m.cancelBy=w;S.sheet='';say(`Встреча отменена. ${nm(o())} узнает`)}
+  if(a==='uncancel'){m.cancelBy=''}
+  if(a==='ackCancel'){S.meet=freshMeet()}
+  if(a==='rate'){m.rated[w]=d.id;S.histView='meet';S.stack=['us'];S.screen='history';say('Записал в историю')}
+  if(a==='ask'){S.chat=1}
+  if(a==='askFood'){S.chat='f'}
+  if(a==='scout'){S.chat=2}
+  if(a==='afday'){S.afDay=!S.afDay;S.day=null}
+  if(a==='dayAfisha'){S.ideasView='afisha';S.afDay=true;S.screen='ideas';S.stack=[]}
+  if(a==='addIdea'){S.newIdea='scouting';S.idea=6;S.sheet='';if(S.screen!=='idea'){S.stack.push(S.screen);S.screen='idea'}say('Идея добавлена')}
+  if(a==='scoutDone'){S.newIdea='ready'}
+  if(a==='saveEdit'){if(S.idea===6)S.newIdea='edited';S.sheet='';say('Сохранено')}
+  if(a==='askScout'){S.scoutAsk[S.idea]=true;S.sheet='';say('Скаут получил запрос')}
+  if(a==='chDone')doChore(d.id)
+  if(a==='undo'&&LAST){if(LAST.obj)S.chores.push(LAST.obj);else doChore(LAST.id)}
+  if(a==='chAsk'){S.sheet='';if(S.paired){addAsk('ask');say(`Просьба ушла ${nm(o(),2)}`)}else{S.chores.push({id:6,t:'Забрать торт',who:'v',st:'open',d:'до сб 21 ноя',day:21});say('Дело добавлено')}S.screen='chores';S.stack=[]}
+  const A=S.chores.find(c=>c.id===6)
+  if(a==='chTake'&&A){A.st='open';A.who=w;say(`Дело твоё. ${nm(o())} видит, что ты взял${w==='n'?'а':''}`)}
+  if(a==='chNo'&&A){A.st='no';say(`Дело вернулось ${nm(o(),2)}`)}
+  if(a==='chSelf'&&A){A.st='open';A.who=w;say('Дело твоё')}
+  if(a==='chAny'&&A){A.st='open';A.who='';say('Дело общее: возьмёт кто угодно')}
+  if(a==='chPass'){const c=S.chores.find(x=>x.id===+d.id);c.id=6;S.chore=6;c.by=w;c.who=o();c.st='ask';say(`Просьба ушла ${nm(o(),2)}`)}
+  if(a==='chMine'){const c=S.chores.find(x=>x.id===+d.id);c.who=w;say('Дело твоё')}
+  if(a==='chNudge'){say(`Напоминание ушло ${nm(o(),2)} в бот`)}
+  if(a==='chMove'){const c=S.chores.find(x=>x.id===+d.id);c.over=false;c.d='завтра';c.day=15;say('Срок: завтра')}
+  if(a==='chDel'){const del=S.chores.find(x=>x.id===+d.id);S.chores=S.chores.filter(x=>x.id!==+d.id);S.sheet='';S.screen='chores';S.stack=[];say('Дело удалено',{obj:del})}
+  if(a==='chShowDone'){S.chShowDone=!S.chShowDone}
+  if(a==='toHistCh'||a==='histCh'){S.histView='ch';return go('history')}
+  if(a==='histMeet'){S.histView='meet';return go('history')}
+  if(a==='busy'){const k=w+S.day;S.busy[k]=!S.busy[k]}
+  if(a==='toBoth'){S.screen='ideas';S.ideasView='both';S.stack=[]}
+  if(a==='say'){S.sheet='';say(d.id)}
+  S.step=null;render()
+})
+document.querySelector('.who').addEventListener('click',e=>{const b=e.target.closest('[data-who]');if(b){S.who=b.dataset.who;S.sheet='';render()}})
+const VIEWS=['map','scn','rules','mech','sett','arena']
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(!b)return
+  for(const v of VIEWS){$('#view-'+v).hidden=v!==b.dataset.view;$('#tab-'+v).setAttribute('aria-selected',v===b.dataset.view)}})
+
+// ---------- map ----------
+const N={start:[10,20,'Бот в Telegram','те же предложения'],pair:[160,20,'Главная без пары','зачем звать, приглашение'],join:[310,20,'Приглашение','экран партнёра'],
+ home:[10,160,'Главная','ждёт тебя, свайп, сводки',1],ideas:[160,160,'Идеи','наши · афиша · совпало',1],assistant:[310,160,'Помощник ✦','вопросы, скаут',1],chores:[460,160,'Дела','ответы, сроки, сделано',1],plans:[610,160,'Планы','встречи, занятость',1],
+ newidea:[10,310,'Новая идея','ссылка → скаут → правка'],idea:[160,310,'Карточка идеи','поля, отметка, «Идём»'],meet:[310,310,'Карточка встречи','когда · где · а потом'],chore:[460,310,'Карточка дела','кнопки по роли'],free:[610,310,'Общее время','окна двоих → встреча'],
+ after:[310,450,'Как прошло','каждый за себя'],history:[460,450,'История','встречи и дела'],us:[610,450,'Профиль','с аватаров на главной'],
+ taste:[460,580,'Мой вкус',''],settings:[610,580,'Настройки','моё · пары · данные']}
+const E=[['start','pair','первый запуск'],['pair','join','ссылка'],['join','home','принял'],['home','idea','карточка'],['ideas','idea',''],['ideas','newidea','＋'],['newidea','idea','сразу'],['idea','meet','идём'],['assistant','meet','идём'],['chores','chore',''],['plans','free',''],['meet','after','после даты'],['after','history','оценка'],['us','history',''],['us','settings',''],['us','taste','']]
+const W=132,H=56
+function mid(k){const[x,y]=N[k];return[x+W/2,y+H/2]}
+function edge([a,b,l]){const[ax,ay]=mid(a),[bx,by]=mid(b);let x1=ax,y1=ay,x2=bx,y2=by
+  if(Math.abs(by-ay)>Math.abs(bx-ax)*.6){y1=ay+(by>ay?H/2:-H/2);y2=by+(by>ay?-H/2:H/2)}else{x1=ax+(bx>ax?W/2:-W/2);x2=bx+(bx>ax?-W/2:W/2)}
+  return `<path class="edge" d="M${x1} ${y1}L${x2} ${y2}" marker-end="url(#ar)"/>${l?`<text class="elab" x="${(x1+x2)/2+5}" y="${(y1+y2)/2-4}">${l}</text>`:''}`}
+$('#map').innerHTML=`<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor" style="color:var(--mute)"/></marker></defs>
+ <text x="12" y="146" class="elab" style="font-weight:700;letter-spacing:.5px">ВКЛАДКИ</text><text x="12" y="296" class="elab" style="font-weight:700;letter-spacing:.5px">ВЛОЖЕННЫЕ ЭКРАНЫ</text><text x="12" y="480" class="elab" style="font-weight:700;letter-spacing:.5px">ПРОФИЛЬ И ИСТОРИЯ</text>
+ ${E.map(edge).join('')}${Object.entries(N).map(([k,[x,y,t,s,tab]])=>`<g class="node ${tab?'tab':''}" data-n="${k}" tabindex="0" role="button" aria-label="${t}"><rect x="${x}" y="${y}" width="${W}" height="${H}" rx="12"/><text x="${x+9}" y="${y+24}">${t}</text><text class="s" x="${x+9}" y="${y+42}">${s}</text></g>`).join('')}`
+function openNode(k){S.sheet='';S.step=null
+  if(k==='pair'){Object.assign(S,fresh(),{paired:false,who:'v',screen:'home',stack:[]});return render()}
+  if(k==='join'){Object.assign(S,fresh(),{paired:false,invited:true,who:'n',screen:'join',stack:['start']});return render()}
+  if(!S.paired)Object.assign(S,fresh())
+  if(k==='newidea'){S.screen='ideas';S.stack=[];S.sheet='add';return render()}
+  if(k==='meet'&&!S.meet.idea)S.meet.idea=1
+  if(k==='after'){if(!S.meet.idea)Object.assign(S.meet,{idea:1,time:T1,timeBy:'v',timeSt:'ok'});S.meet.past=true}
+  S.stack=({idea:['ideas'],meet:['idea'],chore:['chores'],free:['plans'],after:['plans'],us:['home'],history:['us'],settings:['us'],taste:['us']})[k]||[]
+  S.screen=k;render()}
+$('#map').addEventListener('click',e=>{const n=e.target.closest('.node');if(n)openNode(n.dataset.n)})
+$('#map').addEventListener('keydown',e=>{const n=e.target.closest('.node');if(n&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openNode(n.dataset.n)}})
+
+// ---------- scenarios ----------
+const M=(x={})=>({idea:1,time:T1,timeBy:'v',timeSt:'ok',...x})
+const SC=[
+ ['Вход и создание пары',[['v','Вова открывает бота',{screen:'start',paired:false}],['v','Главная без пары: зачем звать и что можно уже сейчас',{screen:'home',paired:false}],['v','«Пригласить»: видно, какой текст получит партнёр',{screen:'home',paired:false,invited:true}],['n','Настя видит в боте, кто зовёт и зачем',{screen:'start',paired:false,invited:true}],['n','Экран приглашения: одна кнопка',{screen:'join',paired:false,invited:true,stack:['start']}],['n','Ссылка устарела: понятно, что делать',{screen:'join',paired:false,joinErr:true,stack:['start']}],['b','Пара создана, идеи каждого переехали',{screen:'home',toast:'Вы в паре. Идеи каждого переехали'}]]],
+ ['Свайп, совпадение, встреча',[['v','Главная не листается: свайп на весь экран, внизу встреча и сводка дел',{screen:'home'}],['v','«Хочу» на том, что хочет Настя: «Совпало»',{screen:'home',marks:{v1:true},sheet:'match'}],['v','«Идём»: карточка встречи без времени',{screen:'meet',marks:{v1:true},meet:{idea:1},stack:['home']}],['v','Предлагает время: видно, когда свободна Настя',{screen:'meet',marks:{v1:true},meet:{idea:1},sheet:'time',pick:'1-1',stack:['home']}],['v','У Вовы «ждём Настю» в карточке и в блоке встреч на главной',{screen:'meet',marks:{v1:true},meet:M({timeSt:'wait'}),stack:['home']}],['n','У Насти на главной: «Вова зовёт… Да / Другое время»',{screen:'home',marks:{v1:true},meet:M({timeSt:'wait'})}],['n','То же сообщение в боте, с теми же кнопками',{screen:'start',marks:{v1:true},meet:M({timeSt:'wait'})}],['b','«Да»: встреча в планах у обоих',{screen:'plans',marks:{v1:true},meet:M()}]]],
+ ['Не подошло время, перенос, отмена',[['n','Настя жмёт «Другое время» и выбирает своё',{screen:'meet',marks:{v1:true},meet:M({timeSt:'wait'}),sheet:'time',pick:'2-2',stack:['home']}],['v','Теперь отвечает Вова: «Настя зовёт: сб 21 ноя»',{screen:'home',marks:{v1:true},meet:M({time:T2,timeBy:'n',timeSt:'wait'})}],['v','Перенос идёт тем же листом. Отмена спрашивает и объясняет последствия',{screen:'meet',marks:{v1:true},meet:M({stop:2,stopBy:'v',stopSt:'ok',tix:'v'}),sheet:'cancel',stack:['plans']}],['n','Настя видит отмену на главной',{screen:'home',marks:{v1:true},meet:M({cancelBy:'v'})}]]],
+ ['А потом: обед после встречи',[['v','В карточке встречи блок «А потом»',{screen:'meet',marks:{v1:true},meet:M(),stack:['plans']}],['v','«Пообедать»: свои совпавшие, находки скаута, помощник, своё',{screen:'meet',marks:{v1:true},meet:M(),sheet:'stop',stack:['plans']}],['v','Выбрал ресторан: «ждём Настю»',{screen:'meet',marks:{v1:true},meet:M({stop:2,stopBy:'v',stopSt:'wait'}),stack:['plans']}],['n','У Насти строка с «Да / Нет» прямо на главной',{screen:'home',marks:{v1:true},meet:M({stop:2,stopBy:'v',stopSt:'wait'})}],['v','Настя ответила «Нет»: Вова видит это и выбирает другое',{screen:'home',marks:{v1:true},meet:M({stop:2,stopBy:'v',stopSt:'no'})}],['b','Второе место принято: оно в карточке и в планах',{screen:'plans',marks:{v1:true},meet:M({stop:7,stopBy:'v',stopSt:'ok'})}]]],
+ ['Билеты',[['v','После «Да» на главной вопрос: кто покупает',{screen:'home',marks:{v1:true},meet:M()}],['n','Вова нажал «Куплю я»: у Насти в карточке «Покупает Вова»',{screen:'meet',marks:{v1:true},meet:M({tix:'v'}),stack:['plans']}],['v','У Вовы строка «Купить билеты» с кнопкой «Куплены»',{screen:'home',marks:{v1:true},meet:M({tix:'v'})}]]],
+ ['Общее время',[['v','Идеи нет, есть желание встретиться. Планы → «Найти общее время»',{screen:'plans'}],['v','Настя уже отметила два окна. Общего пока нет',{screen:'free',stack:['plans']}],['v','Вова отметил своё: окно совпало, ниже то, что хотите оба',{screen:'free',free:{v:{'1-1':true},n:{'1-1':true,'2-2':true}},stack:['plans']}],['v','«Идём»: встреча с этим временем, Настя подтверждает',{screen:'meet',meet:{idea:2,time:T1,timeBy:'v',timeSt:'wait'},stack:['free']}]]],
+ ['Вопрос помощнику',[['v','Помощник в центре панели. На главной его нет',{screen:'assistant'}],['v','В данных нет: честное «нет», ссылка «посмотреть сейчас», запрос скауту',{screen:'assistant',chat:1}],['v','Через час ответ приходит спросившему: главная',{screen:'home',chat:2}],['v','И бот',{screen:'start',chat:2}],['v','В чате карточка. Настя её ещё не видела, поэтому «Позвать»',{screen:'assistant',chat:2}],['v','Вопрос про то, что есть в данных: ответ сразу',{screen:'assistant',chat:'f'}]]],
+ ['Афиша и идеи',[['n','«Идеи»: Наши, Афиша, Совпало',{screen:'ideas'}],['n','Афиша списком, фильтр по виду работает',{screen:'ideas',ideasView:'afisha',afKind:'Кино'}],['n','Афиша по дням: тап по дню показывает его события',{screen:'ideas',ideasView:'afisha',afDay:true,day:18}],['n','Карточка события: поля, отметка, отметка партнёра',{screen:'idea',idea:5,stack:['ideas']}],['n','«Совпало»: у каждой идеи «Идём»',{screen:'ideas',ideasView:'both'}]]],
+ ['Новая идея по ссылке',[['v','«＋» на главной: идея или дело',{screen:'home',sheet:'plus'}],['v','Вставил ссылку: название и фото подтянулись сразу',{screen:'home',sheet:'add'}],['v','Карточка есть сразу. Остальное собирает скаут',{screen:'idea',idea:6,newIdea:'scouting',stack:['home']}],['v','Через час: строка на главной',{screen:'home',newIdea:'ready'}],['v','У каждого поля видно, кто заполнил',{screen:'idea',idea:6,newIdea:'ready',stack:['home']}],['v','«Изменить»: лист с текущими значениями',{screen:'idea',idea:6,newIdea:'ready',sheet:'edit',stack:['home']}],['v','Цена, программа и заметка от автора',{screen:'idea',idea:6,newIdea:'edited',stack:['home'],toast:'Сохранено'}],['n','У Насти идея первой в колоде: «Вова добавил»',{screen:'home',newIdea:'edited'}]]],
+ ['Мои идеи: дописать за собой и за скаутом',[['v','«Идеи → Наши → Мои»: видно, где чего не хватает',{screen:'ideas',ideasWho:'mine',newIdea:'ready'}],['v','Каток: нет цены и адреса. Дописать или попросить скаута',{screen:'idea',idea:3,stack:['ideas']}],['v','«Попросить скаута»: статус остаётся в карточке',{screen:'idea',idea:3,scoutAsk:{3:true},stack:['ideas'],toast:'Скаут получил запрос'}]]],
+ ['Дела: мой день',[['v','На главной одна строка: сколько на сегодня и сколько просрочено',{screen:'home'}],['v','Вкладка «Дела»: просрочено, сегодня, позже',{screen:'chores'}],['v','Галочка: «Сделано» и «Вернуть»',{screen:'chores',done:[1],toast:'Сделано',undo:{id:1}}],['v','Просроченное: «Перенести срок»',{screen:'chore',chore:5,stack:['chores']}],['v','Дело Насти: «Напомнить» или «Забрать себе»',{screen:'chore',chore:2,stack:['chores']}],['v','Сделанные лежат внизу вкладки 7 дней',{screen:'chores',done:[1],chShowDone:true}],['v','Дело с повтором: отметил, появилось следующее',{screen:'chores',done:[4],toast:'Сделано. Следующее: 20 декабря'}]]],
+ ['Дела: попросить партнёра',[['v','«＋ Дело»: что, кто, срок, повтор',{screen:'chores',sheet:'addchore'}],['v','Просьба ушла: у Вовы «ждём ответа Насти»',{screen:'chores',ask:'ask'}],['n','У Насти на главной «Беру / Не могу»',{screen:'home',ask:'ask'}],['v','«Не могу»: дело вернулось Вове с двумя выходами',{screen:'home',ask:'no'}],['b','«Беру»: дело в списке Насти',{screen:'chores',ask:'open'}]]],
+ ['Планы и календарь',[['v','Планы: только встречи и занятость. Дел здесь нет',{screen:'plans',marks:{v1:true},meet:M()}],['v','Тап по дню: встреча этого дня',{screen:'plans',marks:{v1:true},meet:M(),day:15}],['v','«Я занят»: одним касанием, без ссылок',{screen:'plans',marks:{v1:true},meet:M(),day:17,busy:{n18:true,v17:true}}],['v','Календарь телефона: встречи туда сами, занятость оттуда по желанию',{screen:'plans',marks:{v1:true},meet:M(),sheet:'cal'}]]],
+ ['После встречи',[['v','На главной и в боте: «Как прошло?»',{screen:'home',marks:{v1:true},meet:M({past:true})}],['v','Три ответа, каждый за себя',{screen:'after',marks:{v1:true},meet:M({past:true}),stack:['home']}],['v','Встреча в истории: кто как оценил',{screen:'history',marks:{v1:true},meet:M({past:true,rated:{v:'like'}}),stack:['us'],toast:'Записал в историю'}]]],
+ ['Профиль, история, настройки',[['v','Профиль открывается с аватаров на главной',{screen:'us',stack:['home']}],['v','История дел: кто что сделал, поиск и фильтр',{screen:'history',histView:'ch',stack:['us']}],['v','Настройки: три группы, в строке текущее значение',{screen:'settings',stack:['us']}],['v','Раздел: переключатели и выбор',{screen:'set',setKey:'notif',stack:['settings']}],['v','Общая настройка пары',{screen:'set',setKey:'chores',stack:['settings']}],['v','Выход из пары: последствия и подтверждение',{screen:'set',setKey:'pair',sheet:'leave',stack:['settings']}]]],
+]
+const FLAT=[];SC.forEach(([,st])=>st.forEach(s=>FLAT.push(s)))
+let n=0
+$('#scn').innerHTML=SC.map(([title,st],k)=>`<div><h3>${k+1}. ${title}</h3><ol>${st.map(([w,t])=>`<li><button data-i="${n++}"><span class="tag ${w}">${w==='v'?'Вова':w==='n'?'Настя':'оба'}</span><span>${t}</span></button></li>`).join('')}</ol></div>`).join('')
+function play(i){if(i<0||i>=FLAT.length)return;const[w,t,set]=FLAT[i];Object.assign(S,fresh(),{stack:[],afKind:''})
+  for(const k in set){if(k==='meet')Object.assign(S.meet,set.meet);else if(k==='ask')addAsk(set.ask);else if(k==='done'){const who=S.who;S.who='v';set.done.forEach(doChore);S.who=who}else S[k]=JSON.parse(JSON.stringify(set[k]))}
+  if(!set.toast){S.toast='';S.undo=null}
+  if(w!=='b')S.who=w;S.step=i;render();$('#where').textContent=`шаг ${i+1} из ${FLAT.length}`
+  if(window.matchMedia('(max-width:900px)').matches)$('#phone').scrollIntoView({behavior:'smooth',block:'start'})}
+$('#scn').addEventListener('click',e=>{const b=e.target.closest('button[data-i]');if(b)play(+b.dataset.i)})
+$('#next').addEventListener('click',()=>play(S.step==null?0:S.step+1))
+$('#prev').addEventListener('click',()=>play(S.step==null?0:S.step-1))
+
+// ---------- arena table ----------
+const AR=[['Вход и пара','5/6','7/6','5/4','6/4','–'],['Свайп и встреча','6/5','8/7','6/5','–','–'],['Обед после','8/7','7/6','6/4','–','–'],['Когда свободны','6/5','6/5','5/4','–','–'],['Помощник','7/6','7/5','6/5','6/4','–'],['Афиша и идеи','7/6','6/6','6/6','–','–'],['Идея по ссылке','7/7','8/7','7/6','–','–'],['Мои идеи','5/5','5/5','5/4','5/5','–'],['Дела','9/9','7/6','6/5','–','6/4'],['Календарь','4/3','6/5','5/5','4/3','5/4'],['После встречи','7/7','5/4','5/4','–','–'],['<b>Общая оценка</b>','<b>6</b>','<b>6</b>','<b>5</b>','<b>6</b>','<b>5</b>']]
+$('#arena-t').innerHTML=`<tr><th>Сценарий версии 2</th><th>Настя, отвечает на ходу</th><th>Лена, дизайнер</th><th>Олег, тестировщик</th><th>Игорь, новичок без пары</th><th>Марина, ведёт дела</th></tr>`+AR.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')
+render()
+</script>
+</body></html>

@@ -204,12 +204,12 @@ func (a *App) attachTickets(ctx context.Context, c Couple, roundID int64, f Tick
 	_ = a.S.SetSetting(ctx, fmt.Sprintf("tickets_wait:%d", c.Me.ID), "")
 	i, _ := a.S.Idea(ctx, c.Space.ID, r.Chosen)
 	cap := fmt.Sprintf("🎟 Билеты на <b>%s</b> — %s %s. Покупать не нужно.", esc(i.Title), esc(c.Me.Name), Past(c.Me.Name, "прислал"))
-	open := tg.Keyboard(tg.Row(tg.App("Открыть встречу", a.appURL(fmt.Sprintf("round/%d", r.ID)))))
+	open := tg.Keyboard(tg.Row(tg.App("Открыть встречу", a.appURL(a.meetPath(ctx, c.Me.ID, r.ID)))))
 	if c.Partner != nil {
 		if fs, ok := a.TG.(fileSender); ok && f.FileID != "" {
 			_ = fs.SendFile(ctx, c.Partner.ChatID, f.Kind, f.FileID, cap)
 		} else if f.URL != "" {
-			a.send(ctx, c.Partner.ChatID, cap+"\n"+esc(f.URL), tg.Keyboard(tg.Row(tg.Link("Открыть билеты", f.URL)), tg.Row(tg.App("Открыть встречу", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
+			a.send(ctx, c.Partner.ChatID, cap+"\n"+esc(f.URL), tg.Keyboard(tg.Row(tg.Link("Открыть билеты", f.URL)), tg.Row(tg.App("Открыть встречу", a.appURL(a.meetPath(ctx, c.Partner.ID, r.ID))))))
 		}
 	}
 	mine := fmt.Sprintf("✓ Билеты сохранены к «%s»%s. Ссылка на них — в событии календаря.", esc(i.Title), map[bool]string{true: " и отправлены " + esc(NameDat(c.PartnerName())), false: ""}[c.Partner != nil])

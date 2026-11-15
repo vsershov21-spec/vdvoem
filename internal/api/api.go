@@ -65,6 +65,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	a.agentRoutes(mux)
 	a.feedRoutes(mux, h)
 	h("GET /api/me", a.me)
+	h("POST /api/ui", a.setUI)
 	h("GET /api/home", a.home)
 	h("GET /api/ideas", a.ideas)
 	h("POST /api/ideas", a.addIdea)
@@ -73,6 +74,28 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("DELETE /api/ideas/{id}", a.deleteIdea)
 	h("POST /api/ideas/{id}/wish", a.wish)
 	h("POST /api/ideas/{id}/merge", a.merge)
+	h("GET /api/inbox", a.inbox)
+	h("GET /api/meet/{id}", a.meet)
+	h("POST /api/meet/{id}/time", a.meetTime)
+	h("POST /api/meet/{id}/stop", a.meetStop)
+	h("POST /api/meet/{id}/cancel", a.meetCancel)
+	h("POST /api/meet/{id}/buy", a.meetBuy)
+	h("GET /api/free", a.free)
+	h("POST /api/free", a.setFree)
+	h("POST /api/busy-day", a.setBusyDay)
+	h("GET /api/chores", a.chores)
+	h("POST /api/chores", a.addChore)
+	h("GET /api/chores/history", a.choreHistory)
+	h("PATCH /api/chores/{id}", a.editChore)
+	h("POST /api/chores/{id}/{act}", a.choreAct)
+	h("GET /api/prefs", a.prefsV2)
+	h("PUT /api/prefs", a.setPrefV2)
+	h("POST /api/proposals", a.propose)
+	h("POST /api/proposals/{id}/answer", a.answerProposal)
+	h("POST /api/proposals/{id}/withdraw", a.withdrawProposal)
+	h("POST /api/proposals/{id}/seen", a.seenProposal)
+	h("POST /api/proposals/{id}/remind", a.remindProposal)
+	h("POST /api/ideas/{id}/enrich", a.enrichIdea)
 	h("POST /api/ideas/{id}/urgent", a.markUrgent)
 	h("DELETE /api/ideas/{id}/urgent", a.cancelUrgent)
 	h("POST /api/ideas/{id}/urgent/{answer}", a.answerUrgent)
@@ -99,6 +122,11 @@ func (a *API) Routes(mux *http.ServeMux) {
 	h("GET /api/settings", a.settings)
 	h("PATCH /api/settings", a.patchSettings)
 	h("POST /api/invite", a.invite)
+	h("GET /api/invite/{code}", a.inviteInfo)
+	h("POST /api/invite/{code}/{act}", a.inviteAct)
+	h("POST /api/pair/leave", a.leavePair)
+	h("POST /api/data/export", a.exportData)
+	h("POST /api/data/delete", a.deleteData)
 	h("GET /api/assistant", a.chat)
 	h("POST /api/assistant", a.askAssistant)
 	h("POST /api/assistant/act", a.act)
@@ -325,6 +353,18 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 409, map[string]string{"error": "round_open"})
 	case errors.Is(err, app.ErrNoIdeas):
 		writeJSON(w, 404, map[string]string{"error": "no_ideas"})
+	case errors.Is(err, domain.ErrOwnProposal):
+		writeJSON(w, 409, map[string]string{"error": "own_proposal"})
+	case errors.Is(err, domain.ErrProposalClosed):
+		writeJSON(w, 409, map[string]string{"error": "proposal_closed"})
+	case errors.Is(err, app.ErrMeetState):
+		writeJSON(w, 409, map[string]string{"error": "meet_state"})
+	case errors.Is(err, app.ErrChoreState):
+		writeJSON(w, 409, map[string]string{"error": "chore_state"})
+	case errors.Is(err, app.ErrBadInput):
+		writeJSON(w, 400, map[string]string{"error": "bad_input"})
+	case errors.Is(err, app.ErrNotConfirmed):
+		writeJSON(w, 400, map[string]string{"error": "not_confirmed"})
 	case errors.Is(err, app.ErrNotPending):
 		writeJSON(w, 409, map[string]string{"error": "not_pending"})
 	case errors.Is(err, app.ErrNotYours):
@@ -426,6 +466,9 @@ func viewIdea(c app.Couple, i store.Idea) ideaView {
 	if c.Me.Color == "b" {
 		me, p = i.WishB, i.WishA
 	}
+	if c.Partner == nil { // the marks of a partner who left are kept, but alone there is nobody they belong to
+		p = domain.WishNone
+	}
 	v := ideaView{ID: i.ID, Title: i.Title, Kind: string(i.Kind), Category: i.Category, URL: i.URL, Address: i.Address, Image: i.ImageURL, Note: i.Note,
 		PriceMin: i.PriceMin, PriceMax: i.PriceMax, DurationMin: i.DurationMin, StartsAt: unix(i.StartsAt), EndsAt: unix(i.EndsAt), Deadline: unix(i.Deadline),
 		Assignee: i.Assignee, Status: string(i.Status), MyWish: string(me), PartnerMarked: p != domain.WishNone, Mine: i.AuthorID == c.Me.ID,
@@ -462,6 +505,21 @@ func (a *API) me(w http.ResponseWriter, r *http.Request, c app.Couple) (any, err
 	return out, nil
 }
 
+// setUI: the app says which interface it has just opened ({"v":1} — the old screens, {"v":2} — the new shell),
+// so the bot writes to this person in the flow they see
+func (a *API) setUI(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		V int `json:"v"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetUI(r.Context(), c.Me.ID, in.V); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
 func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
 	ctx := r.Context()
 	ideas, err := a.App.S.Ideas(ctx, c.Space.ID, domain.IdeaActive)
@@ -485,7 +543,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 		if toMark(c, i, a.App.Now(), going) && len(unmarked) < 10 {
 			unmarked = append(unmarked, v)
 		}
-		if (i.WishA == domain.WishWant || i.WishA == domain.WishVery) && (i.WishB == domain.WishWant || i.WishB == domain.WishVery) {
+		if c.Partner != nil && (i.WishA == domain.WishWant || i.WishA == domain.WishVery) && (i.WishB == domain.WishWant || i.WishB == domain.WishVery) {
 			both++
 		}
 	}
@@ -512,9 +570,13 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 		if t := a.App.S.PendingInvite(ctx, c.Space.ID, a.App.Now()); !t.IsZero() {
 			out["invite_until"] = t.Unix()
 		}
+	} else if t := a.App.S.PairedSince(ctx, c.Space.ID); !t.IsZero() {
+		out["paired_since"] = t.Unix()
 	}
 	out["to_mark"] = unmarked
 	out["urgent"] = a.App.UrgentForMe(ctx, c)
+	out["inbox"] = a.App.Waiting(ctx, c)              // «Ждёт тебя»: proposals to answer and their answers
+	out["chore_summary"] = a.App.ChoreSummary(ctx, c) // the one line about chores on the home screen
 	out["going"] = a.goingRounds(ctx, c)
 	if rd, err := a.App.S.OpenRound(ctx, c.Space.ID); err == nil {
 		out["round"] = a.viewRound(ctx, c, rd)
@@ -582,7 +644,55 @@ func (a *API) idea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	if i.Kind == domain.KindLeisure {
 		v = withMatch(v, a.App.Tastes(r.Context(), c), i, c.PartnerName())
 	}
-	return map[string]any{"idea": v, "urgent": a.App.UrgentView(r.Context(), c, i.ID)}, nil
+	filled, enriching := a.filled(r.Context(), c, i)
+	return map[string]any{"idea": v, "urgent": a.App.UrgentView(r.Context(), c, i.ID), "filled": filled, "enriching": enriching}, nil
+}
+
+// filled: for every field of the card that has a value — who it came from: me | partner | scout.
+// enriching: the scout was asked to fill the gaps less than an hour ago and some are still empty.
+func (a *API) filled(ctx context.Context, c app.Couple, i store.Idea) (map[string]string, bool) {
+	edits := a.App.S.IdeaEdits(ctx, i.ID)
+	who := func(id int64) string {
+		if id == c.Me.ID {
+			return "me"
+		}
+		return "partner"
+	}
+	auto := i.Source == "scout" || i.Parsed
+	has := map[string]bool{"when": i.StartsAt != nil, "where": i.Address != "", "price": i.PriceMin > 0 || i.PriceMax > 0, "about": i.Info.About != "", "note": i.Note != ""}
+	out := map[string]string{}
+	gaps := false
+	for f, ok := range has {
+		switch e, edited := edits[f]; {
+		case !ok:
+			gaps = gaps || f == "where" || f == "price"
+		case edited:
+			out[f] = who(e.MemberID)
+		case auto && f != "note":
+			out[f] = "scout"
+		default:
+			out[f] = who(i.AuthorID)
+		}
+	}
+	e, asked := edits["_enrich"]
+	return out, asked && gaps && a.App.Now().Sub(e.At) < time.Hour
+}
+
+// enrichIdea: «Попросить скаута» — the page behind the idea is read again to fill what is missing
+func (a *API) enrichIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	now := a.App.Now()
+	_ = a.App.S.MarkIdeaEdit(r.Context(), id, "_enrich", c.Me.ID, now)
+	_ = a.App.S.Enqueue(r.Context(), "parse", now, map[string]any{"idea": i.ID, "text": strings.TrimSpace(i.Title + " " + i.URL)}, fmt.Sprintf("parse:%d:%d", i.ID, now.Unix()))
+	a.App.Kick()
+	return map[string]any{"enriching": true}, nil
 }
 
 func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -604,6 +714,8 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 		PriceMin    *int64  `json:"price_min"`
 		PriceMax    *int64  `json:"price_max"`
 		DurationMin *int    `json:"duration_min"`
+		StartsAt    *int64  `json:"starts_at"`
+		About       *string `json:"about"` // the programme: what is included, when to gather
 		EndsAt      *int64  `json:"ends_at"`
 		Deadline    *int64  `json:"deadline"`
 		Assignee    *string `json:"assignee"`
@@ -653,6 +765,16 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 		t := time.Unix(*p, 0)
 		return &t
 	}
+	if in.StartsAt != nil {
+		cur.StartsAt = tm(in.StartsAt)
+	}
+	if in.About != nil {
+		t := strings.TrimSpace(*in.About)
+		if rs := []rune(t); len(rs) > 600 {
+			t = string(rs[:600])
+		}
+		cur.Info.About = t
+	}
 	if in.EndsAt != nil {
 		cur.EndsAt = tm(in.EndsAt)
 	}
@@ -672,8 +794,308 @@ func (a *API) patchIdea(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	if err := a.App.S.UpdateIdea(r.Context(), cur, a.App.Now()); err != nil {
 		return nil, err
 	}
+	// who filled what: the card shows it next to every field
+	for f, set := range map[string]bool{"title": in.Title != nil, "when": in.StartsAt != nil, "where": in.Address != nil,
+		"price": in.PriceMin != nil || in.PriceMax != nil, "about": in.About != nil, "note": in.Note != nil} {
+		if set {
+			_ = a.App.S.MarkIdeaEdit(r.Context(), id, f, c.Me.ID, a.App.Now())
+		}
+	}
 	i, err := a.App.S.Idea(r.Context(), c.Space.ID, id)
 	return map[string]any{"idea": viewIdea(c, i)}, err
+}
+
+// ---------- the meeting card ----------
+
+func (a *API) meetOut(r *http.Request, c app.Couple, id int64) (any, error) {
+	rd, err := a.App.S.Round(r.Context(), c.Space.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	buying := ""
+	if v := a.App.S.SpaceSettings(r.Context(), c.Space.ID)[fmt.Sprintf("sys.buy:%d", id)]; v == fmt.Sprint(c.Me.ID) {
+		buying = "me"
+	} else if v != "" {
+		buying = "partner"
+	}
+	return map[string]any{"round": a.viewRound(r.Context(), c, rd), "proposals": a.App.MeetProposals(r.Context(), c, id), "buying": buying}, nil
+}
+
+func (a *API) meet(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	return a.meetOut(r, c, id)
+}
+
+func (a *API) meetTime(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Start int64  `json:"start"` // unix, or a slot of the grid: day + part (+ "HH:MM")
+		Day   string `json:"day"`
+		Part  int    `json:"part"`
+		At    string `json:"at"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	start := time.Unix(in.Start, 0)
+	if in.Start == 0 {
+		if start, err = app.SlotStart(in.Day, in.Part, c.Loc()); err != nil {
+			return nil, app.ErrBadInput
+		}
+		if hm, e := time.Parse("15:04", in.At); e == nil {
+			y, m, d := start.Date()
+			start = time.Date(y, m, d, hm.Hour(), hm.Minute(), 0, 0, c.Loc())
+		}
+	}
+	if _, err := a.App.ProposeTime(r.Context(), c, id, start); err != nil {
+		return nil, err
+	}
+	return a.meetOut(r, c, id)
+}
+
+func (a *API) meetStop(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Idea int64  `json:"idea"`
+		Text string `json:"text"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if _, err := a.App.ProposeStop(r.Context(), c, id, in.Idea, in.Text); err != nil {
+		return nil, err
+	}
+	return a.meetOut(r, c, id)
+}
+
+// meetBuy: «Куплю я» — the other one sees who is buying the tickets
+func (a *API) meetBuy(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.App.S.Round(r.Context(), c.Space.ID, id); err != nil {
+		return nil, err
+	}
+	if err := a.App.S.SetSpaceSetting(r.Context(), c.Space.ID, fmt.Sprintf("sys.buy:%d", id), fmt.Sprint(c.Me.ID)); err != nil {
+		return nil, err
+	}
+	a.App.Live.From(r.Context(), c.Space.ID)
+	return a.meetOut(r, c, id)
+}
+
+func (a *API) meetCancel(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if err := a.App.CancelMeet(r.Context(), c, id); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+// ---------- Планы: free windows and busy days ----------
+
+func (a *API) free(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.App.Free(r.Context(), c), nil
+}
+
+func (a *API) setFree(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Day  string `json:"day"`
+		Part int    `json:"part"`
+		On   bool   `json:"on"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetFreeSlot(r.Context(), c, in.Day, in.Part, in.On); err != nil {
+		return nil, err
+	}
+	return a.App.Free(r.Context(), c), nil
+}
+
+func (a *API) setBusyDay(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Day string `json:"day"`
+		On  bool   `json:"on"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetBusyDay(r.Context(), c, in.Day, in.On); err != nil {
+		return nil, err
+	}
+	return a.App.Free(r.Context(), c), nil
+}
+
+// ---------- chores ----------
+
+type choreIn struct {
+	Title   string `json:"title"`
+	Note    string `json:"note"`
+	Who     string `json:"who"`
+	Due     *int64 `json:"due"` // unix; null clears it (with has_due)
+	HasDue  bool   `json:"has_due"`
+	DueTime bool   `json:"due_time"`
+	Repeat  string `json:"repeat"`
+}
+
+func (in choreIn) app() app.ChoreIn {
+	out := app.ChoreIn{Title: in.Title, Note: in.Note, Who: in.Who, DueTime: in.DueTime, Repeat: in.Repeat}
+	if in.Due != nil {
+		t := time.Unix(*in.Due, 0)
+		out.Due = &t
+	}
+	return out
+}
+
+func (a *API) choresOut(r *http.Request, c app.Couple) (any, error) {
+	list, sum, err := a.App.Chores(r.Context(), c)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"chores": list, "summary": sum}, nil
+}
+
+func (a *API) chores(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.choresOut(r, c)
+}
+
+func (a *API) addChore(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in choreIn
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if _, err := a.App.AddChore(r.Context(), c, in.app()); err != nil {
+		return nil, err
+	}
+	return a.choresOut(r, c)
+}
+
+func (a *API) editChore(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in choreIn
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if _, err := a.App.EditChore(r.Context(), c, id, in.app(), in.HasDue || in.Due != nil); err != nil {
+		return nil, err
+	}
+	return a.choresOut(r, c)
+}
+
+func (a *API) choreAct(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.App.ChoreAct(r.Context(), c, id, r.PathValue("act")); err != nil {
+		return nil, err
+	}
+	return a.choresOut(r, c)
+}
+
+func (a *API) choreHistory(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	list, err := a.App.ChoreHistory(r.Context(), c, r.URL.Query().Get("q"), r.URL.Query().Get("who"))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"chores": list}, nil
+}
+
+// ---------- settings ----------
+
+func (a *API) prefsV2(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.App.SettingsView(r.Context(), c), nil
+}
+
+func (a *API) setPrefV2(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	if err := a.App.SetSetting(r.Context(), c, in.Key, in.Value); err != nil {
+		return nil, err
+	}
+	return a.App.SettingsView(r.Context(), c), nil
+}
+
+// «Ждёт тебя»: everything that waits for my answer, plus what I am waiting for myself
+func (a *API) inbox(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return map[string]any{"rows": a.App.Waiting(r.Context(), c)}, nil
+}
+
+func (a *API) propose(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Kind    string          `json:"kind"`
+		RefID   int64           `json:"ref_id"`
+		Title   string          `json:"title"`
+		Sub     string          `json:"sub"`
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrBadInput
+	}
+	p, err := a.App.Propose(r.Context(), c, in.Kind, in.RefID, in.Title, in.Sub, string(in.Payload))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": p.ID, "rows": a.App.Waiting(r.Context(), c)}, nil
+}
+
+func (a *API) answerProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	var in struct {
+		Yes bool `json:"yes"`
+	}
+	_ = body(r, &in)
+	if _, err := a.App.AnswerProposal(r.Context(), c, id, in.Yes); err != nil {
+		return nil, err
+	}
+	return map[string]any{"rows": a.App.Waiting(r.Context(), c)}, nil
+}
+
+func (a *API) withdrawProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.proposalAct(r, c, a.App.WithdrawProposal)
+}
+
+func (a *API) seenProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.proposalAct(r, c, a.App.SeenProposal)
+}
+
+func (a *API) remindProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.proposalAct(r, c, a.App.RemindProposal)
+}
+
+func (a *API) proposalAct(r *http.Request, c app.Couple, f func(context.Context, app.Couple, int64) error) (any, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return nil, err
+	}
+	if err := f(r.Context(), c, id); err != nil {
+		return nil, err
+	}
+	return map[string]any{"rows": a.App.Waiting(r.Context(), c)}, nil
 }
 
 func (a *API) markUrgent(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -793,6 +1215,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	confMe, _ := pick(me, rd.ConfirmA, rd.ConfirmB).(bool)
 	confOther, _ := pick(other, rd.ConfirmA, rd.ConfirmB).(bool)
 	againMe, _ := pick(me, rd.AgainA, rd.AgainB).(string)
+	againOther, _ := pick(other, rd.AgainA, rd.AgainB).(string) // how the partner liked it: the history shows both
 
 	days := []string{}
 	for _, d := range app.RoundDays(rd, c.Loc()) {
@@ -801,7 +1224,7 @@ func (a *API) viewRound(ctx context.Context, c app.Couple, rd domain.Round) map[
 	first, last := app.SlotRange(a.App.Now(), c.Loc())
 	out := map[string]any{"id": rd.ID, "today": first.Format("2006-01-02"), "horizon": last.Format("2006-01-02"), "state": string(rd.State), "version": rd.Version, "opened_at": rd.OpenedAt.Unix(), "expires_at": rd.ExpiresAt.Unix(),
 		"days": days, "my_slots": keys, "partner_slots": theirKeys, "sent": sentMe, "partner_sent": sentOther, "voted": voteMe != 0, "partner_voted": voteOther != 0,
-		"confirmed": confMe, "partner_confirmed": confOther, "again": againMe, "budget": rd.BudgetKop}
+		"confirmed": confMe, "partner_confirmed": confOther, "again": againMe, "partner_again": againOther, "budget": rd.BudgetKop}
 	if rd.State == domain.StateTime {
 		// busy times from each person's own calendar: only «занят», never what
 		n := int(last.Sub(first).Hours()/24) + 1
@@ -924,9 +1347,28 @@ func (a *API) roundWith(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 	if err != nil {
 		return nil, err
 	}
+	// «Общее время» → «Идём»: the meeting is made with a time at once — a slot of the grid (day + part)
+	var in struct {
+		Day  string `json:"day"`
+		Part int    `json:"part"`
+	}
+	if r.ContentLength != 0 {
+		if err := body(r, &in); err != nil {
+			return nil, app.ErrBadInput
+		}
+	}
 	var rd domain.Round
-	if r.URL.Query().Get("replace") == "1" {
+	if in.Day != "" {
+		start, e := app.SlotStart(in.Day, in.Part, c.Loc())
+		if e != nil {
+			return nil, app.ErrBadInput
+		}
+		rd, err = a.App.CallAt(r.Context(), c, id, start)
+	} else if r.URL.Query().Get("replace") == "1" {
 		rd, err = a.App.SwapIdea(r.Context(), c, id)
+	} else if a.App.UsesV2(r.Context(), c.Me.ID) {
+		// the new interface: a meeting without a time; a dated event is offered at its time as a proposal
+		rd, err = a.App.Call(r.Context(), c, id)
 	} else {
 		// an event with its own date and time goes straight to «confirm» — no time picking — then to the calendar
 		rd, err = a.App.BookFixed(r.Context(), c, id)
@@ -1065,6 +1507,10 @@ func (a *API) roundAction(w http.ResponseWriter, r *http.Request, c app.Couple) 
 			return nil, bad("bad_answer")
 		}
 		rd, err = a.App.Again(ctx, c, id, in.Answer)
+	case "rate": // «как прошло» of the new interface: like | soso | skip, each for themselves
+		if err = a.App.Rate(ctx, c, id, in.Answer); err == nil {
+			rd, err = a.App.S.Round(ctx, c.Space.ID, id)
+		}
 	case "tickets":
 		if err = a.App.GotTickets(ctx, c, id); err == nil {
 			rd, err = a.App.S.Round(ctx, c.Space.ID, id)
@@ -1230,6 +1676,70 @@ func (a *API) invite(w http.ResponseWriter, r *http.Request, c app.Couple) (any,
 	}
 	link, err := a.App.NewInvite(r.Context(), c)
 	return map[string]string{"link": link}, err
+}
+
+// leavePair: «Выйти из пары» — the pair's things stay with the partner, copies of my ideas come with me
+func (a *API) leavePair(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	_, ideas, err := a.App.LeavePair(r.Context(), c)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "ideas": ideas}, nil
+}
+
+// exportData: «Скачать мои идеи и историю» — the file comes to the bot
+func (a *API) exportData(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	if err := a.App.SendExport(r.Context(), c); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+// deleteData: «Удалить мои данные», confirmed by the typed word. The session ends with the person.
+func (a *API) deleteData(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	var in struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := body(r, &in); err != nil {
+		return nil, app.ErrNotConfirmed
+	}
+	if err := a.App.ForgetMe(r.Context(), c, in.Confirm); err != nil {
+		return nil, err
+	}
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.secureCookie(), SameSite: http.SameSiteLaxMode})
+	return map[string]any{"ok": true}, nil
+}
+
+// inviteInfo: the «Приглашение» screen — who calls, and whether the link can still be accepted
+func (a *API) inviteInfo(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	return a.App.InviteInfo(r.Context(), c, app.InviteCode(r.PathValue("code"))), nil
+}
+
+// inviteAct: accept — the pair is made; ask — the author of a link that ran out is asked for a new one
+func (a *API) inviteAct(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
+	code := app.InviteCode(r.PathValue("code"))
+	switch r.PathValue("act") {
+	case "accept":
+		_, moved, err := a.App.AcceptInvite(r.Context(), c, code)
+		switch {
+		case errors.Is(err, app.ErrInviteExpired), errors.Is(err, app.ErrInvitePaired), errors.Is(err, app.ErrInviteOwn), errors.Is(err, app.ErrInviteUsed):
+			return nil, httpErr{409, err.Error()}
+		case errors.Is(err, store.ErrFull):
+			return nil, httpErr{409, app.ErrInviteUsed.Error()}
+		case err != nil:
+			return nil, err
+		}
+		return map[string]any{"ok": true, "moved": moved}, nil
+	case "ask":
+		if err := a.App.AskInvite(r.Context(), c, code); err != nil {
+			if errors.Is(err, app.ErrInviteUsed) {
+				return nil, httpErr{409, err.Error()}
+			}
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
+	}
+	return nil, httpErr{404, "not_found"}
 }
 
 // ---------- помощник ----------

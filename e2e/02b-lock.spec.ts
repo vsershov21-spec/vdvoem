@@ -6,7 +6,7 @@ test('E25 защита Face ID: компьютер не блокируется, 
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   await api(v, 'PATCH', '/security/prefs', { biometric_lock: true })
-  const url = `/app/?dev=${v.id}:${encodeURIComponent(v.name)}&devtoken=${TOKEN}&nointro=1`
+  const url = `/app/?dev=${v.id}:${encodeURIComponent(v.name)}&devtoken=${TOKEN}&nointro=1&v2=0` // these are the old screens
 
   // Telegram Desktop: no sensor → opens straight away
   const desk = await browser.newContext({ baseURL: process.env.BASE || 'http://localhost:18099', viewport: { width: 420, height: 760 }, locale: 'ru-RU' })

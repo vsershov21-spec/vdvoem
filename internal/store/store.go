@@ -146,8 +146,10 @@ func (s *Store) AddMember(ctx context.Context, m Member, now time.Time) (Member,
 		return m, ErrFull
 	}
 	m.Color = "a"
-	if n == 1 {
-		m.Color = "b"
+	if n == 1 { // the side the one who is there does not have (after a partner left it may be «a» that is free)
+		if err := tx.QueryRowContext(ctx, `SELECT CASE color WHEN 'a' THEN 'b' ELSE 'a' END FROM members WHERE space_id=?`, m.SpaceID).Scan(&m.Color); err != nil {
+			return m, err
+		}
 	}
 	r, err := tx.ExecContext(ctx, `INSERT INTO members(space_id, tg_user_id, chat_id, name, color, photo_url, joined_at) VALUES (?,?,?,?,?,?,?)`,
 		m.SpaceID, m.TGUserID, m.ChatID, m.Name, m.Color, m.PhotoURL, now.Unix())
@@ -156,6 +158,9 @@ func (s *Store) AddMember(ctx context.Context, m Member, now time.Time) (Member,
 	}
 	m.ID, _ = r.LastInsertId()
 	if n == 1 {
+		if err := welcome(ctx, tx, m.SpaceID, m.ID, m.Color); err != nil { // a new person never gets the marks of the one who left
+			return m, err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE spaces SET status='paired' WHERE id=?`, m.SpaceID); err != nil {
 			return m, err
 		}
@@ -209,9 +214,46 @@ func HashCode(code string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func (s *Store) CreateInvite(ctx context.Context, spaceID int64, code string, expires time.Time) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO invites(code_hash, space_id, expires_at) VALUES (?,?,?)`, HashCode(code), spaceID, expires.Unix())
+func (s *Store) CreateInvite(ctx context.Context, spaceID, authorID int64, code string, expires time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO invites(code_hash, space_id, author_id, expires_at) VALUES (?,?,?,?)`, HashCode(code), spaceID, authorID, expires.Unix())
 	return err
+}
+
+// Invite: an invitation as it is now — also a used or an expired one, so the one who opens it can be told why
+type Invite struct {
+	SpaceID, AuthorID int64
+	ExpiresAt         time.Time
+	Used, Asked       bool
+}
+
+func (s *Store) Invite(ctx context.Context, code string) (Invite, error) {
+	var v Invite
+	var exp int64
+	var used, asked sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `SELECT space_id, author_id, expires_at, used_at, asked_at FROM invites WHERE code_hash=?`, HashCode(code)).
+		Scan(&v.SpaceID, &v.AuthorID, &exp, &used, &asked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return v, ErrNotFound
+	}
+	v.ExpiresAt, v.Used, v.Asked = time.Unix(exp, 0), used.Valid, asked.Valid
+	return v, err
+}
+
+// MarkInviteAsked: true the first time only — the author hears «просит новую ссылку» once per link
+func (s *Store) MarkInviteAsked(ctx context.Context, code string, now time.Time) bool {
+	res, err := s.DB.ExecContext(ctx, `UPDATE invites SET asked_at=? WHERE code_hash=? AND asked_at IS NULL`, now.Unix(), HashCode(code))
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n == 1
+}
+
+// SoloIdeas: how many ideas of their own a person alone has (they move into the pair with them)
+func (s *Store) SoloIdeas(ctx context.Context, spaceID int64) int {
+	var n int
+	_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM ideas WHERE space_id=? AND source=''`, spaceID).Scan(&n)
+	return n
 }
 
 // PendingInvite: when the newest unused invite of the space runs out (zero time — none is waiting)
@@ -641,10 +683,12 @@ func (s *Store) LogAI(ctx context.Context, task, provider, in, out string, ok bo
 		task, provider, in, out, b2i(ok), ms, now.Unix())
 }
 
-// DeleteSpace removes every row of a couple (both asked for it).
-// MoveMember: someone who used the app alone joins a pair. The member row itself moves (so sessions, passkeys,
+// MoveMember: someone who is alone joins a pair. The member row itself moves (so sessions, passkeys,
 // chat, memories and taste stay theirs), the ideas they added alone come along with their own mark on their
-// side, and what is left of the solo space is removed.
+// side, and what is left of the space they were alone in is removed.
+//
+// An idea or an open chore the pair already has (the same link or title) does not come twice: someone who
+// left a pair took copies along, and coming back must not double them. Their mark goes to the idea that is there.
 func (s *Store) MoveMember(ctx context.Context, memberID, from, to int64) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -658,23 +702,39 @@ func (s *Store) MoveMember(ctx context.Context, memberID, from, to int64) error 
 	if n >= 2 {
 		return ErrFull
 	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM members WHERE space_id=?`, from).Scan(&n); err != nil {
+		return err
+	}
+	if n != 1 { // what is left of «from» is removed below: nobody else may be in it
+		return ErrNotAlone
+	}
+	var was string // the side they had alone: «a», or «b» if a partner left them
+	if err := tx.QueryRowContext(ctx, `SELECT color FROM members WHERE id=? AND space_id=?`, memberID, from).Scan(&was); err != nil {
+		return err
+	}
 	color := "a"
-	if n == 1 {
-		if err := tx.QueryRowContext(ctx, `SELECT CASE color WHEN 'a' THEN 'b' ELSE 'a' END FROM members WHERE space_id=?`, to).Scan(&color); err != nil {
-			return err
-		}
+	if err := tx.QueryRowContext(ctx, `SELECT CASE color WHEN 'a' THEN 'b' ELSE 'a' END FROM members WHERE space_id=?`, to).Scan(&color); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
-	// alone the person was «a»; their marks go to the side they take in the pair
-	wish := `wish_b=wish_a, wish_a=''`
-	if color == "a" {
-		wish = `wish_a=wish_a`
+	if err := welcome(ctx, tx, to, memberID, color); err != nil {
+		return err
 	}
+	// their marks go to the side they take in the pair
+	mine, other := "wish_"+color, "wish_"+otherColor(color)
+	dup := `fingerprint<>'' AND fingerprint IN (SELECT fingerprint FROM ideas WHERE space_id=? AND status<>'archived')`
 	steps := []struct {
 		q    string
 		args []any
 	}{
-		{`UPDATE OR IGNORE ideas SET space_id=?, ` + wish + ` WHERE space_id=? AND source=''`, []any{to, from}},
+		{`UPDATE ideas SET ` + mine + `=(SELECT s.wish_` + was + ` FROM ideas s WHERE s.space_id=? AND s.source='' AND s.fingerprint=ideas.fingerprint AND s.wish_` + was + `<>'' LIMIT 1)
+WHERE space_id=? AND status<>'archived' AND ` + mine + `='' AND fingerprint<>''
+AND EXISTS (SELECT 1 FROM ideas s WHERE s.space_id=? AND s.source='' AND s.fingerprint=ideas.fingerprint AND s.wish_` + was + `<>'')`, []any{from, to, from}},
+		{`UPDATE OR IGNORE ideas SET space_id=?, ` + mine + `=wish_` + was + `, ` + other + `='' WHERE space_id=? AND source='' AND NOT (` + dup + `)`, []any{to, from, to}},
 		{`UPDATE members SET space_id=?, color=? WHERE id=?`, []any{to, color, memberID}},
+		{`UPDATE spaces SET status='paired' WHERE id=?`, []any{to}},
+		// «Дела» made alone come along too; one the pair already has open goes back to the one it was with
+		{`UPDATE chores SET assignee_id=? WHERE space_id=? AND state='open' AND assignee_id=0 AND title IN (SELECT title FROM chores WHERE space_id=? AND state='open' AND assignee_id=?)`, []any{memberID, to, from, memberID}},
+		{`UPDATE chores SET space_id=? WHERE space_id=? AND NOT (state='open' AND title IN (SELECT title FROM chores WHERE space_id=? AND state IN ('open','ask','declined')))`, []any{to, from, to}},
 		{`UPDATE assistant_messages SET space_id=? WHERE member_id=?`, []any{to, memberID}},
 		{`UPDATE assistant_actions SET space_id=? WHERE member_id=?`, []any{to, memberID}},
 		{`UPDATE memories SET space_id=? WHERE member_id=?`, []any{to, memberID}},
@@ -684,8 +744,13 @@ func (s *Store) MoveMember(ctx context.Context, memberID, from, to int64) error 
 		{`DELETE FROM photos WHERE round_id IN (SELECT id FROM rounds WHERE space_id=?)`, []any{from}},
 		{`DELETE FROM rounds WHERE space_id=?`, []any{from}},
 		{`DELETE FROM urgent WHERE space_id=?`, []any{from}},
+		{`DELETE FROM idea_edits WHERE idea_id IN (SELECT id FROM ideas WHERE space_id=?)`, []any{from}},
 		{`DELETE FROM ideas WHERE space_id=?`, []any{from}},
 		{`DELETE FROM invites WHERE space_id=?`, []any{from}},
+		// rows without a foreign key: the id of a removed space is given to the next new one, which must not inherit them
+		{`DELETE FROM chores WHERE space_id=?`, []any{from}},
+		{`DELETE FROM proposals WHERE space_id=?`, []any{from}},
+		{`DELETE FROM space_settings WHERE space_id=?`, []any{from}},
 		{`DELETE FROM spaces WHERE id=?`, []any{from}},
 	}
 	for _, st := range steps {
@@ -696,6 +761,7 @@ func (s *Store) MoveMember(ctx context.Context, memberID, from, to int64) error 
 	return tx.Commit()
 }
 
+// DeleteSpace removes every row of a couple (both asked for it).
 func (s *Store) DeleteSpace(ctx context.Context, spaceID int64) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {

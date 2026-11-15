@@ -41,6 +41,8 @@ type App struct {
 	Log       *slog.Logger
 	NoKick    bool      // tests drive jobs through Tick
 	Live      *live.Hub // open apps refresh in real time (nil = off)
+
+	effects map[string]ProposalEffect // what an answered proposal does, by kind (proposals.go)
 }
 
 var (
@@ -49,6 +51,7 @@ var (
 	ErrBadTime   = errors.New("bad_time")
 	ErrForbidden = errors.New("forbidden")
 	ErrNoRound   = errors.New("no_round")
+	ErrBadInput  = errors.New("bad_input")
 )
 
 func (a *App) now() time.Time { return a.Now() }
@@ -115,12 +118,14 @@ func (a *App) both(c Couple) []store.Member {
 }
 
 func (a *App) send(ctx context.Context, chatID int64, text string, mk *tg.Markup) {
+	text = a.WordsFor(ctx, chatID, text)
 	if _, err := a.TG.Send(ctx, chatID, text, tg.SendOpts{Markup: mk}); err != nil {
 		a.Log.Warn("send failed", "err", err)
 	}
 }
 
 func (a *App) sendQuiet(ctx context.Context, chatID int64, text string, mk *tg.Markup) {
+	text = a.WordsFor(ctx, chatID, text)
 	if _, err := a.TG.Send(ctx, chatID, text, tg.SendOpts{Markup: mk, Silent: true}); err != nil {
 		a.Log.Warn("send failed", "err", err)
 	}
@@ -168,7 +173,7 @@ func (a *App) Start(ctx context.Context, p Profile, payload string) (Couple, str
 
 func (a *App) NewInvite(ctx context.Context, c Couple) (string, error) {
 	cd := code()
-	if err := a.S.CreateInvite(ctx, c.Space.ID, cd, a.now().Add(72*time.Hour)); err != nil {
+	if err := a.S.CreateInvite(ctx, c.Space.ID, c.Me.ID, cd, a.now().Add(72*time.Hour)); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("https://t.me/%s?start=inv_%s", a.BotName, cd), nil
@@ -176,36 +181,56 @@ func (a *App) NewInvite(ctx context.Context, c Couple) (string, error) {
 
 var ErrInviteUsed = errors.New("invite_invalid")
 
+// join: the invitation is used and the person is in the pair. Who is told what is up to the caller: the old
+// interface joins at once on /start, the new one after «Принять приглашение».
 func (a *App) join(ctx context.Context, p Profile, cd string, solo *Couple) (Couple, string, error) {
+	c, joined, err := a.joinSpace(ctx, p, cd, solo)
+	if err == nil && joined && c.Partner != nil {
+		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("<b>%s с тобой.</b> Идеи, встречи и дела теперь общие. Пришли ссылку на место или напиши, куда хочется.", esc(c.Me.Name)),
+			tg.Keyboard(tg.Row(tg.App("Открыть «Вдвоём»", a.appURL("")))))
+	}
+	return c, "", err
+}
+
+func (a *App) joinSpace(ctx context.Context, p Profile, cd string, solo *Couple) (Couple, bool, error) {
 	now := a.now()
 	spaceID, err := a.S.UseInvite(ctx, cd, now)
 	if err != nil {
-		return Couple{}, "", ErrInviteUsed
+		return Couple{}, false, ErrInviteUsed
 	}
 	var m store.Member
 	if solo != nil {
 		if solo.Space.ID == spaceID {
-			return *solo, "", nil
+			return *solo, false, nil
 		}
 		// the person moves into the pair as they are: their logins, memory, taste and the ideas they added alone
 		// come along (deleting and re-adding the member would wipe all of it)
-		if err := a.S.MoveMember(ctx, solo.Me.ID, solo.Space.ID, spaceID); err != nil {
-			return Couple{}, "", err
+		mover, from, to := solo.Me.ID, solo.Space.ID, spaceID
+		if a.S.HasHistory(ctx, from) && !a.S.HasHistory(ctx, to) {
+			// the one who accepts has what a pair had (a partner left them: meetings, the afisha, the history of
+			// chores) and the one who invites has not: the inviter moves instead, so all of it stays where it is
+			if ms, _ := a.S.Members(ctx, to); len(ms) == 1 {
+				mover, from, to = ms[0].ID, spaceID, solo.Space.ID
+			}
 		}
+		if err := a.S.MoveMember(ctx, mover, from, to); err != nil {
+			return Couple{}, false, err
+		}
+		spaceID = to
 		m = solo.Me
 		m.SpaceID, m.Color = spaceID, "b"
+		if fresh, err := a.S.MemberByID(ctx, solo.Me.ID); err == nil {
+			m = fresh
+		}
 	} else {
 		var err error
 		if m, err = a.S.AddMember(ctx, store.Member{SpaceID: spaceID, TGUserID: p.TGID, ChatID: p.ChatID, Name: p.Name, PhotoURL: p.Photo}, now); err != nil {
-			return Couple{}, "", err
+			return Couple{}, false, err
 		}
 	}
+	_ = a.S.MarkPaired(ctx, spaceID, now)
 	c, err := a.coupleOf(ctx, m)
-	if err == nil && c.Partner != nil {
-		a.send(ctx, c.Partner.ChatID, fmt.Sprintf("<b>%s с тобой.</b> Теперь у вас общая копилка. Пришли ссылку на место или напиши, куда хочется.", esc(c.Me.Name)),
-			tg.Keyboard(tg.Row(tg.App("Открыть «Вдвоём»", a.appURL("")))))
-	}
-	return c, "", err
+	return c, err == nil, err
 }
 
 // ---------- ideas ----------
@@ -240,6 +265,9 @@ func (a *App) AddIdea(ctx context.Context, c Couple, text string) (AddResult, er
 	i, err := a.S.CreateIdea(ctx, store.Idea{Idea: domain.Idea{SpaceID: c.Space.ID, AuthorID: c.Me.ID, Title: title, URL: link, Kind: kind, Category: cat}}, now)
 	if err != nil {
 		return AddResult{}, err
+	}
+	if kind == domain.KindChore { // the «Дела» tab of the new interface has its own table: the chore is there at once
+		_ = a.S.MirrorChore(ctx, i.ID, c.Space.ID, c.Me.ID, i.Title, now)
 	}
 	res := AddResult{Idea: i}
 	if sim := a.similar(ctx, c.Space.ID, i); sim != nil {
@@ -526,6 +554,17 @@ func (a *App) sendIdeaCard(ctx context.Context, chatID int64, i store.Idea, simi
 	if i.Kind == domain.KindChore { // a chore is done, not wanted
 		rows = [][]tg.Button{tg.Row(tg.CB("✓ Сделано", fmt.Sprintf("cd:%d", i.ID)), tg.App("Исправить", a.appURL(fmt.Sprintf("idea/%d", i.ID))))}
 	}
+	if a.usesV2(ctx, i.AuthorID) { // the new interface: two marks, and a chore lives in «Дела»
+		text = fmt.Sprintf("Сохранил в идеи:\n\n<b>%s</b>\n%s", esc(i.Title), esc(IdeaMeta(i)))
+		rows = [][]tg.Button{
+			tg.Row(tg.CB("Хочу", fmt.Sprintf("w:%d:want", i.ID)), tg.CB("Не моё", fmt.Sprintf("w:%d:skip", i.ID))),
+			tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("idea/%d", i.ID)))),
+		}
+		if i.Kind == domain.KindChore {
+			text = fmt.Sprintf("Сохранил в дела:\n\n<b>%s</b>", esc(i.Title))
+			rows = [][]tg.Button{tg.Row(tg.CB("✓ Сделано", fmt.Sprintf("cd:%d", i.ID)), tg.App("Открыть дела", a.appURL("chores")))}
+		}
+	}
 	if Generic(i) {
 		city := "Москва"
 		if sp, err := a.S.Space(ctx, i.SpaceID); err == nil && sp.City != "" {
@@ -544,7 +583,7 @@ func (a *App) sendIdeaCard(ctx context.Context, chatID int64, i store.Idea, simi
 			rows = append(rows, tg.Row(tg.CB("Это то же", fmt.Sprintf("mg:%d:%d", i.ID, s.ID)), tg.CB("Оставить обе", fmt.Sprintf("nm:%d", i.ID))))
 		}
 	}
-	if m, err := a.TG.Send(ctx, chatID, text, tg.SendOpts{Markup: tg.Keyboard(rows...)}); err == nil {
+	if m, err := a.TG.Send(ctx, chatID, a.WordsFor(ctx, chatID, text), tg.SendOpts{Markup: tg.Keyboard(rows...)}); err == nil {
 		a.S.SaveCard(ctx, chatID, m.MessageID, i.ID)
 	} else {
 		a.Log.Warn("send failed", "err", err)
@@ -587,7 +626,7 @@ func (a *App) sendIdeaBatch(ctx context.Context, chat, space, author, first int6
 		lines = append(lines, fmt.Sprintf("…и ещё %d", n-len(lines)))
 	}
 	text := fmt.Sprintf("И ещё %d %s в копилке:\n%s", n, plural(n, "идея", "идеи", "идей"), strings.Join(lines, "\n"))
-	_, err = a.TG.Send(ctx, chat, text, tg.SendOpts{Markup: tg.Keyboard(tg.Row(tg.App("Отметить по одной", a.appURL("triage"))))})
+	_, err = a.TG.Send(ctx, chat, a.WordsFor(ctx, chat, text), tg.SendOpts{Markup: tg.Keyboard(tg.Row(tg.App("Отметить по одной", a.appURL("triage"))))})
 	return err
 }
 
@@ -649,6 +688,9 @@ func (a *App) ScheduledGo(ctx context.Context, sp store.Space) error {
 	ms, err := a.S.Members(ctx, sp.ID)
 	if err != nil || len(ms) < 2 {
 		return err
+	}
+	if a.anyV2(ctx, ms) {
+		return nil // the new interface has no choice by slots: a meeting starts from an idea, the weekly suggestion stays
 	}
 	r, err := a.S.CreateRound(ctx, domain.NewRound(sp.ID, a.now(), sp.BudgetKop), a.now())
 	if err != nil {
@@ -1184,6 +1226,12 @@ func (a *App) icsEvent(ctx context.Context, c Couple, r domain.Round, seq int, c
 }
 
 func (a *App) planned(ctx context.Context, c Couple, r domain.Round, seq int) {
+	a.announcePlanned(ctx, c, r, false)
+}
+
+// announcePlanned: the meeting is in the plans (or moved to a new time) — both are told, the reminder and
+// «как прошло» are set for the time it has now
+func (a *App) announcePlanned(ctx context.Context, c Couple, r domain.Round, moved bool) {
 	i, rows := a.meetingRows(ctx, c, r)
 	for _, m := range a.both(c) {
 		keys := [][]tg.Button{}
@@ -1192,6 +1240,22 @@ func (a *App) planned(ctx context.Context, c Couple, r domain.Round, seq int) {
 		}
 		if b := a.bookButton(i); b != nil {
 			keys = append(keys, tg.Row(*b, tg.CB("✓ Билеты есть", fmt.Sprintf("tk:%d", r.ID))))
+		}
+		if a.usesV2(ctx, m.ID) { // a move and a cancellation are in the card: a move is a proposal, a cancellation asks first
+			keys = append(keys, tg.Row(tg.App("Открыть встречу", a.appURL(fmt.Sprintf("meet/%d", r.ID)))))
+			remindWords := "Напомню " + domain.SettingWords("notify.meeting_when", a.mySetting(ctx, m.ID, "notify.meeting_when")) + "."
+			head, tail := "Встреча в планах.", "\n\nНажми «В календарь»: событие откроется заполненным. "+remindWords
+			if moved {
+				head = "Встреча перенесена."
+			}
+			if a.Subscribed(ctx, m.ID) {
+				tail = "\n\nВ твоём календаре уже есть. " + remindWords
+			}
+			if a.bookButton(i) != nil {
+				tail += "\n🎟 Билеты: «" + bookWord(i) + "». Когда возьмёшь, нажми «Билеты есть», чтобы не купить дважды."
+			}
+			a.tell(ctx, m, c.Loc(), "notify.proposals", fmt.Sprintf("<b>%s</b> %s\n\n%s%s", head, esc(i.Title), rows, tail), tg.Keyboard(keys...))
+			continue
 		}
 		keys = append(keys, tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID))), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID)), tg.CB("Отменить", fmt.Sprintf("xq:%d", r.ID))))
 		tail := ""
@@ -1203,11 +1267,19 @@ func (a *App) planned(ctx context.Context, c Couple, r domain.Round, seq int) {
 		if a.bookButton(i) != nil {
 			tail += "\n🎟 Не забудь про билеты: «" + bookWord(i) + "». Когда возьмёшь — нажми «Билеты есть», чтобы не купить дважды."
 		}
-		a.send(ctx, m.ChatID, fmt.Sprintf("<b>Мы идём! 🎉</b> %s\n\n%s%s", esc(i.Title), rows, tail), tg.Keyboard(keys...))
+		head := "Мы идём! 🎉"
+		if moved {
+			head = "Встреча перенесена."
+		}
+		a.send(ctx, m.ChatID, fmt.Sprintf("<b>%s</b> %s\n\n%s%s", head, esc(i.Title), rows, tail), tg.Keyboard(keys...))
 	}
 	remind := domain.QuietShift(r.StartsAt.Add(-2*time.Hour), c.Loc())
 	if remind.After(a.now()) {
 		_ = a.S.Enqueue(ctx, "remind", remind, map[string]any{"round": r.ID, "space": c.Space.ID, "at": r.StartsAt.Unix()}, fmt.Sprintf("remind:%d:%d", r.ID, r.StartsAt.Unix()))
+	}
+	// «за день»: who gets which of the two reminders is decided when it fires, by each one's own setting
+	if early := domain.QuietShift(r.StartsAt.Add(-24*time.Hour), c.Loc()); early.After(a.now()) {
+		_ = a.S.Enqueue(ctx, "remind", early, map[string]any{"round": r.ID, "space": c.Space.ID, "at": r.StartsAt.Unix(), "lead": "day"}, fmt.Sprintf("remind:day:%d:%d", r.ID, r.StartsAt.Unix()))
 	}
 	ask := domain.QuietShift(r.EndsAt.Add(3*time.Hour), c.Loc())
 	_ = a.S.Enqueue(ctx, "after", ask, map[string]any{"round": r.ID, "space": c.Space.ID, "at": r.StartsAt.Unix()}, fmt.Sprintf("after:%d:%d", r.ID, r.StartsAt.Unix()))
@@ -1301,7 +1373,21 @@ func (a *App) Cancel(ctx context.Context, c Couple, roundID int64) (domain.Round
 	if err := a.save(ctx, r, ver); err != nil {
 		return r, err
 	}
+	a.dropMeetProposals(ctx, c.Space.ID, r.ID)
+	what := "встречу"
+	if i, err := a.S.Idea(ctx, c.Space.ID, r.Chosen); err == nil {
+		what = "встречу: <b>" + esc(i.Title) + "</b>"
+	}
 	for _, m := range a.both(c) {
+		if a.usesV2(ctx, m.ID) { // the one who cancelled sees it in the app; the partner gets one line
+			if m.ID != c.Me.ID {
+				a.tell(ctx, m, c.Loc(), "notify.proposals", fmt.Sprintf("%s %s %s.", esc(c.Me.Name), Past(c.Me.Name, "отменил"), what), nil)
+			}
+			if was == domain.StatePlanned && !a.Subscribed(ctx, m.ID) {
+				a.sendQuiet(ctx, m.ChatID, "Если встреча уже в календаре телефона, удали её там.", nil)
+			}
+			continue
+		}
 		who := "Выбор отменён"
 		if m.ID != c.Me.ID {
 			who = esc(c.Me.Name) + " " + Past(c.Me.Name, "отменил")
@@ -1338,6 +1424,9 @@ func (a *App) Done(ctx context.Context, c Couple, roundID int64, answer string) 
 	if answer == "yes" || answer == "" {
 		_ = a.S.AfterMeeting(ctx, c.Space.ID, r.Chosen, r.StartsAt, "")
 		for _, m := range a.both(c) {
+			if a.usesV2(ctx, m.ID) {
+				continue // the new interface asks «как прошло» itself, each answers for themselves
+			}
 			a.send(ctx, m.ChatID, "Здорово, что сходили! Пришли фото в ответ на это сообщение — оно будет только у вас двоих. <b>Повторим?</b>",
 				tg.Keyboard(tg.Row(tg.CB("Да, ещё раз", fmt.Sprintf("ag:%d:yes", r.ID)), tg.CB("Хватит одного", fmt.Sprintf("ag:%d:no", r.ID)))))
 		}
@@ -1369,7 +1458,9 @@ func (a *App) Again(ctx context.Context, c Couple, roundID int64, answer string)
 			text += "Мнения разошлись — предложу её реже."
 		}
 		for _, m := range a.both(c) {
-			a.sendQuiet(ctx, m.ChatID, text, nil)
+			if !a.usesV2(ctx, m.ID) { // in the new interface both marks are in the history of meetings
+				a.sendQuiet(ctx, m.ChatID, text, nil)
+			}
 		}
 	}
 	return r, nil
@@ -1416,7 +1507,13 @@ func (a *App) Tick(ctx context.Context) {
 		ver := r.Version
 		if r.Tick(now) {
 			if a.S.SaveRound(ctx, r, ver, now) == nil {
+				a.dropMeetProposals(ctx, r.SpaceID, r.ID)
 				for _, m := range ms {
+					if a.usesV2(ctx, m.ID) && r.Chosen != 0 {
+						a.tellQuiet(ctx, m, "notify.meeting", "Встреча без времени закрыта: за двое суток время не выбрали. Идея осталась в «Идеях».",
+							tg.Keyboard(tg.Row(tg.App("Открыть идею", a.appURL(fmt.Sprintf("idea/%d", r.Chosen))))))
+						continue
+					}
 					a.sendQuiet(ctx, m.ChatID, "Выбор закрылся: двое суток без ответа. Не сложилось — попробуем в следующий раз.", tg.Keyboard(tg.Row(tg.CB("Давай куда-нибудь", "go"))))
 				}
 			}
@@ -1427,6 +1524,9 @@ func (a *App) Tick(ctx context.Context) {
 			if a.S.SaveRound(ctx, r, ver, now) == nil {
 				for _, m := range ms {
 					for _, w := range r.Waiting() {
+						if w == m.Color && a.usesV2(ctx, m.ID) && r.Chosen != 0 && r.State == domain.StateTime {
+							continue // no slots to mark in the new interface; a waiting proposal has its own reminder
+						}
 						if w == m.Color {
 							a.send(ctx, m.ChatID, reminderText(r), tg.Keyboard(tg.Row(tg.App("Открыть", a.appURL(fmt.Sprintf("round/%d", r.ID))))))
 						}
@@ -1436,6 +1536,8 @@ func (a *App) Tick(ctx context.Context) {
 		}
 	}
 	a.urgentTick(ctx, now)
+	a.proposalTick(ctx, now)
+	a.choreDigest(ctx, now)
 	spaces, _ := a.S.Spaces(ctx)
 	for _, sp := range spaces {
 		l := now.In(sp.Loc())
@@ -1498,9 +1600,10 @@ func (a *App) runJobs(ctx context.Context) {
 
 func (a *App) runJob(ctx context.Context, j store.Job) error {
 	type rp struct {
-		Round int64 `json:"round"`
-		Space int64 `json:"space"`
-		At    int64 `json:"at"`
+		Round int64  `json:"round"`
+		Space int64  `json:"space"`
+		At    int64  `json:"at"`
+		Lead  string `json:"lead"` // "day": the reminder a day ahead; empty: two hours ahead
 	}
 	switch j.Kind {
 	case "option":
@@ -1554,9 +1657,25 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 		i, _ := a.S.Idea(ctx, p.Space, r.Chosen)
 		for _, m := range ms {
 			if j.Kind == "remind" {
+				// each one is reminded when they asked to be: two hours ahead, a day ahead, or both times.
+				// The old interface has no such setting: two hours ahead, as before.
+				when := "2h"
+				if a.usesV2(ctx, m.ID) {
+					when = a.mySetting(ctx, m.ID, "notify.meeting_when")
+				}
+				if !domain.RemindAt(when, p.Lead) {
+					continue
+				}
 				cp, _ := a.coupleOf(ctx, m)
 				pl := a.PlaceOf(ctx, cp, i)
-				text := fmt.Sprintf("Через 2 часа: <b>%s</b>, %s.", esc(i.Title), esc(domain.When(r.StartsAt, sp.Loc())))
+				lead := "Через 2 часа"
+				if p.Lead == "day" {
+					lead = "Завтра"
+					if a.now().In(sp.Loc()).YearDay() == r.StartsAt.In(sp.Loc()).YearDay() { // a late meeting: the quiet night moved the reminder to its morning
+						lead = "Сегодня"
+					}
+				}
+				text := fmt.Sprintf("%s: <b>%s</b>, %s.", lead, esc(i.Title), esc(domain.When(r.StartsAt, sp.Loc())))
 				if pl.Chosen {
 					text += "\n📍 " + esc(pl.Title) + addrLine(pl.Address)
 				} else if i.Address != "" {
@@ -1565,7 +1684,18 @@ func (a *App) runJob(ctx context.Context, j store.Job) error {
 				if rl := a.routeLine(ctx, cp, r); rl != "" {
 					text += "\n" + rl
 				}
+				if a.usesV2(ctx, m.ID) {
+					row := tg.Row(tg.App("Открыть встречу", a.appURL(fmt.Sprintf("meet/%d", r.ID))))
+					if pl.Maps != "" {
+						row = tg.Row(tg.Link("На карте", pl.Maps), row[0])
+					}
+					a.tell(ctx, m, sp.Loc(), "notify.meeting", text, tg.Keyboard(row))
+					continue
+				}
 				a.send(ctx, m.ChatID, text, tg.Keyboard(tg.Row(tg.Link("На карте", pl.Maps), tg.CB("Перенести", fmt.Sprintf("ot:%d", r.ID)))))
+			} else if a.usesV2(ctx, m.ID) {
+				a.tell(ctx, m, sp.Loc(), "notify.after", fmt.Sprintf("Как прошло: <b>%s</b>?", esc(i.Title)),
+					tg.Keyboard(tg.Row(tg.CB("Понравилось", fmt.Sprintf("af:%d:like", r.ID)), tg.CB("Не очень", fmt.Sprintf("af:%d:soso", r.ID))), tg.Row(tg.CB("Не ходили", fmt.Sprintf("af:%d:skip", r.ID)))))
 			} else {
 				a.send(ctx, m.ChatID, fmt.Sprintf("Как прошло — <b>%s</b>? Сходили?", esc(i.Title)),
 					tg.Keyboard(tg.Row(tg.CB("Да", fmt.Sprintf("d:%d:yes", r.ID)), tg.CB("Перенесли", fmt.Sprintf("d:%d:moved", r.ID)), tg.CB("Не получилось", fmt.Sprintf("d:%d:no", r.ID)))))

@@ -179,6 +179,7 @@ func (as *Assistant) Ask(ctx context.Context, c app.Couple, text string) (Reply,
 		}
 		_ = as.App.S.SetExampleMeta(ctx, exID, rep.Ms, model, strings.Join(labels, " | "), len(rep.Cards), "")
 	}
+	as.newWords(ctx, c, &rep)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
 }
@@ -1126,6 +1127,7 @@ func (as *Assistant) clarify(ctx context.Context, c app.Couple, payload []byte) 
 	if rep.Text == "" {
 		rep.Text = "Готово."
 	}
+	as.newWords(ctx, c, &rep)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
 }
@@ -1167,6 +1169,12 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			rep.Text = "Добавил в копилку. Сейчас разберу подробности и пришлю карточку."
 		}
 	case "plan":
+		if as.App.UsesV2(ctx, c.Me.ID) { // the new interface: a meeting without a time, the time is a proposal
+			if rep.Text, err = as.App.CallWords(ctx, c, p.IdeaID); err != nil {
+				return rep, err
+			}
+			break
+		}
 		_, err := as.App.GoWith(ctx, c, p.IdeaID)
 		switch {
 		case errors.Is(err, app.ErrNotPaired):
@@ -1179,6 +1187,12 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			rep.Text = "Отправил вам обоим: осталось отметить время."
 		}
 	case "book":
+		if as.App.UsesV2(ctx, c.Me.ID) { // the time of the event goes to the partner as a proposal
+			if rep.Text, err = as.App.CallWords(ctx, c, p.IdeaID); err != nil {
+				return rep, err
+			}
+			break
+		}
 		_, err := as.App.BookFixed(ctx, c, p.IdeaID)
 		if errors.Is(err, app.ErrNoTime) {
 			if _, err = as.App.GoWith(ctx, c, p.IdeaID); err == nil {
@@ -1197,6 +1211,10 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 			rep.Text = "Позвал " + app.NameAcc(c.PartnerName()) + ". Как только подтвердит — событие придёт вам обоим в календарь."
 		}
 	case "round":
+		if as.App.UsesV2(ctx, c.Me.ID) && c.Partner != nil { // no choice by slots: a meeting starts from an idea
+			rep.Text = "Что совпало, лежит во вкладке «Идеи». Нажми «Идём» у идеи: партнёр получит приглашение."
+			break
+		}
 		if _, err := as.App.Go(ctx, c); errors.Is(err, app.ErrNotPaired) {
 			rep.Text = "Сначала пригласи партнёра."
 		} else if err != nil {
@@ -1233,6 +1251,7 @@ func (as *Assistant) Act(ctx context.Context, c app.Couple, id string) (Reply, e
 	default:
 		rep.Text = "Не знаю такое действие."
 	}
+	as.newWords(ctx, c, &rep)
 	_, _ = as.App.S.AddChat(ctx, c.Space.ID, c.Me.ID, "assistant", rep, as.now())
 	return rep, nil
 }
@@ -1322,4 +1341,19 @@ func (as *Assistant) Try(ctx context.Context, c app.Couple, texts []string, foll
 		out = append(out, st)
 	}
 	return out
+}
+
+// newWords: someone with the new interface reads its words — «идеи», not «копилка» — in the text, on the
+// cards and on the buttons
+func (as *Assistant) newWords(ctx context.Context, c app.Couple, rep *Reply) {
+	if !as.App.UsesV2(ctx, c.Me.ID) {
+		return
+	}
+	rep.Text = domain.NewWords(rep.Text)
+	for k := range rep.Cards {
+		rep.Cards[k].Why = domain.NewWords(rep.Cards[k].Why)
+	}
+	for k := range rep.Actions {
+		rep.Actions[k].Label = domain.NewWords(rep.Actions[k].Label)
+	}
 }
