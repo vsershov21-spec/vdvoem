@@ -360,4 +360,4 @@
  @keyframes twk{50%{opacity:.25}}
 }
 /* an optional field says so quietly, beside its label */
-.v2 .fld small .opt{margin-left:6px;font-weight:500;opacity:.6;text-transform:none;letter-spacing:0}
+.v2 .fld small .opt{margin-left:6px;font:inherit;font-weight:500;color:inherit;opacity:.6;text-transform:none;letter-spacing:0;display:inline;padding:0;background:none}

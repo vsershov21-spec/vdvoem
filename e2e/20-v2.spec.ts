@@ -1209,7 +1209,7 @@ test('E75 дело «Вместе» и идея с описанием: дело 
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
   const p = await openV2(await phone(browser), v, 'chores')
-  await p.getByRole('button', { name: '+ Дело' }).click()
+  await p.getByTestId('add-chore').click()
   await p.getByPlaceholder('Забрать торт').fill('Генеральная уборка')
   await p.getByRole('button', { name: 'Вместе', exact: true }).click()
   await expect(p.getByText('отметить «Сделано» может любой из вас')).toBeVisible()
@@ -1231,7 +1231,7 @@ test('E75 дело «Вместе» и идея с описанием: дело 
   await expect.poll(async () => (await api(v, 'GET', '/chores')).chores.find((c: any) => c.title === 'Генеральная уборка')?.state).toBe('done')
   // a new idea with a description: it is the idea's note at once
   await p.getByTestId('tab-ideas').click()
-  await p.getByRole('button', { name: '+ Идея' }).click()
+  await p.getByTestId('add-idea').click()
   await p.getByPlaceholder(/Каток на ВДНХ/).fill('Баня на Дубининской')
   await p.getByTestId('add-more').fill('Взять веники, вечер пятницы, можно с друзьями')
   await shot(p, 'E75-idea-more')
