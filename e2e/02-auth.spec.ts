@@ -1,24 +1,28 @@
 import { test, expect } from '@playwright/test'
 import { people, say, press, waitMsg, pair, open, phone, shot, tab, api, BASE } from './lib'
 
-test('E06 интро: лампа зажигается сама, частицы, главная; тап пропускает', async ({ browser }) => {
+test('E06 загрузка: точки собираются в арку с надписью, потом сразу главная; повторный запуск быстрый; лампы и вступления нет', async ({ browser }) => {
   const [v, n] = people('Вова', 'Настя')
   await pair(v, n)
-  const ctx = await phone(browser)
+  const ctx = await phone(browser, { dark: true })
   const p = await open(ctx, v, '', true)
-  await expect(p.locator('.room')).toBeVisible()
-  await expect(p.locator('.room[data-on]')).toBeVisible({ timeout: 3000 }) // nobody pulled the cord
-  await shot(p, 'E06-lamp-on')
-  await expect(p.locator('.intro')).toBeVisible({ timeout: 5000 })
-  await p.waitForTimeout(1500)
-  await shot(p, 'E06-particles')
+  await expect(p.locator('#vdboot canvas')).toBeVisible()
+  await expect(p.locator('#vdboot svg path')).toHaveCount(6) // в д в о ё м
+  await p.waitForTimeout(700)
+  await shot(p, 'E06-boot')
   await expect(p.locator('.pnav')).toBeVisible({ timeout: 15000 })
-  await expect(p.locator('.room')).toHaveCount(0)
-  // every later launch (any day): no show — straight in, fast
+  await expect(p.locator('#vdboot')).toHaveCount(0, { timeout: 6000 })
+  await expect(p.locator('.room, .lamp, .intro')).toHaveCount(0)
+  // the launch was measured and kept on the phone
+  const speed = await p.evaluate(() => JSON.parse(localStorage.getItem('vd-speed') || '[]'))
+  expect(speed.length).toBe(1)
+  expect(speed[0].ready).toBeGreaterThan(0)
+  // every later launch: the dots gather (about a second) and the app is there
   const t0 = Date.now()
   const p2 = await open(ctx, v, '', true)
-  await expect(p2.locator('.pnav')).toBeVisible({ timeout: 2500 })
-  expect(Date.now() - t0).toBeLessThan(2500)
+  await expect(p2.locator('.pnav')).toBeVisible({ timeout: 4000 })
+  await expect(p2.locator('#vdboot')).toHaveCount(0, { timeout: 4000 })
+  expect(Date.now() - t0).toBeLessThan(4000)
 })
 
 test('E03 вход в браузере через Telegram: код одноразовый', async ({ browser }) => {

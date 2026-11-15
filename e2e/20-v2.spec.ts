@@ -10,7 +10,7 @@ async function openV2(ctx: BrowserContext, u: U, path = '') {
   const q = new URLSearchParams({ dev: `${u.id}:${u.name}`, devtoken: TOKEN, nointro: '1' })
   await p.goto(`/app/${path}?${q}`)
   await expect(p.getByTestId('v2')).toBeVisible({ timeout: 10000 })
-  await expect(p.locator('.splash')).toHaveCount(0, { timeout: 6000 })
+  await expect(p.locator('#vdboot')).toHaveCount(0, { timeout: 6000 }) // the page's loading screen has gone
   return p
 }
 
@@ -461,7 +461,7 @@ async function reopen(p: Page, u: U, path: string) {
   const q = new URLSearchParams({ dev: `${u.id}:${u.name}`, devtoken: TOKEN, nointro: '1' })
   await p.goto(`/app/${path}?${q}`)
   await expect(p.getByTestId('v2')).toBeVisible({ timeout: 10000 })
-  await expect(p.locator('.splash')).toHaveCount(0, { timeout: 6000 })
+  await expect(p.locator('#vdboot')).toHaveCount(0, { timeout: 6000 }) // the page's loading screen has gone
 }
 
 test('E62 приглашение: партнёр видит, кто зовёт, пара создаётся по «Принять», идеи переезжают, автор узнаёт', async ({ browser }) => {
@@ -879,7 +879,9 @@ test('E69 проход по экранам: лист поверх панели �
   await p.getByTestId('cancel-meet').click()
   const sheet = p.getByTestId('cancel-sheet')
   await expect(sheet).toBeVisible()
-  await p.waitForTimeout(700) // the sheet slides in
+  // the sheet slides in on a spring: measured once it stands on the bottom edge (a slow runner takes longer than 0.7 s)
+  await expect.poll(() => sheet.evaluate(e => Math.abs(e.getBoundingClientRect().bottom - innerHeight) <= 1), { timeout: 5000 }).toBe(true)
+  await p.waitForTimeout(150)
   const st = await sheet.evaluate(e => {
     const r = e.getBoundingClientRect(), nav = document.querySelector('.v2 .nav')!.getBoundingClientRect()
     const last = [...e.querySelectorAll('button')].pop()!, b = last.getBoundingClientRect()
@@ -891,7 +893,8 @@ test('E69 проход по экранам: лист поверх панели �
   expect(st.lastSeen).toBe(true)
   expect(st.navCovered).toBe(true)
   expect(st.top).toBeGreaterThanOrEqual(0)
-  expect(Math.round(st.bottom)).toBe(st.vh)
+  // the sheet sits on the bottom edge; a pixel or two while its spring settles is not a gap
+  expect(Math.abs(Math.round(st.bottom) - st.vh)).toBeLessThanOrEqual(2)
   expect(st.masked).toBe('none') // the fade at the bottom of a screen does not eat the sheet
   await shot(p, 'E69-sheet')
   await sheet.getByRole('button', { name: 'Оставить' }).click()

@@ -1,8 +1,7 @@
-// Entry: a dark screen with drifting dots, then either the particle intro (particleAnimation donor)
-// hands off to the app, or the glass login card offers Telegram / Face ID / login+password.
+// Entry: who is it? Signed in → straight into the app (the page's own loading screen, index.html, is the only show).
+// Otherwise a dark screen with drifting dots and a glass card: Telegram / Face ID / login+password, or the Face ID lock.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Particles, type Shape } from '../ui/Particles'
 import { Icon } from '../ui/icons'
 import { get, post, humanError, ApiError } from '../lib/api'
 import { prefetch } from '../lib/data'
@@ -31,19 +30,12 @@ function Fireflies({ on }: { on: boolean }) {
   )
 }
 
-// e2e and screenshots: ?nointro=1 skips the lamp-and-particles show once signed in
-const noIntro = (() => { try { const q = new URLSearchParams(location.search).get('nointro'); if (q) sessionStorage.setItem('vd-nointro', q); return sessionStorage.getItem('vd-nointro') === '1' } catch { return false } })()
-// the lamp-and-bridge show is for the very first open only: every later open goes straight in (it cost 5–8 s a day)
-const seenToday = () => { try { return !!localStorage.getItem('vd-intro') } catch { return true } }
-const markSeen = () => { try { localStorage.setItem('vd-intro', new Date().toDateString()) } catch { /* private mode */ } }
+// the page's loading screen gives way to whatever this screen shows (the app takes it away itself)
+const shown = () => (window as any).__vdDone?.()
 
 export function Entry({ onEnter }: { onEnter: () => void }) {
   const [phase, setPhase] = useState<Phase>('dark')
   const [netErr, setNetErr] = useState(false)
-  const quick = useRef(seenToday()).current
-  const [lit, setLit] = useState(false)
-  const [shape, setShape] = useState<Shape>('sphere')
-  const [dissolve, setDissolve] = useState(false)
   const authed = useRef<null | boolean>(null)
   const lock = useRef(false)
   const timers = useRef<number[]>([])
@@ -60,8 +52,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
         if (++tries < 4) later(600 * tries, who); else setNetErr(true)
       })
     who()
-    // the full show on the first open ever; afterwards nothing waits
-    later(noIntro || quick ? 0 : 650, () => { setLit(true); setPhase('on'); haptic.soft() }) // after the first open of the day nothing waits for the lamp
+    setPhase('on') // nothing waits: the answer to «who is it» decides
     return () => timers.current.forEach(clearTimeout)
   }, [])
 
@@ -69,7 +60,7 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     if (phase !== 'on') return
     const decide = () => {
       if (authed.current === null) { later(200, decide); return }
-      if (!authed.current) { later(450, () => setPhase('login')); return }
+      if (!authed.current) { setPhase('login'); return }
       if (lock.current) {
         // the lock only applies where Telegram has a sensor (not on desktop clients)
         biometric().then(b => { if (!b.available) { intro(); return } setBioType(b.type); setPhase('locked'); unlock() })
@@ -77,32 +68,11 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
       }
       intro()
     }
-    later(noIntro || quick ? 0 : 500, decide)
+    decide()
   }, [phase])
+  useEffect(() => { if (phase === 'login' || phase === 'locked' || netErr) shown() }, [phase, netErr])
 
-  const intro = () => {
-    if (noIntro) { onEnter(); return }
-    setPhase('intro')
-    const short = seenToday() || matchMedia('(prefers-reduced-motion: reduce)').matches
-    markSeen()
-    shortRef.current = short
-    // the show is once; every other open goes straight in (the data is already on its way)
-    if (short) { finish(); return }
-    later(100, () => setShape('bridge'))
-    later(9000, finish) // safety net on very slow devices
-  }
-  const shortRef = useRef(false)
-  // the sequence follows the particles: a cloud → the bridge (two arcs meet) → light runs up → dissolve into the app
-  const formed = (s: Shape) => {
-    if (s === 'bridge') later(shortRef.current ? 700 : 1600, finish) // hold while the light runs up the arcs and meets
-  }
-  const ended = useRef(false)
-  const finish = () => {
-    if (ended.current) return
-    ended.current = true
-    setDissolve(true); setPhase('out')
-    later(shortRef.current ? 160 : 650, onEnter)
-  }
+  const intro = () => { setPhase('out'); onEnter() }
   const [bioType, setBioType] = useState('')
   const [lockErr, setLockErr] = useState('')
   const [asked, setAsked] = useState(false)
@@ -132,8 +102,10 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
     } catch (e) { setLockErr(humanError(e)) }
   }
 
+  // signed in and not locked: nothing of this screen is ever painted
+  if (phase !== 'login' && phase !== 'locked' && !netErr) return null
   return (
-    <div className="room" data-on={lit || undefined} onClick={() => { if (phase === 'intro') finish() }}>
+    <div className="room">
       <Fireflies on />
 
       <AnimatePresence>
@@ -141,18 +113,6 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
           <h1>Нет связи</h1><p>Не получилось достучаться до сервера. Проверь интернет и попробуй ещё раз.</p>
           <button className="lbtn lbtn--light" onClick={() => location.reload()}>Попробовать снова</button></motion.div>}
       </AnimatePresence>
-
-      {(phase === 'intro' || phase === 'out') && (
-        <div className="intro">
-          <div className="intro__canvas"><Particles from="sphere" shape={shape} dissolve={dissolve} scale={0.3} speed={1.6} onFormed={formed} /></div>
-          <motion.div className="intro__word" initial={{ opacity: 0, y: 14, filter: 'blur(8px)' }} animate={dissolve ? { opacity: 0, y: -10 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
-            transition={{ delay: dissolve ? 0 : 1.2, duration: 0.7 }}>
-            <b>вдвоём</b><span>{shape === 'bridge' ? 'каждый строит свою половину — встречаемся посередине' : 'двое, одно время, общее «да»'}</span>
-            <span className="intro__what">общие идеи, куда сходить · выбираем вместе · ничего не забываем</span>
-          </motion.div>
-          {!dissolve && <span className="intro__skip">нажми, чтобы пропустить</span>}
-        </div>
-      )}
 
       {phase === 'locked' && (
         <motion.div className="glass login" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>

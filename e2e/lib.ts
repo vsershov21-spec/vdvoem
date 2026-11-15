@@ -133,6 +133,7 @@ export async function open(ctx: BrowserContext, u: U | null, path = '', intro = 
   if (!intro) q.set('nointro', '1')
   await p.goto(`/app/${path}?${q}`)
   if (u && !intro) await expect(p.locator('main.screen')).toBeVisible({ timeout: 10000 })
+  if (u && !intro) await expect(p.locator('#vdboot')).toHaveCount(0, { timeout: 6000 })
   return p
 }
 // «Мы» is no tab: it opens from the avatars on the main screen

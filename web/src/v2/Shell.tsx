@@ -14,8 +14,6 @@ import { Plans, Free } from './Plans'
 import { Chores, ChoreCard } from './Chores'
 import { Profile, History, Settings, Taste } from './Profile'
 import { Assistant } from './Assistant'
-import { WORDMARK, WORDMARK_BOX } from './wordmark'
-import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
 // step at a time («‹ откуда пришёл»), one confirmation line, and both themes. Screens that are not built yet
@@ -80,6 +78,8 @@ export function Shell() {
   const from = NAMES[(trail.current[trail.current.length - 2] || '').split('/')[0]] || 'Главная'
   useEffect(() => { setBack(nested ? () => back('') : null); return () => setBack(null) }, [nested, key])
 
+  // the loading screen of the page (index.html) stays until the first screen can show its content
+  useEffect(() => { if (home.data || home.err || top !== '') (window as any).__vdDone?.() }, [home.data, home.err, top])
   const hot = (home.data?.inbox || []).filter(r => r.hot).length
   const ch = home.data?.chore_summary
   let screen
@@ -108,24 +108,7 @@ export function Shell() {
       <div key={key} className={'v2-wrap ' + anim}>{screen}</div>
       <Nav tab={rootTab} counts={{ '': hot, chores: ch ? ch.today + ch.overdue : 0 }} />
       <Toast />
-      <Splash />
       <AddIdea open={adding} onClose={() => setAdding(false)} />
     </div>)
 }
 
-// the loading screen: dots scattered all over it gather into the mark (the arch) in the middle, once per launch
-let splashed = false
-function Splash() {
-  const [on, setOn] = useState(!splashed)
-  const [out, setOut] = useState(false)
-  const cv = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    if (!on) return
-    splashed = true
-    if (cv.current) particles(cv.current, 'arch', 1400, true)
-    const a = setTimeout(() => setOut(true), still() ? 500 : 1900), b = setTimeout(() => setOn(false), still() ? 800 : 2400)
-    return () => { clearTimeout(a); clearTimeout(b) }
-  }, [on])
-  if (!on) return null
-  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} /><svg className="wm" viewBox={WORDMARK_BOX} role="img" aria-label="Вдвоём">{WORDMARK.map((d, k) => <path key={k} d={d} style={{ ['--k' as string]: k }} />)}</svg><small>идеи, встречи и дела на двоих</small></div>
-}

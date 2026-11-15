@@ -222,6 +222,7 @@ function Data({ home, from }: { home: HomeV2 | null; from: string }) {
         <button className="srow" disabled={busy} data-testid="data-export" onClick={file}><span className="tx"><b>Скачать мои идеи и историю</b><small>файл придёт в бот</small></span>›</button>
         <button className="srow red" data-testid="data-delete" onClick={() => { setWord(''); setAsk(true) }}><span className="tx"><b>Удалить мои данные</b><small>вернуть нельзя</small></span>›</button>
       </div>
+      <Speed />
       <Sheet open={ask} onClose={() => setAsk(false)} testid="wipe-sheet">
         <h3>Удалить мои данные?</h3>
         <ul className="ul m">
@@ -260,4 +261,31 @@ export function Taste({ from }: { from: string }) {
             return <button key={t} className={'v-chip' + (tOn ? ' on' : '')} aria-pressed={tOn} onClick={() => save({ ...me, tags: { ...me.tags, [t]: tOn ? 0 : 1 } })}>{t}</button> })}</div>}
         </div> })}
     </div>)
+}
+
+// ---------- how long the app took to open on this phone: measured by the page itself (index.html), kept here ----------
+// net: the first byte of the page arrived; page: the whole page; js: the app's file; ready: the first screen.
+// Counted from the moment the phone asked for the page; the time Telegram spends before that is not visible to the page.
+type Launch = { at: number; net: number; page: number; js: number; ready: number; tg: number }
+const sec = (ms: number) => (ms / 1000).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' с'
+function Speed() {
+  const [open, setOpen] = useState(false)
+  let all: Launch[] = []
+  try { all = JSON.parse(localStorage.getItem('vd-speed') || '[]') } catch { /* blocked */ }
+  if (!all.length) return null
+  const last = all[0]
+  return <>
+    <div className="v-card v-list" style={{ marginTop: 10 }}>
+      <button className="srow" data-testid="speed" onClick={() => setOpen(true)}><span className="tx"><b>Скорость запуска</b><small>последний: {sec(last.ready)}</small></span>›</button>
+    </div>
+    <Sheet open={open} onClose={() => setOpen(false)} testid="speed-sheet">
+      <h3>Скорость запуска</h3>
+      <p className="m">Замер на этом телефоне, от запроса страницы. Время, пока Telegram открывает окно, сюда не входит.</p>
+      {all.slice(0, 6).map(l => (
+        <div key={l.at} className="v-card" style={{ padding: '10px 14px' }}>
+          <b>{new Date(l.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {sec(l.ready)}{l.tg ? '' : ' · браузер'}</b>
+          <p className="m" style={{ margin: '4px 0 0' }}>ответ сервера {sec(l.net)} · страница {sec(l.page)} · приложение {l.js ? sec(l.js) : 'из кэша'} · первый экран {sec(l.ready)}</p>
+        </div>))}
+    </Sheet>
+  </>
 }
