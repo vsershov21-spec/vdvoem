@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLoad } from '../lib/data'
-import { post, put, humanError } from '../lib/api'
+import { post, put, patch, humanError } from '../lib/api'
 import { go, back } from '../lib/router'
 import { emit } from '../lib/data'
 import { haptic } from '../lib/tg'
@@ -52,13 +52,13 @@ export function History({ view, home, from }: { view: string; home: HomeV2 | nul
       {tab === 'meets' ? (meets.data && (meets.data.meetings.length ? meets.data.meetings.map(r =>
         <button className="in" key={r.id} data-testid="hist-meet" onClick={() => go('meet/' + r.id)}>{r.chosen && <Pic idea={r.chosen} className="th" />}<span><b>{r.chosen?.title || 'Встреча'}</b>
           <small>{r.starts_at ? whenText(r.starts_at) : ''}</small><small data-testid="hist-rates">{rate('ты', r.again)} · {rate(pn, r.partner_again)}</small></span>›</button>)
-        : <Empty title="Встреч ещё не было"><button className="b p w" onClick={() => go('ideas')}>Выбрать, куда сходить</button></Empty>))
+        : <Empty art="cal" title="Встреч ещё не было"><button className="b p w" onClick={() => go('ideas')}>Выбрать, куда сходить</button></Empty>))
         : <>
           <label className="in"><i>⌕</i><span><input value={q} onChange={e => setQ(e.target.value)} placeholder="Найти: «кран», «подарок»" aria-label="Поиск по делам" data-testid="hist-search" /></span></label>
           <div className="v-chips">{([['', 'Все'], ['me', home?.me.name || 'Я'], ['partner', pn]] as ['' | 'me' | 'partner', string][]).map(([k, l]) => <button key={k} className={'v-chip' + (who === k ? ' on' : '')} onClick={() => setWho(k)}>{l}</button>)}</div>
           {chores.data && (chores.data.chores.length ? chores.data.chores.map(c =>
             <div className="in" key={c.id} data-testid="hist-chore"><span className="ck on" style={{ display: 'grid', placeItems: 'center' }}>✓</span><span><b>{c.title}</b><small>{c.done_by} · {c.done_at ? new Date(c.done_at * 1000).toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</small></span></div>)
-            : <Empty title={q || who ? 'Ничего не нашлось' : 'Сделанных дел пока нет'}><button className="b p w" onClick={() => go('chores')}>К делам</button></Empty>)}
+            : <Empty art={q || who ? 'search' : 'check'} title={q || who ? 'Ничего не нашлось' : 'Сделанных дел пока нет'}><button className="b p w" onClick={() => go('chores')}>К делам</button></Empty>)}
         </>}
     </div>)
 }
@@ -88,6 +88,7 @@ export function Settings({ section, home, from }: { section?: string; home: Home
   const change = async (key: string, value: string) => {
     try { set(await put<Prefs>('/prefs', { key, value })); if (data?.defs.find(d => d.key === key)?.scope === 'pair' && home?.partner) say(`${home.partner.name} увидит изменение`) } catch (e) { say(humanError(e)) }
   }
+  if (section === 'city') return <City home={home} from={from} />
   if (section === 'pair') return <Pair home={home} from={from} />
   if (section === 'data') return <Data home={home} from={from} />
   if (!data) return <div className="scr"><Sub from={from} title={s?.title || 'Настройки'} /></div>
@@ -113,10 +114,52 @@ export function Settings({ section, home, from }: { section?: string; home: Home
       <Sub from={from} title="Настройки" />
       <div className="blk"><label>Для меня</label><div className="v-card v-list">{SECTIONS.filter(x => x.scope === 'me').map(row)}</div></div>
       <div className="blk"><label>Для пары</label><div className="v-card v-list">{SECTIONS.filter(x => x.scope === 'pair').map(row)}
-        <button className="srow" data-testid="sec-pair" onClick={() => go('settings/pair')}><i className="si"><svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="5" /><circle cx="15" cy="12" r="5" /></svg></i><span className="tx"><b>Пара</b><small>{home?.partner ? home.partner.name : 'партнёра пока нет'}</small></span>›</button></div></div>
+        <CityRow />
+        <button className="srow" data-testid="sec-pair" onClick={() => go('settings/pair')}><i className="si"><svg viewBox="0 0 24 24"><path d="M5 18Q8 7 12 7M19 18Q16 7 12 7" /></svg></i><span className="tx"><b>Пара</b><small>{home?.partner ? home.partner.name : 'партнёра пока нет'}</small></span>›</button></div></div>
       <div className="blk"><label>Вход</label><div className="v-card v-list"><button className="srow" onClick={async () => { try { await post('/security/logout-all'); say('Остальные устройства отключены') } catch (e) { say(humanError(e)) } }}><span className="tx"><b>Выйти на других устройствах</b><small>вход через Telegram останется на этом</small></span>›</button></div></div>
       <div className="blk"><label>Данные</label><div className="v-card v-list">
         <button className="srow" data-testid="sec-data" onClick={() => go('settings/data')}><i className="si"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.500 10.500L12 15l4.500-4.500M5 19h14" /></svg></i><span className="tx"><b>Данные</b><small>скачать, удалить</small></span>›</button></div></div>
+    </div>)
+}
+
+// ---------- «Город»: where the two look for places and events. The scout searches there, the clock is the city's ----------
+export const CITIES: [string, string][] = [
+  ['Москва', 'Europe/Moscow'], ['Санкт-Петербург', 'Europe/Moscow'], ['Казань', 'Europe/Moscow'], ['Нижний Новгород', 'Europe/Moscow'],
+  ['Сочи', 'Europe/Moscow'], ['Краснодар', 'Europe/Moscow'], ['Калининград', 'Europe/Kaliningrad'], ['Самара', 'Europe/Samara'],
+  ['Екатеринбург', 'Asia/Yekaterinburg'], ['Новосибирск', 'Asia/Novosibirsk'],
+]
+type Place = { city: string; tz: string }
+export function CityRow() {
+  const { data } = useLoad<Place>('/settings')
+  return <button className="srow" data-testid="sec-city" onClick={() => go('settings/city')}><i className="si"><svg viewBox="0 0 24 24"><path d="M12 21s-6.500-5.600-6.500-10.500a6.500 6.500 0 0 1 13 0C18.500 15.400 12 21 12 21z" /><circle cx="12" cy="10.500" r="2.300" /></svg></i><span className="tx"><b>Город</b><small>{data?.city || 'не выбран'}</small></span>›</button>
+}
+function City({ home, from }: { home: HomeV2 | null; from: string }) {
+  const { data, set } = useLoad<Place>('/settings')
+  const [other, setOther] = useState('')
+  const [busy, setBusy] = useState(false)
+  const pick = async (city: string, tz?: string) => {
+    if (!city.trim() || busy) return
+    setBusy(true)
+    try {
+      set(await patch<Place>('/settings', tz ? { city, tz } : { city: city.trim() }))
+      haptic.ok(); setOther(''); emit('home'); emit('ideas')
+      say(home?.partner ? `Город: ${city.trim()}. ${home.partner.name} увидит то же` : `Город: ${city.trim()}`)
+    } catch (e) { say(humanError(e)) } finally { setBusy(false) }
+  }
+  const known = !!data && CITIES.some(([c]) => c === data.city)
+  return (
+    <div className="scr" data-testid="v2-city">
+      <Sub from={from} title="Город" />
+      <p className="m">Здесь скаут ищет афишу и места, а помощник подбирает, куда сходить. Город один на пару.</p>
+      <div className="v-row" style={{ flexWrap: 'wrap' }}>
+        {CITIES.map(([c, tz]) => <button key={c} className={'v-chip' + (data?.city === c ? ' on' : '')} aria-pressed={data?.city === c} disabled={busy} data-testid="city-chip" onClick={() => pick(c, tz)}>{c}</button>)}
+        {data && !known && data.city && <button className="v-chip on" aria-pressed>{data.city}</button>}
+      </div>
+      <div className="blk"><label>Другой город</label>
+        <div className="v-row"><input value={other} maxLength={60} placeholder="Название города" data-testid="city-other" onChange={e => setOther(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') pick(other) }} style={{ flex: 1, minWidth: 0 }} />
+          <button className="b a s" disabled={busy || !other.trim()} data-testid="city-save" onClick={() => pick(other)}>Сохранить</button></div>
+        <p className="m">Для города не из списка часовой пояс остаётся прежним.</p></div>
+      <p className="m">Афиша, которую скаут уже нашёл, останется. События нового города появятся после его следующего обхода.</p>
     </div>)
 }
 

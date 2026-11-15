@@ -258,11 +258,11 @@
 .v2 .v-swipe .pic::after{display:none}
 .v2 .eart{width:120px;height:64px;color:var(--a-mute);display:block}
 .v2 .splash{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:radial-gradient(70% 38% at 8% 4%,rgba(239,101,55,.34),transparent 70%),radial-gradient(60% 34% at 100% 30%,rgba(61,110,245,.3),transparent 70%),var(--a-bg);transition:opacity .45s ease-out;border-radius:inherit}
-.v2 .splash.out{opacity:0}.v2 .splash canvas{width:220px;height:170px}.v2 .splash b{font-size:28px;letter-spacing:-.8px}
+.v2 .splash.out{opacity:0}.v2 .splash canvas{position:absolute;inset:0;width:100%;height:100%}
 .v2 .nav button.on:not(.ai) svg{fill:color-mix(in srgb,var(--accent) 22%,transparent)}
-@media (prefers-reduced-motion:no-preference){.v2 .nav button.just svg{animation:pop2 .6s var(--spring2)}.v2 .splash b{animation:pop2 .66s 1s var(--spring2) both}
- .v2 .eart circle:first-child{animation:v2drift .9s cubic-bezier(.16,1,.3,1) both}@keyframes v2drift{from{transform:translateX(-14px);opacity:0}}
- .v2 .eart circle:nth-child(2){animation:drift2 .9s cubic-bezier(.16,1,.3,1) both}@keyframes drift2{from{transform:translateX(14px);opacity:0}}}
+@media (prefers-reduced-motion:no-preference){.v2 .nav button.just svg{animation:pop2 .6s var(--spring2)}
+ .v2 .eart path:first-child{animation:v2drift .9s cubic-bezier(.16,1,.3,1) both}@keyframes v2drift{from{transform:translateX(-14px);opacity:0}}
+ .v2 .eart path:nth-child(2){animation:drift2 .9s cubic-bezier(.16,1,.3,1) both}@keyframes drift2{from{transform:translateX(14px);opacity:0}}}
 
 /* ---------- the real device: safe areas, inputs, the layer above screens ---------- */
 .v2 .scr{padding-top:calc(var(--top) + 14px);padding-bottom:calc(108px + var(--bot));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -325,3 +325,37 @@
 .v2 .v-row,.v2 .v-chips{row-gap:13px}
 .v2 .q .qt{min-height:44px}
 .v2 .scr>.v-row:first-child>.b.s{min-height:44px;min-width:44px}
+
+/* the answers of a row stay on its line: the home screen has no height to spare */
+.v2 .q.one{flex-direction:row;align-items:center;gap:10px}.v2 .q.one .qt{flex:1;min-width:0;width:auto}.v2 .q.one .qb{flex:none}
+.v2 .q.one .qt{align-items:center}.v2 .q.one .qt b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.v2 .q.one .qt small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v2 .q.one .qb .b.s{padding:8px 11px}.v2 .q.one{padding:10px 12px}
+/* the link of an idea: a field of its own, the whole line opens the event */
+.v2 .fld .lnk{border:0;background:none;padding:0;display:flex;align-items:center;gap:10px;text-align:left;color:inherit;min-height:44px;width:100%}
+.v2 .fld .lnk span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.v2 .fld .lnk em{font-style:normal;font-weight:650;color:var(--accent);flex:none}
+.v2.dark .fld .lnk em{color:#ff9a72}
+/* ---------- rounder: cards 26, rows 22, every button a pill (as in the reference boards) ---------- */
+.v2 .v-card{border-radius:26px}.v2 .in,.v2 .q,.v2 .gcard{border-radius:22px}.v2 .pic{border-radius:24px}.v2 .gcard .pic{border-radius:17px}
+.v2 .b,.v2 .b.s{border-radius:999px}.v2 .fld{border-radius:18px}.v2 .th{border-radius:17px}
+.v2 .in i,.v2 .q .qt i{border-radius:50%}.v2 .ck{border-radius:50%}.v2 .slot{border-radius:16px}
+.v2 .cal button,.v2 .cal span{border-radius:16px}.v2 .v-msg{border-radius:22px}.v2 .v-toast{border-radius:999px}
+.v2 .v-sheet{border-radius:32px 32px 0 0}.v2 .nav{border-radius:34px}.v2 .nav button,.v2 .nav button.ai{border-radius:26px}.v2 .nav .v-pill::after{border-radius:28px}
+.v2 .tiles .in{border-radius:24px}.v2 input,.v2 textarea,.v2 select{border-radius:18px}
+
+/* the wordmark of the loading screen: the brand lettering under the arch, letter after letter */
+.v2 .splash .wm{position:relative;margin-top:204px;width:200px;height:auto;fill:var(--a-ink);overflow:visible}
+.v2 .splash small{position:relative;margin-top:12px;font-size:13px;letter-spacing:.2px;color:var(--a-mute)}
+@media (prefers-reduced-motion:no-preference){
+ .v2 .splash .wm path{animation:wmUp .6s calc(.8s + var(--k) * .06s) cubic-bezier(.16,1,.3,1) both}
+ .v2 .splash small{animation:wmS .6s 1.3s ease-out both}
+ @keyframes wmUp{from{opacity:0;transform:translateY(10px)}}@keyframes wmS{from{opacity:0;transform:translateY(6px)}}
+}
+
+/* miniatures of empty states: a canvas of living dots */
+.v2 .mini{width:190px;height:104px;display:block}.v2.dark{--blue-soft:#6b95ff}
+/* drawn scenes breathe too: their stars twinkle, each at its own pace */
+@media (prefers-reduced-motion:no-preference){
+ .v2 .art circle[r^="0."],.v2 .art circle[r^="1."],.v2 .art circle[r^="2."]{animation:twk 3.2s ease-in-out infinite}
+ .v2 .art circle:nth-of-type(3n){animation-duration:4.1s;animation-delay:-1.3s}.v2 .art circle:nth-of-type(5n){animation-duration:2.6s;animation-delay:-.7s}.v2 .art circle:nth-of-type(7n){animation-delay:-2.2s}
+ @keyframes twk{50%{opacity:.25}}
+}

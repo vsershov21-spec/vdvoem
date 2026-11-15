@@ -14,6 +14,7 @@ import { Plans, Free } from './Plans'
 import { Chores, ChoreCard } from './Chores'
 import { Profile, History, Settings, Taste } from './Profile'
 import { Assistant } from './Assistant'
+import { WORDMARK, WORDMARK_BOX } from './wordmark'
 import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
@@ -112,7 +113,7 @@ export function Shell() {
     </div>)
 }
 
-// the loading mark: dots gather into two rings, once per launch
+// the loading screen: dots scattered all over it gather into the mark (the arch) in the middle, once per launch
 let splashed = false
 function Splash() {
   const [on, setOn] = useState(!splashed)
@@ -121,10 +122,10 @@ function Splash() {
   useEffect(() => {
     if (!on) return
     splashed = true
-    if (cv.current) particles(cv.current, 'rings', 1300)
+    if (cv.current) particles(cv.current, 'arch', 1400, true)
     const a = setTimeout(() => setOut(true), still() ? 500 : 1900), b = setTimeout(() => setOn(false), still() ? 800 : 2400)
     return () => { clearTimeout(a); clearTimeout(b) }
   }, [on])
   if (!on) return null
-  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} width={440} height={340} /><b>Вдвоём</b></div>
+  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} /><svg className="wm" viewBox={WORDMARK_BOX} role="img" aria-label="Вдвоём">{WORDMARK.map((d, k) => <path key={k} d={d} style={{ ['--k' as string]: k }} />)}</svg><small>идеи, встречи и дела на двоих</small></div>
 }

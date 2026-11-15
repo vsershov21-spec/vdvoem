@@ -1,7 +1,7 @@
-// Entry: the lamp lights itself (lamp_login_animation donor), then either the particle intro (particleAnimation donor)
+// Entry: a dark screen with drifting dots, then either the particle intro (particleAnimation donor)
 // hands off to the app, or the glass login card offers Telegram / Face ID / login+password.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Particles, type Shape } from '../ui/Particles'
 import { Icon } from '../ui/icons'
 import { get, post, humanError, ApiError } from '../lib/api'
@@ -12,54 +12,23 @@ import './entry.css'
 type Phase = 'dark' | 'on' | 'intro' | 'login' | 'locked' | 'out'
 
 function Fireflies({ on }: { on: boolean }) {
-  const flies = useMemo(() => [...Array(16)].map(() => {
+  const flies = useMemo(() => [...Array(28)].map(() => {
     const x: string[] = [], y: string[] = []
     for (let i = 0; i < 6; i++) { x.push(Math.floor(Math.random() * 100) + 'vw'); y.push(Math.floor(Math.random() * 100) + 'vh') }
     x.push(x[0]); y.push(y[0])
-    return { x, y, delay: Math.random() * 3, duration: Math.random() * 30 + 35, size: Math.random() * 4 + 3 }
+    return { x, y, delay: Math.random() * 3, duration: Math.random() * 30 + 35, size: Math.random() * 3 + 2 }
   }), [])
   if (!on) return null
   return (
     <div className="flies" aria-hidden="true">
       {flies.map((f, i) => (
-        <motion.i key={i} initial={{ x: f.x[0], y: f.y[0], opacity: 0 }}
+        <motion.i key={i} className={i % 2 ? 'b' : ''} initial={{ x: f.x[0], y: f.y[0], opacity: 0 }}
           animate={{ opacity: [0.4, 1, 0.7, 1, 0.5, 1], x: f.x, y: f.y }}
           transition={{ duration: f.duration, repeat: Infinity, delay: f.delay, ease: 'easeInOut', opacity: { duration: 3, repeat: Infinity, ease: 'easeInOut' } }}
           style={{ width: f.size, height: f.size }} />
       ))}
     </div>
   )
-}
-
-function Lamp({ on, onPull }: { on: boolean; onPull: () => void }) {
-  const x = useMotionValue(0), y = useMotionValue(0)
-  const d = useTransform([x, y], ([lx, ly]: number[]) => `M 0 0 L ${lx} ${80 + ly}`)
-  // the lamp switches itself on: the cord is pulled once, by itself
-  useEffect(() => {
-    const t1 = setTimeout(() => { y.set(0); animateTo(y, 34, 180) }, 420)
-    const t2 = setTimeout(() => animateTo(y, 0, 380), 640)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
-  }, [])
-  return (
-    <div className="lamp" data-on={on || undefined}>
-      <div className="lamp__glow" />
-      <div className="lamp__head" />
-      <div className="lamp__beam" />
-      <div className="lamp__stem" />
-      <div className="lamp__base" />
-      <div className="lamp__desk" />
-      <svg className="lamp__cord"><motion.path d={d} stroke="#2a2a2a" strokeWidth="2" strokeLinecap="round" /></svg>
-      <motion.div className="lamp__handle" style={{ x, y }} drag dragConstraints={{ top: 0, bottom: 0, left: 0, right: 0 }}
-        dragElastic={{ top: 0, bottom: 0.6, left: 0.3, right: 0.3 }} dragTransition={{ bounceStiffness: 300, bounceDamping: 4 }}
-        onDragEnd={(_, info) => { if (info.offset.y > 30) { haptic.heavy(); onPull() } }} aria-label="Шнур лампы" role="button" />
-    </div>
-  )
-}
-
-function animateTo(v: ReturnType<typeof useMotionValue<number>>, to: number, ms: number) {
-  const from = v.get(), t0 = performance.now()
-  const step = (t: number) => { const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3); v.set(from + (to - from) * e); if (p < 1) requestAnimationFrame(step) }
-  requestAnimationFrame(step)
 }
 
 // e2e and screenshots: ?nointro=1 skips the lamp-and-particles show once signed in
@@ -165,12 +134,9 @@ export function Entry({ onEnter }: { onEnter: () => void }) {
 
   return (
     <div className="room" data-on={lit || undefined} onClick={() => { if (phase === 'intro') finish() }}>
-      <motion.div className="room__light" initial={false} animate={{ opacity: lit ? 1 : 0, scale: lit ? 1.5 : 0.5 }} transition={{ duration: 0.8, ease: 'easeOut' }} />
-      <Fireflies on={lit} />
-      <div className="room__lamp"><Lamp on={lit} onPull={() => setLit(v => !v)} /></div>
+      <Fireflies on />
 
       <AnimatePresence>
-        {phase === 'dark' && <motion.p className="room__hint" exit={{ opacity: 0, y: -12 }}>Включаю свет…</motion.p>}
         {netErr && <motion.div key="net" className="glass login" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}>
           <h1>Нет связи</h1><p>Не получилось достучаться до сервера. Проверь интернет и попробуй ещё раз.</p>
           <button className="lbtn lbtn--light" onClick={() => location.reload()}>Попробовать снова</button></motion.div>}

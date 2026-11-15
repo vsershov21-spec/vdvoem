@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLoad, useOn, emit } from '../lib/data'
 import { post, patch, humanError, ApiError } from '../lib/api'
 import { go, back } from '../lib/router'
-import { haptic } from '../lib/tg'
+import { haptic, openLink } from '../lib/tg'
 import { CATS, money, when as whenText, ncase } from '../lib/format'
 import type { Idea, Round } from '../lib/types'
 import type { HomeV2 } from './types'
@@ -47,7 +47,11 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
   const badge = (i: Idea) => collecting(i) ? 'скаут собирает' : matched(i) ? 'совпало' : i.mine && !i.price_min ? 'нет цены' : ''
   const cats = [...new Set(afisha.map(i => i.category))].filter(c => CATS[c])
   const now = new Date(), first = new Date(now.getFullYear(), now.getMonth(), 1), days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  const shownAf = afisha.filter(i => (!cat || i.category === cat) && (!byDay || !day || (i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + day)))
+  // the calendar follows the filter: a dot only on the days that have something of the chosen kind
+  const inCat = afisha.filter(i => !cat || i.category === cat)
+  const hasOn = (d: number, list = inCat) => list.some(i => !!i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + d)
+  const pickCat = (c: string) => { setCat(c); if (day && !hasOn(day, afisha.filter(i => !c || i.category === c))) setDay(0) }
+  const shownAf = inCat.filter(i => !byDay || !day || (i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + day))
   const oursList = ours.filter(i => who === 'all' || (who === 'mine') === i.mine)
   return (
     <div className="scr" data-testid="v2-ideas">
@@ -59,27 +63,27 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
       {!data ? null : v === 'both' ? (both.length ? both.map(i =>
         <div className="in" key={i.id} data-testid="match-row" style={{ cursor: 'pointer' }} onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[CATS[i.category]?.name, i.starts_at ? whenText(i.starts_at) : ''].filter(Boolean).join(' · ')}</small></span>
           <button className="b p s" onClick={e => { e.stopPropagation(); goMeet(i) }}>Идём</button></div>)
-        : <Empty title="Пока не совпало"><button className="b p w" onClick={() => go('')}>Отмечать идеи</button></Empty>)
+        : <Empty art="heart" title="Пока не совпало"><button className="b p w" onClick={() => go('')}>Отмечать идеи</button></Empty>)
         : v === 'afisha' ? <>
           <div className="v-row"><div className="v-chips">
-            <button className={'v-chip' + (!cat ? ' on' : '')} onClick={() => setCat('')}>Всё</button>
-            {cats.map(c => <button key={c} className={'v-chip' + (cat === c ? ' on' : '')} onClick={() => setCat(c)}>{CATS[c].name}</button>)}
+            <button className={'v-chip' + (!cat ? ' on' : '')} onClick={() => pickCat('')}>Всё</button>
+            {cats.map(c => <button key={c} className={'v-chip' + (cat === c ? ' on' : '')} onClick={() => pickCat(c)}>{CATS[c].name}</button>)}
           </div><button className="back" style={{ flex: 'none' }} onClick={() => { setByDay(!byDay); setDay(0) }}>{byDay ? 'Списком' : 'По дням'}</button></div>
           {byDay && <div className="v-card"><b>{now.toLocaleDateString('ru', { month: 'long' })}</b><div className="cal">
             {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(d => <span className="wd" key={d}>{d}</span>)}
             {Array.from({ length: (first.getDay() + 6) % 7 }, (_, k) => <span key={'e' + k} />)}
-            {Array.from({ length: days }, (_, k) => { const d = k + 1, has = afisha.some(i => i.starts_at && dayOf(i.starts_at) === now.getMonth() * 100 + d)
+            {Array.from({ length: days }, (_, k) => { const d = k + 1, has = hasOn(d)
               return <button key={d} className={(d === now.getDate() ? 'today ' : '') + (day === d ? 'sel' : '')} onClick={() => setDay(day === d ? 0 : d)}>{d}{has && <i className="d" />}</button> })}
           </div></div>}
           {shownAf.length ? shownAf.map(i => <button className="in" key={i.id} data-testid="afisha-row" onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</small></span>{matched(i) ? <span className="badge">совпало</span> : wants(i.my_wish) ? '♥' : '›'}</button>)
-            : <Empty title={day ? 'В этот день событий нет' : 'Афиша пока пуста'}><p className="m">Скаут ищет события каждый день.</p></Empty>}
+            : <Empty art="cal" title={day ? 'В этот день событий нет' : cat ? 'Таких событий пока нет' : 'Афиша пока пуста'}><p className="m">Скаут ищет события каждый день.</p></Empty>}
         </> : <>
           {paired && <div className="v-chips">{([['all', 'Все'], ['mine', 'Мои'], ['their', ncase(pn, 'gen')]] as ['all' | 'mine' | 'their', string][]).map(([k, l]) =>
             <button key={k} className={'v-chip' + (who === k ? ' on' : '')} onClick={() => setWho(k)}>{l}</button>)}</div>}
           {oursList.length ? <div className="g2">{oursList.map(i =>
             <button className="gcard" key={i.id} data-testid="idea-card" onClick={() => go('idea/' + i.id)}><Pic idea={i}>{badge(i) && <small>{badge(i)}</small>}{i.title}</Pic>
               <small>{CATS[i.category]?.name || 'Идея'} · {i.mine ? 'моя' : 'от ' + ncase(pn, 'gen')}{wants(i.my_wish) ? ' · ♥' : ''}</small></button>)}</div>
-            : <Empty title="Здесь пусто"><button className="b p w" onClick={onAdd}>Добавить идею</button></Empty>}
+            : <Empty art="heart" title="Здесь пусто"><button className="b p w" onClick={onAdd}>Добавить идею</button></Empty>}
         </>}
     </div>)
 }
@@ -98,10 +102,15 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
   const by = (f: string) => filled[f] === 'me' ? 'я' : filled[f] === 'partner' ? pn : filled[f] === 'scout' ? 'скаут' : ''
   const wait = collecting(i)
   const own = i.mine && i.ours // an event the scout found has no author among the two: nobody edits it
+  // the link is a field of its own, tapped to open the event; it is not left inside the text of the programme
+  const inAbout = (i.info?.about || '').match(/https?:\/\/[^\s<>"']+/)?.[0].replace(/[.,;:!?)»]+$/, '') || ''
+  const link = i.url || inAbout
+  const about = (inAbout ? (i.info?.about || '').replace(inAbout, '') : i.info?.about || '').replace(/\s{2,}/g, ' ').trim()
+  const host = (() => { try { return new URL(link).hostname.replace(/^www\./, '') } catch { return link } })()
   const rows: [string, string, string][] = [
     ['Когда', i.starts_at ? whenText(i.starts_at, i.ends_at) : '', 'when'], ['Где', i.address || '', 'where'],
     ['Цена на двоих', i.price_min ? money(i.price_min) + (i.price_max && i.price_max !== i.price_min ? '–' + money(i.price_max) : '') : '', 'price'],
-    ['Программа', i.info?.about || '', 'about'], ['Заметка', i.note || '', 'note'],
+    ['Программа', about, 'about'], ['Заметка', i.note || '', 'note'],
   ]
   const miss = rows.filter(([, v, f]) => !v && (f === 'where' || f === 'price')).map(([l]) => l.toLowerCase())
   const meet = home?.next?.chosen?.id === i.id ? home.next : home?.round?.chosen?.id === i.id ? home.round : null
@@ -120,9 +129,10 @@ export function IdeaCard({ id, home, from }: { id: number; home: HomeV2 | null; 
       {wait ? <div className="v-card prop" data-testid="collecting"><b>🔭 Скаут собирает остальное</b><p className="m">Название взято из ссылки сразу. Даты, адрес и цена: обычно до часа. Напишу на главной и в боте.</p></div>
         : data.enriching ? <div className="v-card prop" data-testid="enriching"><b>🔭 Скаут дополняет</b><p className="m">Ищет: {miss.join(', ')}. Напишу на главной и в боте.</p></div>
           : own && miss.length > 0 ? <div className="v-card"><p className="m">Не хватает: {miss.join(', ')}</p><div className="v-row"><button className="b s" onClick={() => setEdit(true)}>Дописать</button><button className="b s" data-testid="ask-scout" onClick={enrich}>Попросить скаута</button></div></div> : null}
-      {rows.some(([, v]) => v || own) && <div className="v-card v-list flds" data-testid="fields">
+      {(link || rows.some(([, v]) => v || own)) && <div className="v-card v-list flds" data-testid="fields">
         {rows.filter(([, v]) => v || own).map(([l, v, f]) =>
           <div className="fld" key={f}><small>{l}{v && by(f) && <span className="by">{by(f)}</span>}</small><span className={v ? '' : 'v-empty'}>{v || (wait && f !== 'note' && f !== 'about' ? 'скаут собирает' : 'не заполнено')}</span></div>)}
+        {link && <div className="fld" key="link"><small>Ссылка</small><button className="lnk" data-testid="idea-link" onClick={() => openLink(link)}><span>{host}</span><em>Открыть ↗</em></button></div>}
       </div>}
       {home?.paired && <>
         <div className="blk"><label>Отметка</label><div className="v-row">
@@ -196,12 +206,12 @@ export function AddIdea({ open, onClose }: { open: boolean; onClose: () => void 
 export function PickList({ id, from }: { id: number; from: string }) {
   const { data, err } = useLoad<{ title: string; ideas: Idea[] }>(id > 0 ? '/picks/' + id : null)
   const head = <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>Подборка</b><span /></div>
-  if (!data) return <div className="scr" data-testid="v2-pick">{head}{(!!err || !(id > 0)) && <Empty title="Подборка не нашлась"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}</div>
+  if (!data) return <div className="scr" data-testid="v2-pick">{head}{(!!err || !(id > 0)) && <Empty art="search" title="Подборка не нашлась"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}</div>
   return (
     <div className="scr" data-testid="v2-pick">
       {head}
       <div><h2>{data.title}</h2><p className="m">Отметь, что нравится: «Хочу» в карточке идеи.</p></div>
       {data.ideas.length ? data.ideas.map(i => <button className="in" key={i.id} data-testid="pick-row" onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</small></span>{matched(i) ? <span className="badge">совпало</span> : wants(i.my_wish) ? '♥' : '›'}</button>)
-        : <Empty title="В подборке пусто"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}
+        : <Empty art="spark" title="В подборке пусто"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}
     </div>)
 }

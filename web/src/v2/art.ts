@@ -26,4 +26,4 @@ export function sceneFor(i: { title: string; category?: string }): { tone: strin
   const [k, tone] = BY_CAT[i.category || 'other'] || BY_CAT.other
   return { tone, svg: ART[k] }
 }
-export const EMPTY_ART = `<svg class="eart" viewBox="0 0 120 64" aria-hidden="true"><circle cx="46" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/><circle cx="74" cy="32" r="22" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/><circle cx="60" cy="32" r="3.5" fill="var(--accent)"/></svg>`
+export const EMPTY_ART = `<svg class="eart" viewBox="0 0 120 64" aria-hidden="true"><path d="M30 54Q44 14 60 14" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="1 7" stroke-linecap="round"/><path d="M90 54Q76 14 60 14" fill="none" stroke="var(--blue)" stroke-width="3" stroke-dasharray="1 7" stroke-linecap="round"/><circle cx="60" cy="14" r="3.5" fill="var(--accent)"/></svg>`

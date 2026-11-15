@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { go } from '../lib/router'
 import { haptic } from '../lib/tg'
 import { sceneFor } from './art'
+import { mini, type MiniShape } from './particles'
 
 // ---------- bottom panel: glass capsule, the active tab's pad slides on a spring ----------
 export const TABS = [
@@ -77,8 +78,15 @@ export function Pic({ idea, className = 'pic', style, children, ...rest }: { ide
   return <span className={className + ' ' + s.tone} style={style} {...rest}><span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: s.svg }} />{children}</span>
 }
 
-export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => (
+// A miniature: dots gather into a small picture and stay alive (see particles.ts). The picture says what is empty.
+export function Mini({ shape = 'arch' }: { shape?: MiniShape }) {
+  const cv = useRef<HTMLCanvasElement>(null)
+  useEffect(() => cv.current ? mini(cv.current, shape) : undefined, [shape])
+  return <canvas className="mini" ref={cv} aria-hidden="true" data-testid="mini" data-shape={shape} />
+}
+
+export const Empty = ({ title, art, children }: { title: string; art?: MiniShape; children?: ReactNode }) => (
   <div className="v-card stub">
-    <svg className="eart" viewBox="0 0 120 64" aria-hidden="true"><circle cx="46" cy="32" r="22" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="2 6" strokeLinecap="round" /><circle cx="74" cy="32" r="22" fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="2 6" strokeLinecap="round" /><circle cx="60" cy="32" r="3.5" fill="var(--accent)" /></svg>
+    <Mini shape={art} />
     <h3>{title}</h3>{children}
   </div>)
