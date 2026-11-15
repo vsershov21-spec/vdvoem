@@ -107,7 +107,53 @@ func pair(t *testing.T, a *app.App) (app.Couple, app.Couple) {
 	if v.Partner == nil || n.Partner == nil || v.Space.ID != n.Space.ID {
 		t.Fatal("not paired")
 	}
+	// The new interface is the default. The tests of the bot's previous flow (slots, three variants, «копилка»)
+	// are about people whose app reported the old screens (?v2=0), so the pair says so explicitly; a test of
+	// the new flow turns it on with SetUI(…, 2), and TestNewInterfaceIsDefault covers someone who said nothing.
+	oldUI(t, a, v.Me.ID, n.Me.ID)
 	return v, n
+}
+
+// oldUI: these members' app has reported the old screens
+func oldUI(t *testing.T, a *app.App, ids ...int64) {
+	t.Helper()
+	for _, id := range ids {
+		if err := a.SetUI(context.Background(), id, 1); err != nil || a.UsesV2(context.Background(), id) {
+			t.Fatalf("the old screens report themselves: %v", err)
+		}
+	}
+}
+
+// Someone the app has said nothing about is a person of the new interface: the bot writes in its words, and
+// their invitation opens the «Приглашение» screen. Only an explicit report of the old screens gives the old
+// flow back, and the new shell takes it again.
+func TestNewInterfaceIsDefault(t *testing.T) {
+	a, _, _ := setup(t)
+	ctx := context.Background()
+	v, link, err := a.Start(ctx, app.Profile{TGID: 1, ChatID: 1, Name: "Вова"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := app.InviteCode(link)
+	if !a.UsesV2(ctx, v.Me.ID) || !a.InviteV2(ctx, code) {
+		t.Fatal("nothing reported: the new interface")
+	}
+	if got := a.WordsFor(ctx, 1, "Это уже есть в копилке."); got != "Это уже есть в идеях." {
+		t.Fatalf("the words of the new interface by default: %q", got)
+	}
+	oldUI(t, a, v.Me.ID)
+	if a.InviteV2(ctx, code) {
+		t.Fatal("the old screens reported: the link joins at once, as before")
+	}
+	if got := a.WordsFor(ctx, 1, "Это уже есть в копилке."); got != "Это уже есть в копилке." {
+		t.Fatalf("the old screens keep their word: %q", got)
+	}
+	if err := a.SetUI(ctx, v.Me.ID, 2); err != nil || !a.UsesV2(ctx, v.Me.ID) || !a.InviteV2(ctx, code) {
+		t.Fatalf("the new shell reports itself: %v", err)
+	}
+	if a.InviteV2(ctx, "NOSUCHCODE") {
+		t.Fatal("nothing is known about an unknown link")
+	}
 }
 
 func TestFullFlow(t *testing.T) {
@@ -1405,8 +1451,8 @@ func TestBotFollowsNewInterface(t *testing.T) {
 	a, f, ck := setup(t)
 	ctx := context.Background()
 	v, n := pair(t, a)
-	if a.UsesV2(ctx, v.Me.ID) {
-		t.Fatal("nobody uses the new interface before the app says so")
+	if a.UsesV2(ctx, v.Me.ID) || a.UsesV2(ctx, n.Me.ID) {
+		t.Fatal("this pair reported the old screens (see pair)")
 	}
 	if err := a.SetUI(ctx, v.Me.ID, 3); !errors.Is(err, app.ErrBadInput) {
 		t.Fatalf("an unknown interface is refused: %v", err)
@@ -1630,6 +1676,7 @@ func TestInviteAccept(t *testing.T) {
 		t.Fatal(err)
 	}
 	code := app.InviteCode(link)
+	oldUI(t, a, v.Me.ID)
 	if a.InviteV2(ctx, code) {
 		t.Fatal("the author has the old interface: the link joins at once, as before")
 	}
@@ -2515,7 +2562,7 @@ func TestForgetMe(t *testing.T) {
 	if cs, _ := a.S.Chores(ctx, c.Space.ID); len(cs) != 0 {
 		t.Fatalf("a new person has no chores: %+v", cs)
 	}
-	if !a.Taste(ctx, c.Me.ID).Empty() || a.UsesV2(ctx, c.Me.ID) || len(a.Inbox(ctx, c)) != 0 || len(a.S.BusyDays(ctx, c.Me.ID, "2000-01-01")) != 0 || a.Subscribed(ctx, c.Me.ID) {
+	if !a.Taste(ctx, c.Me.ID).Empty() || a.S.MemberSettings(ctx, c.Me.ID)["sys.ui"] != "" || len(a.Inbox(ctx, c)) != 0 || len(a.S.BusyDays(ctx, c.Me.ID, "2000-01-01")) != 0 || a.Subscribed(ctx, c.Me.ID) {
 		t.Fatal("a new person inherits nothing")
 	}
 	if ch, _ := a.S.Chat(ctx, c.Me.ID, 10); len(ch) != 0 {

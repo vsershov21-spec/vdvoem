@@ -485,8 +485,10 @@ func (b *Bot) start(ctx context.Context, m *tg.Message) {
 
 // invited: an invitation opened by /start, in the new interface. Nothing is joined here: the invited one sees
 // who calls and opens the «Приглашение» screen, where the pair is made by «Принять». A link that cannot be
-// accepted says why, with one way on. The old interface (the author of the link has not opened the new one,
-// nor has the one who came) keeps joining at once — false is returned and /start goes on as before.
+// accepted says why, with one way on. The old interface keeps joining at once (false is returned and /start goes
+// on as before), but only when the author's app reported the old screens and the one who came is not known to
+// have the new ones. The screens «Приглашение» and «Настройки → Пара» exist only in the new interface, so
+// their buttons carry ?v2=1: a device that was switched to the old screens opens the new ones for them.
 func (b *Bot) invited(ctx context.Context, m *tg.Message, code string) bool {
 	cur, cerr := b.App.Couple(ctx, m.From.ID)
 	if !b.App.InviteV2(ctx, code) && !(cerr == nil && b.App.UsesV2(ctx, cur.Me.ID)) {

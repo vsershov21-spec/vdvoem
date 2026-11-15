@@ -13,7 +13,9 @@ import (
 )
 
 // Which interface a member has open decides how the bot talks to them. The app says it at every launch:
-// the old screens — 1, «Вдвоём 2.0» — 2. Someone who has not opened the app since is written to the old way.
+// the old screens (?v2=0) — 1, «Вдвоём 2.0» — 2. The new interface is the app now: someone the app has said
+// nothing about (never opened it, or opened it before it started saying) is written to in the new flow. The old
+// flow is only for those whose app explicitly reported the old screens.
 const uiKey = "sys.ui"
 
 // SetUI remembers the interface the member has just opened
@@ -29,7 +31,7 @@ func (a *App) SetUI(ctx context.Context, memberID int64, v int) error {
 }
 
 func (a *App) usesV2(ctx context.Context, memberID int64) bool {
-	return a.S.MemberSettings(ctx, memberID)[uiKey] == "v2"
+	return a.S.MemberSettings(ctx, memberID)[uiKey] != "v1"
 }
 
 // UsesV2: the member's app is the new interface, so the bot follows its flow — one offers, the other answers

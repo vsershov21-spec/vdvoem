@@ -29,16 +29,22 @@ const Us = lazy(() => load.us().then(m => ({ default: m.Us })))
 const PickScreen = lazy(() => load.pick().then(m => ({ default: m.PickScreen })))
 const TasteScreen = lazy(() => load.taste().then(m => ({ default: m.TasteScreen })))
 const SurpriseSheet = lazy(() => load.surprise().then(m => ({ default: m.SurpriseSheet })))
-// Вдвоём 2.0 is built next to the current screens and opens only with ?v2=1 (remembered; ?v2=0 turns it off)
+// «Вдвоём 2.0» (web/src/v2) is the app. The previous screens stay as a way back: ?v2=0 opens them and the
+// device remembers it, ?v2=1 returns the new ones. Only an explicit «0» means the old screens: nothing stored
+// (or «1» from the time the new interface was opt-in) is the new interface.
 const ShellV2 = lazy(() => import('./v2/Shell').then(m => ({ default: m.Shell })))
-const v2on = () => {
+export const pickUI = (search: string, store: Pick<Storage, 'getItem' | 'setItem'> | null): boolean => {
+  const q = new URLSearchParams(search).get('v2')
+  const asked = q === '0' || q === '1' ? q : ''
   try {
-    const q = new URLSearchParams(location.search).get('v2')
-    if (q === '1') localStorage.setItem('vd-v2', '1')
-    if (q === '0') localStorage.removeItem('vd-v2')
-    return localStorage.getItem('vd-v2') === '1'
-  } catch { return false }
+    if (asked) store?.setItem('vd-v2', asked)
+    const kept = store?.getItem('vd-v2')
+    return (kept ?? asked) !== '0'
+  } catch { return asked !== '0' } // no storage: the address decides, for this launch
 }
+// decided once per launch: moving between screens drops the query, the choice must not move with it
+const v2 = (() => { let ls: Storage | null = null; try { ls = localStorage } catch { /* blocked */ } return pickUI(location.search, ls) })()
+const v2on = () => v2
 
 let themePref = ''
 export const setThemePref = (t: string) => { themePref = t; applyTheme() }
@@ -76,7 +82,7 @@ function Main() {
   useOn('home', home.refresh)
   useEffect(() => {
     get_me_theme(); startLive()
-    post('/ui', { v: 1 }).catch(() => {}) // these are the old screens: the bot keeps its old messages (a way back from ?v2=1)
+    post('/ui', { v: 1 }).catch(() => {}) // these are the old screens (?v2=0): the server is told, so the bot keeps its old messages for this person
     // warm the other tabs, so the first switch to them is instant too
     const m = new Date(), ym = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`
     const t = setTimeout(() => {

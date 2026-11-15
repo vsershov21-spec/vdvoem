@@ -4,9 +4,22 @@ export const EMU = process.env.EMU!
 export const TOKEN = process.env.DEV_TOKEN!
 export const BASE = process.env.BASE || 'http://localhost:18099'
 
-export type U = { id: number; name: string }
+export type U = { id: number; name: string; old?: boolean }
 // unique people per test: one database serves the whole run (random ids, never reused across files)
-export const people = (a: string, b: string): [U, U] => { const n = 2 * (50_000 + Math.floor(Math.random() * 400_000_000)); return [{ id: n, name: a }, { id: n + 1, name: b }] }
+// «Вдвоём 2.0» is the app by default: these are two people who say nothing about their interface (20-v2)
+export const newPeople = (a: string, b: string): [U, U] => { const n = 2 * (50_000 + Math.floor(Math.random() * 400_000_000)); return [{ id: n, name: a }, { id: n + 1, name: b }] }
+// The files 01–19 (and the reports 98, 99) describe the previous screens and the bot's previous flow. Their
+// people keep the old interface: the phone opens with ?v2=0 (see open), and the server hears «old screens»
+// from them before anything else, exactly as their app would say it at its first launch.
+export const people = (a: string, b: string): [U, U] => { const [x, y] = newPeople(a, b); return [{ ...x, old: true }, { ...y, old: true }] }
+const dev = (u: U) => ({ 'Content-Type': 'application/json', 'X-Dev-Token': TOKEN, 'X-Dev-User': String(u.id), 'X-Dev-Name': encodeURIComponent(u.name) })
+const told = new Set<number>()
+async function ui(u: U) {
+  if (!u.old || told.has(u.id)) return
+  told.add(u.id)
+  const r = await fetch(BASE + '/api/ui', { method: 'POST', headers: dev(u), body: JSON.stringify({ v: 1 }) })
+  expect(r.ok, `old interface for ${u.name}: ` + await r.text()).toBeTruthy()
+}
 
 export const shot = (p: Page, n: string) => p.screenshot({ path: `shots/${n}.png` })
 
@@ -14,22 +27,27 @@ export const shot = (p: Page, n: string) => p.screenshot({ path: `shots/${n}.png
 type Msg = { message_id: number; text: string; method: string; file_name?: string; file?: string; reply_markup?: any; silent?: boolean }
 
 export async function say(u: U, text: string) {
+  await ui(u)
   const r = await fetch(EMU + '/_emu/say', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, text }) })
   expect(r.ok, await r.text()).toBeTruthy()
 }
 export async function reply(u: U, to: number, text: string) {
+  await ui(u)
   const r = await fetch(EMU + '/_emu/say', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, text, reply: to }) })
   expect(r.ok, await r.text()).toBeTruthy()
 }
 export async function forward(u: U, channel: string, text: string) {
+  await ui(u)
   const r = await fetch(EMU + '/_emu/say', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, text, forward: channel }) })
   expect(r.ok, await r.text()).toBeTruthy()
 }
 export async function photo(u: U) {
+  await ui(u)
   const r = await fetch(EMU + '/_emu/say', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, photo: true }) })
   expect(r.ok).toBeTruthy()
 }
 export async function press(u: U, label: string) {
+  await ui(u)
   const r = await fetch(EMU + '/_emu/press', { method: 'POST', body: JSON.stringify({ from: u.id, name: u.name, label }) })
   expect(r.ok, `button «${label}» for ${u.name}: ` + await r.text()).toBeTruthy()
 }
@@ -48,19 +66,26 @@ export async function noMsg(u: U, re: RegExp, after = 0) {
 }
 export const lastId = async (u: U) => { const c = await chat(u); return c.length ? c[c.length - 1].message_id : 0 }
 
-// /start → invite → partner joins
+// /start → invite → partner joins. The old interface joins by opening the link; in the new one the invited
+// sees who calls and the pair is made by «Принять приглашение» (here through the API, the screen is E62)
 export async function pair(a: U, b: U) {
   await say(a, '/start')
   const inv = await waitMsg(a, /Пригласи партнёра/)
   const code = inv.text.match(/start=(inv_[A-Z0-9]+)/)![1]
   await say(b, '/start ' + code)
-  await waitMsg(a, new RegExp(b.name + ' с тобой'))
+  if (a.old && b.old) { await waitMsg(a, new RegExp(b.name + ' с тобой')); return code }
+  await waitMsg(b, /Посмотреть приглашение|зовёт тебя во «Вдвоём»/)
+  await api(b, 'POST', `/invite/${code.replace('inv_', '')}/accept`)
+  await waitMsg(a, new RegExp(b.name + ' принял[а]? приглашение'))
+  // the author has read «… приняла приглашение» («Понятно»): a test starts with nothing waiting on the home screen
+  for (const r of (await api(a, 'GET', '/inbox')).rows || []) if (r.role === 'notice') await api(a, 'POST', `/proposals/${r.id}/answer`, { yes: true })
   return code
 }
 
 // ---------- API as a person (dev header) ----------
 export async function api<T = any>(u: U, method: string, path: string, body?: unknown): Promise<T> {
-  const r = await fetch(BASE + '/api' + path, { method, headers: { 'Content-Type': 'application/json', 'X-Dev-Token': TOKEN, 'X-Dev-User': String(u.id), 'X-Dev-Name': encodeURIComponent(u.name) },
+  await ui(u)
+  const r = await fetch(BASE + '/api' + path, { method, headers: dev(u),
     body: body === undefined ? undefined : JSON.stringify(body) })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(`${method} ${path} → ${r.status} ${JSON.stringify(j)}`)
@@ -102,7 +127,8 @@ export async function open(ctx: BrowserContext, u: U | null, path = '', intro = 
   const p = await ctx.newPage()
   p.on('pageerror', e => console.log('pageerror:', e.message))
   p.on('popup', pp => { pp.close().catch(() => {}) }) // t.me links opened by the login screen
-  const q = new URLSearchParams()
+  if (u) await ui(u)
+  const q = new URLSearchParams({ v2: '0' }) // the old screens, remembered by this phone
   if (u) { q.set('dev', `${u.id}:${u.name}`); q.set('devtoken', TOKEN) }
   if (!intro) q.set('nointro', '1')
   await p.goto(`/app/${path}?${q}`)

@@ -1,12 +1,13 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test'
-import { people, pair, phone, api, addIdeas, shot, waitMsg, noMsg, press, say, chat, advance, lastId, TOKEN, BASE, type U } from './lib'
+import { newPeople as people, people as oldPeople, open, pair, phone, api, addIdeas, shot, waitMsg, noMsg, press, say, chat, advance, lastId, TOKEN, BASE, type U } from './lib'
 
-// Вдвоём 2.0 lives next to the current screens and opens with ?v2=1. These tests follow the accepted
+// Вдвоём 2.0 is the app: it opens with no parameter, and these people say nothing about their interface (the
+// old screens are behind ?v2=0, files 01–19; E72 is the switch itself). These tests follow the accepted
 // scenarios (docs/v2/PROJECT.md): the home screen with the swipe deck, «Ждёт тебя», and going back by steps.
 async function openV2(ctx: BrowserContext, u: U, path = '') {
   const p = await ctx.newPage()
   p.on('pageerror', e => console.log('pageerror:', e.message))
-  const q = new URLSearchParams({ dev: `${u.id}:${u.name}`, devtoken: TOKEN, nointro: '1', v2: '1' })
+  const q = new URLSearchParams({ dev: `${u.id}:${u.name}`, devtoken: TOKEN, nointro: '1' })
   await p.goto(`/app/${path}?${q}`)
   await expect(p.getByTestId('v2')).toBeVisible({ timeout: 10000 })
   await expect(p.locator('.splash')).toHaveCount(0, { timeout: 6000 })
@@ -389,7 +390,7 @@ test('E61 бот в новом флоу: «зовёт» без слотов, с�
   await noMsg(n, /отметь, когда тебе удобно|Когда тебе удобно/)
   await noMsg(v, /Решено|Осталось найти время/)
   // the old addresses of the bot's buttons open the screens that took their place, never the stub
-  const dev = new URLSearchParams({ dev: `${n.id}:${n.name}`, devtoken: TOKEN, nointro: '1', v2: '1' })
+  const dev = new URLSearchParams({ dev: `${n.id}:${n.name}`, devtoken: TOKEN, nointro: '1' })
   const old = async (path: string, testid: string) => {
     await q.goto(`/app/${path}?${dev}`)
     await expect(q.getByTestId(testid)).toBeVisible({ timeout: 10000 })
@@ -438,7 +439,7 @@ async function inviteV2(a: U) {
 const keys = (m: { reply_markup?: any }) => (m.reply_markup?.inline_keyboard || []).flat()
 // the same phone opens another address of the app (a button of the bot pressed later)
 async function reopen(p: Page, u: U, path: string) {
-  const q = new URLSearchParams({ dev: `${u.id}:${u.name}`, devtoken: TOKEN, nointro: '1', v2: '1' })
+  const q = new URLSearchParams({ dev: `${u.id}:${u.name}`, devtoken: TOKEN, nointro: '1' })
   await p.goto(`/app/${path}?${q}`)
   await expect(p.getByTestId('v2')).toBeVisible({ timeout: 10000 })
   await expect(p.locator('.splash')).toHaveCount(0, { timeout: 6000 })
@@ -1017,4 +1018,107 @@ test('E71 после встречи: «Как прошло?» ждёт на гл
   await px.getByTestId('invite').click()
   await expect(px.getByTestId('v2-solo')).toContainText('Ждём партнёра')
   await expect(px.getByTestId('invite')).toHaveText('Отправить ещё раз')
+})
+
+// what the app told the server at this launch: {v: 2} from the new shell, {v: 1} from the old screens
+const saidUI = (p: Page, v: number) => p.waitForRequest(r => r.url().endsWith('/api/ui') && r.method() === 'POST' && r.postDataJSON()?.v === v, { timeout: 15000 })
+const stored = (p: Page) => p.evaluate(() => localStorage.getItem('vd-v2'))
+
+test('E72 новый интерфейс по умолчанию: вход без параметров, ?v2=0 включает старый и запоминается, ?v2=1 возвращает; кнопки бота ведут на новые экраны', async ({ browser }) => {
+  test.setTimeout(150_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const ctx = await phone(browser)
+  const p = await ctx.newPage()
+  p.on('pageerror', e => console.log('pageerror:', e.message))
+  const dev = new URLSearchParams({ dev: `${n.id}:${n.name}`, devtoken: TOKEN, nointro: '1' })
+  const isNew = async () => { await expect(p.getByTestId('v2')).toBeVisible({ timeout: 10000 }); await expect(p.locator('main.screen')).toHaveCount(0) }
+  const isOld = async () => { await expect(p.locator('main.screen')).toBeVisible({ timeout: 10000 }); await expect(p.getByTestId('v2')).toHaveCount(0) }
+
+  // no parameter, nothing remembered: the new interface, and the server hears it
+  let said = saidUI(p, 2)
+  await p.goto(`/app/?${dev}`)
+  await isNew()
+  await said
+  await expect(p.getByTestId('v2-home')).toBeVisible()
+  expect(await stored(p)).toBeNull()
+  await shot(p, 'E72-default')
+
+  // the bot writes to someone who said nothing in the new flow, and its buttons open the new screens
+  const before = await lastId(n)
+  await say(n, 'Планетарий на Баррикадной')
+  const card = await waitMsg(n, /Сохранил в идеи[\s\S]*Планетарий/, 15000, before)
+  await noMsg(n, /Сохранил в копилку/, before)
+  const ideaURL = keys(card).find((k: any) => k.text === 'Открыть')?.web_app?.url as string
+  expect(ideaURL).toMatch(/\/app\/idea\/\d+$/)
+  const id = Number(ideaURL.match(/idea\/(\d+)/)![1])
+  await p.goto(new URL(ideaURL).pathname) // the button of the bot, as Telegram opens it: no parameters
+  await isNew()
+  await expect(p.getByTestId('v2-idea')).toContainText('Планетарий на Баррикадной')
+  await api(n, 'POST', `/ideas/${id}/wish`, { wish: 'want' })
+  await api(v, 'POST', `/ideas/${id}/wish`, { wish: 'want' })
+  const rid = (await api(v, 'POST', `/rounds/with/${id}`)).round.id
+  const call = await waitMsg(n, /Вова зовёт: (<b>)?Планетарий на Баррикадной(<\/b>)?\. Время ещё не выбрано/)
+  const meetURL = keys(call).find((k: any) => k.text === 'Открыть встречу')?.web_app?.url as string
+  expect(meetURL).toContain(`/app/meet/${rid}`)
+  await p.goto(new URL(meetURL).pathname)
+  await isNew()
+  await expect(p.getByTestId('v2-meet')).toBeVisible()
+  await expect(p.getByTestId('meet-status')).toHaveText('без времени')
+  await shot(p, 'E72-bot-meet')
+  // an offered time: its button still names the old address («round/N»), which is the meeting too
+  const f = await api(v, 'GET', '/free')
+  await api(v, 'POST', `/meet/${rid}/time`, { day: f.days[2].day, part: 1 })
+  const offer = await waitMsg(n, /Вова зовёт: (<b>)?Планетарий на Баррикадной(<\/b>)?\n/, 15000, call.message_id)
+  const otherURL = keys(offer).find((k: any) => k.text === 'Другое время')?.web_app?.url as string
+  expect(otherURL).toContain(`/app/round/${rid}`)
+  await p.goto(new URL(otherURL).pathname)
+  await isNew()
+  await expect(p.getByTestId('v2-meet')).toBeVisible()
+  expect(p.url()).toContain('/app/meet/' + rid)
+
+  // ?v2=0: the old screens, the phone remembers it and the server is told
+  said = saidUI(p, 1)
+  await p.goto(`/app/?${dev}&v2=0`)
+  await isOld()
+  await said
+  expect(await stored(p)).toBe('0')
+  await shot(p, 'E72-old')
+  await p.goto('/app/') // opened again with no parameter (the menu button of the bot)
+  await isOld()
+  await p.goto('/app/idea/' + id)
+  await isOld()
+  // a new tab of the same phone keeps the choice too
+  const p2 = await ctx.newPage()
+  await p2.goto(`/app/?${dev}`)
+  await expect(p2.locator('main.screen')).toBeVisible({ timeout: 10000 })
+  await expect(p2.getByTestId('v2')).toHaveCount(0)
+  await p2.close()
+
+  // ?v2=1 returns the new interface, for good
+  said = saidUI(p, 2)
+  await p.goto(`/app/?${dev}&v2=1`)
+  await isNew()
+  await said
+  expect(await stored(p)).toBe('1')
+  await p.goto('/app/')
+  await isNew()
+  await expect(p.getByTestId('v2-home')).toBeVisible()
+
+  // «1» left on a phone from the time the new interface was opt-in is the new interface
+  const kept = await phone(browser)
+  await kept.addInitScript(() => { try { if (!localStorage.getItem('vd-v2')) localStorage.setItem('vd-v2', '1') } catch { /* no storage */ } })
+  const pk = await kept.newPage()
+  await pk.goto(`/app/?${dev}`)
+  await expect(pk.getByTestId('v2')).toBeVisible({ timeout: 10000 })
+  await expect(pk.locator('main.screen')).toHaveCount(0)
+
+  // people of the old interface (files 01–19): the helper opens the old screens for them
+  const [o] = oldPeople('Олег', '-')
+  const po = await open(await phone(browser), o)
+  await expect(po.getByTestId('v2')).toHaveCount(0)
+  expect(await stored(po)).toBe('0')
+  const was = await lastId(o)
+  await say(o, 'Каток в Парке Горького')
+  await waitMsg(o, /Сохранил в копилку/, 15000, was)
 })

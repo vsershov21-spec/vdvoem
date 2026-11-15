@@ -10,7 +10,7 @@ test('E28 повторные открытия Mini App: каждый раз от
   await addIdeas(v, ['Ужин в ресторане', 'Кино'])
   const ctx = await phone(browser)
   await fakeTelegram(ctx, { platform: 'ios', bio: false })
-  const url = `/app/?dev=${v.id}:${encodeURIComponent(v.name)}&devtoken=${TOKEN}&nointro=1`
+  const url = `/app/?dev=${v.id}:${encodeURIComponent(v.name)}&devtoken=${TOKEN}&nointro=1&v2=0` // these are the old screens
   const times: number[] = []
   const open: any[] = []
   for (let i = 0; i < 8; i++) {
