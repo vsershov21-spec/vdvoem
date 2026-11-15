@@ -322,3 +322,4 @@
 .v2 .dtabs{position:relative;z-index:3}
 .v2 .v-row,.v2 .v-chips{row-gap:13px}
 .v2 .q .qt{min-height:44px}
+.v2 .scr>.v-row:first-child>.b.s{min-height:44px;min-width:44px}

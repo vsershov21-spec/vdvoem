@@ -850,11 +850,11 @@ test('E69 проход по экранам: лист поверх панели �
   expect(tile.x + tile.width).toBeLessThanOrEqual(vw)
   // small controls keep their look and still take a finger
   for (const sel of ['[aria-label="Добавить идею или дело"]', '[aria-label="Профиль"]', '.dtabs [role=tab]', '.dtabs .back', '[data-testid=inbox-row] .qb button', '[data-testid=tab-assistant]', '[data-testid=tab-plans]'])
-    expect(await tapZone(p, sel), 'зона нажатия ' + sel).toBe(true)
+    await expect.poll(() => tapZone(p, sel), { message: 'зона нажатия ' + sel }).toBe(true)
   // the meeting card scrolled to its end: the sheet covers the bottom panel and its last button is in sight
   await p.getByTestId('tile-meet').click()
   await expect(p.getByTestId('meet-status')).toHaveText('в планах')
-  expect(await tapZone(p, '.subh .back')).toBe(true)
+  await expect.poll(() => tapZone(p, '.subh .back')).toBe(true) // the screen slides in first
   await p.getByTestId('v2-meet').evaluate(e => { e.scrollTop = e.scrollHeight })
   await p.getByTestId('cancel-meet').click()
   const sheet = p.getByTestId('cancel-sheet')
@@ -920,7 +920,7 @@ test('E70 проход по сценариям: чужое дело «Забра
   expect(red(await over.evaluate(e => getComputedStyle(e).color))).toBe(true)
   expect(red(await p.getByTestId('chore-row').filter({ hasText: 'Оплатить' }).locator('small').evaluate(e => getComputedStyle(e).color))).toBe(true)
   // the tick takes a finger; the whole row opens the card
-  expect(await tapZone(p, '[data-testid=chore-row] .ck')).toBe(true)
+  await expect.poll(() => tapZone(p, '[data-testid=chore-row] .ck')).toBe(true) // the screen slides in first
   // a repeat: the line says when the next one is
   await p.getByTestId('chore-row').filter({ hasText: 'Купить корм' }).locator('.ck').click()
   await expect(p.getByTestId('toast')).toContainText(/Сделано\. Следующее: \d+ [а-я]+/)
@@ -957,7 +957,7 @@ test('E70 проход по сценариям: чужое дело «Забра
   await p.getByTestId('to-settings').click()
   await p.getByTestId('sec-notify').click()
   await expect(p.getByTestId('quiet-note')).toContainText('с 23:00 до 9:00')
-  expect(await tapZone(p, '[data-testid="set-notify.quiet"]')).toBe(true)
+  await expect.poll(() => tapZone(p, '[data-testid="set-notify.quiet"]')).toBe(true) // the screen slides in first
   // alone: the plans do not offer «совпавшее» and common time, they lead to the invitation
   const [x] = people('Игорь', '-')
   const px = await openV2(await phone(browser), x, 'plans')
