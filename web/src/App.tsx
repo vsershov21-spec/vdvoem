@@ -58,6 +58,7 @@ function applyTheme() {
 export function App() {
   const [entered, setEntered] = useState(false)
   useEffect(() => { applyTheme(); onTheme(applyTheme) }, [])
+  useEffect(() => { if (entered && !v2on()) (window as any).__vdDone?.() }, [entered])
   return (<>
     {entered && (v2on() ? <Suspense fallback={null}><V2 /></Suspense> : <Main />)}
     {!entered && <Entry onEnter={() => { (window as any).__vdlog?.('enter', ''); setEntered(true) }} />}
