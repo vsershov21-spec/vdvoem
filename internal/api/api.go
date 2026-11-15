@@ -575,7 +575,7 @@ func (a *API) home(w http.ResponseWriter, r *http.Request, c app.Couple) (any, e
 	}
 	out["to_mark"] = unmarked
 	out["urgent"] = a.App.UrgentForMe(ctx, c)
-	out["inbox"] = a.App.Inbox(ctx, c)                // «Ждёт тебя»: proposals to answer and their answers
+	out["inbox"] = a.App.Waiting(ctx, c)              // «Ждёт тебя»: proposals to answer and their answers
 	out["chore_summary"] = a.App.ChoreSummary(ctx, c) // the one line about chores on the home screen
 	out["going"] = a.goingRounds(ctx, c)
 	if rd, err := a.App.S.OpenRound(ctx, c.Space.ID); err == nil {
@@ -1039,7 +1039,7 @@ func (a *API) setPrefV2(w http.ResponseWriter, r *http.Request, c app.Couple) (a
 
 // «Ждёт тебя»: everything that waits for my answer, plus what I am waiting for myself
 func (a *API) inbox(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
-	return map[string]any{"rows": a.App.Inbox(r.Context(), c)}, nil
+	return map[string]any{"rows": a.App.Waiting(r.Context(), c)}, nil
 }
 
 func (a *API) propose(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -1057,7 +1057,7 @@ func (a *API) propose(w http.ResponseWriter, r *http.Request, c app.Couple) (any
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"id": p.ID, "rows": a.App.Inbox(r.Context(), c)}, nil
+	return map[string]any{"id": p.ID, "rows": a.App.Waiting(r.Context(), c)}, nil
 }
 
 func (a *API) answerProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -1072,7 +1072,7 @@ func (a *API) answerProposal(w http.ResponseWriter, r *http.Request, c app.Coupl
 	if _, err := a.App.AnswerProposal(r.Context(), c, id, in.Yes); err != nil {
 		return nil, err
 	}
-	return map[string]any{"rows": a.App.Inbox(r.Context(), c)}, nil
+	return map[string]any{"rows": a.App.Waiting(r.Context(), c)}, nil
 }
 
 func (a *API) withdrawProposal(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {
@@ -1095,7 +1095,7 @@ func (a *API) proposalAct(r *http.Request, c app.Couple, f func(context.Context,
 	if err := f(r.Context(), c, id); err != nil {
 		return nil, err
 	}
-	return map[string]any{"rows": a.App.Inbox(r.Context(), c)}, nil
+	return map[string]any{"rows": a.App.Waiting(r.Context(), c)}, nil
 }
 
 func (a *API) markUrgent(w http.ResponseWriter, r *http.Request, c app.Couple) (any, error) {

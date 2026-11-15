@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { useLoad, useOn, emit } from '../lib/data'
+import { useLoad, emit } from '../lib/data'
 import { post, humanError } from '../lib/api'
 import { go } from '../lib/router'
 import { haptic, shareLink } from '../lib/tg'
 import { CATS, money, when as whenText, past } from '../lib/format'
-import type { Idea, Round } from '../lib/types'
+import type { Idea } from '../lib/types'
 import type { HomeV2, InboxRow } from './types'
 import { Sheet, Pic, Empty, say } from './ui'
 import { particles, still } from './particles'
@@ -14,17 +14,13 @@ import { particles, still } from './particles'
 export function Home({ home, onAddIdea }: { home: HomeV2 | null; onAddIdea: () => void }) {
   const [all, setAll] = useState(false)
   const [plus, setPlus] = useState(false)
-  // «как прошло»: a meeting that has passed and that I have not answered about waits here too, not only in the bot
-  const hist = useLoad<{ meetings: Round[] }>(home?.paired ? '/history' : null, 60000)
-  useOn('home', hist.refresh)
   if (!home) return <div className="scr fix" />
   if (!home.paired) return <Solo home={home} onAddIdea={onAddIdea} />
   const box = (home.inbox || []).filter(r => r.role !== 'waiting')
   const m = home.next || home.round
   const ch = home.chore_summary
-  const d = new Date(), t = d.getTime() / 1000
-  const asked = (hist.data?.meetings || []).filter(r => !r.again && (r.state === 'planned' || r.state === 'done') && !!r.starts_at && r.starts_at < t && r.starts_at > t - 14 * 86400)
-  const total = box.length + asked.length
+  const d = new Date()
+  const total = box.length
   return (
     <div className="scr fix" data-testid="v2-home">
       <div className="v-row">
@@ -35,7 +31,7 @@ export function Home({ home, onAddIdea }: { home: HomeV2 | null; onAddIdea: () =
       </div>
       {total > 0 && <>
         <div className="lbl">Ждёт тебя · {total}{total > 1 && <button className="back" onClick={() => setAll(true)}>все {total}</button>}</div>
-        {box[0] ? <InboxLine row={box[0]} /> : <AfterLine r={asked[0]} />}
+        <InboxLine row={box[0]} />
       </>}
       <Deck partner={home.partner?.name || 'партнёр'} onAddIdea={onAddIdea} />
       <div className="tiles">
@@ -44,7 +40,7 @@ export function Home({ home, onAddIdea }: { home: HomeV2 | null; onAddIdea: () =
         <button className="in" data-testid="tile-chores" onClick={() => go('chores')}><span><b>Дела{ch && ch.today + ch.overdue > 0 ? ' · ' + (ch.today + ch.overdue) : ''}</b>
           <small>{!ch || ch.today + ch.overdue === 0 ? 'на сегодня ничего' : <>{ch.today > 0 && <>{ch.today} на сегодня</>}{ch.today > 0 && ch.overdue > 0 && ', '}{ch.overdue > 0 && <em className="red" style={{ fontStyle: 'normal' }}>{ch.overdue} просрочено</em>}</>}</small></span></button>
       </div>
-      <Sheet open={all} onClose={() => setAll(false)} testid="inbox-sheet"><h3>Ждёт тебя</h3>{box.map(r => <InboxLine key={r.id} row={r} />)}{asked.map(r => <AfterLine key={'a' + r.id} r={r} />)}</Sheet>
+      <Sheet open={all} onClose={() => setAll(false)} testid="inbox-sheet"><h3>Ждёт тебя</h3>{box.map(r => <InboxLine key={r.kind + r.id + ':' + r.ref_id} row={r} />)}</Sheet>
       <Sheet open={plus} onClose={() => setPlus(false)} testid="plus-sheet">
         <h3>Что добавить?</h3>
         <button className="in" onClick={() => { setPlus(false); onAddIdea() }}><i>♡</i><span><b>Идею</b><small>куда сходить: ссылка или название</small></span>›</button>
@@ -54,13 +50,15 @@ export function Home({ home, onAddIdea }: { home: HomeV2 | null; onAddIdea: () =
 }
 
 // ---------- «Ждёт тебя»: the answer is given in the row itself ----------
-const ICONS: Record<string, string> = { time: '📅', stop: '📍', chore: '☑', cancel: '✕', note: '⚙' }
+const ICONS: Record<string, string> = { time: '📅', stop: '📍', chore: '☑', cancel: '✕', note: '⚙', tickets: '🎟', after: '★' }
 const LABEL: Record<string, Record<string, string>> = {
   time: { yes: 'Да', no: 'Не могу', other: 'Другое время' }, stop: { yes: 'Да', no: 'Нет', other: 'Другое место' },
   chore: { yes: 'Беру', no: 'Не могу', self: 'Беру сам', any: 'Кто угодно' }, cancel: { ok: 'Понятно' }, note: { ok: 'Понятно' },
+  tickets: { buy: 'Куплю я', bought: 'Куплены' }, after: { like: 'Понравилось', soso: 'Не очень', skip: 'Не ходили' },
 }
 const COMMON: Record<string, string> = { remind: 'Напомнить', withdraw: 'Отозвать' }
-const DONE: Record<string, string> = { yes: 'Ответ отправлен', no: 'Ответ отправлен', ok: '', remind: 'Напоминание ушло', withdraw: 'Предложение отозвано', self: 'Дело твоё', any: 'Дело общее' }
+const DONE: Record<string, string> = { yes: 'Ответ отправлен', no: 'Ответ отправлен', ok: '', remind: 'Напоминание ушло', withdraw: 'Предложение отозвано', self: 'Дело твоё', any: 'Дело общее',
+  buy: 'Партнёр видит: покупаешь ты', bought: 'Билеты отмечены', like: 'Записал в историю', soso: 'Записал в историю', skip: 'Записал в историю' }
 
 export function InboxLine({ row }: { row: InboxRow }) {
   const [busy, setBusy] = useState(false)
@@ -71,29 +69,18 @@ export function InboxLine({ row }: { row: InboxRow }) {
     try {
       if (a === 'yes' || a === 'no' || a === 'ok') await post(`/proposals/${row.id}/answer`, { yes: a !== 'no' })
       else if (a === 'self' || a === 'any') await post(`/chores/${row.ref_id}/${a}`)
+      else if (a === 'buy') await post(`/meet/${row.ref_id}/buy`)
+      else if (a === 'bought') await post(`/rounds/${row.ref_id}/tickets`)
+      else if (row.kind === 'after') await post(`/rounds/${row.ref_id}/rate`, { answer: a })
       else await post(`/proposals/${row.id}/${a}`)
       haptic.ok(); if (DONE[a]) say(DONE[a]); emit('home')
     } catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
   return (
-    <div className={'q' + (row.hot ? ' hot' : '')} data-testid="inbox-row">
+    <div className={'q' + (row.hot ? ' hot' : '')} data-testid={row.kind === 'after' ? 'after-row' : row.kind === 'tickets' ? 'tickets-row' : 'inbox-row'}>
       <button className="qt" onClick={() => go(where)}><i>{ICONS[row.kind]}</i><span><b>{row.title}</b><small>{row.sub}</small></span></button>
       {row.actions.length > 0 && <div className="qb">{row.actions.map((a, k) =>
         <button key={a} className={'b s' + (k === 0 ? ' a' : '')} disabled={busy} onClick={() => act(a)}>{LABEL[row.kind]?.[a] || COMMON[a] || a}</button>)}</div>}
-    </div>)
-}
-
-function AfterLine({ r }: { r: Round }) {
-  const [busy, setBusy] = useState(false)
-  const rate = async (k: 'like' | 'soso' | 'skip') => {
-    setBusy(true)
-    try { await post(`/rounds/${r.id}/rate`, { answer: k }); haptic.ok(); say('Записал в историю'); emit('home') }
-    catch (e) { say(humanError(e)) } finally { setBusy(false) }
-  }
-  return (
-    <div className="q hot" data-testid="after-row">
-      <button className="qt" onClick={() => go('meet/' + r.id)}><i>★</i><span><b>Как прошло: {r.chosen?.title || 'встреча'}?</b><small>{r.starts_at ? whenText(r.starts_at) : ''}</small></span></button>
-      <div className="qb"><button className="b s a" disabled={busy} onClick={() => rate('like')}>Понравилось</button><button className="b s" disabled={busy} onClick={() => rate('soso')}>Не очень</button><button className="b s" disabled={busy} onClick={() => rate('skip')}>Не ходили</button></div>
     </div>)
 }
 

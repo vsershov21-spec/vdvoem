@@ -2639,3 +2639,76 @@ func TestForgetAfterPartnerLeft(t *testing.T) {
 		t.Fatalf("rows still point at him: %v", bad)
 	}
 }
+
+// «Ждёт тебя» asks about the meeting itself: who buys the tickets while it is ahead, how it went when it has passed
+func TestMeetRowsInWaiting(t *testing.T) {
+	a, _, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	res, _ := a.AddIdea(ctx, n, "Планетарий на Баррикадной")
+	id := res.Idea.ID
+	_, _ = a.SetWish(ctx, n, id, domain.WishWant)
+	_, _ = a.SetWish(ctx, v, id, domain.WishWant)
+	r, err := a.GoWith(ctx, v, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := a.MeetRows(ctx, v); len(rows) != 0 {
+		t.Fatalf("no time yet, nothing to ask: %+v", rows)
+	}
+	at := ck.t.Add(48 * time.Hour).Truncate(time.Hour)
+	p, _ := a.ProposeTime(ctx, v, r.ID, at)
+	if _, err := a.AnswerProposal(ctx, n, p.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []app.Couple{v, n} {
+		rows := a.Waiting(ctx, c)
+		if len(rows) != 1 || rows[0].Kind != "tickets" || rows[0].Title != "Билеты: Планетарий на Баррикадной" || rows[0].Hot || rows[0].RefID != r.ID {
+			t.Fatalf("both are asked who buys: %+v", rows)
+		}
+	}
+	if len(a.Inbox(ctx, v)) != 0 {
+		t.Fatal("the rows of meetings are not proposals")
+	}
+	// «Куплю я»: it is on him now, she has nothing to do
+	if err := a.S.SetSpaceSetting(ctx, v.Space.ID, fmt.Sprintf("sys.buy:%d", r.ID), fmt.Sprint(v.Me.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if rows := a.Waiting(ctx, v); len(rows) != 1 || rows[0].Title != "Купить билеты: Планетарий на Баррикадной" || !rows[0].Hot || rows[0].Actions[0] != "bought" {
+		t.Fatalf("the buyer: %+v", rows)
+	}
+	if rows := a.Waiting(ctx, n); len(rows) != 0 {
+		t.Fatalf("the partner of the buyer: %+v", rows)
+	}
+	if err := a.GotTickets(ctx, v, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Waiting(ctx, v))+len(a.Waiting(ctx, n)) != 0 {
+		t.Fatal("the tickets are bought: nothing waits")
+	}
+	// the meeting has passed: each is asked, each answers for themselves
+	ck.t = at.Add(3 * time.Hour)
+	for _, c := range []app.Couple{v, n} {
+		rows := a.Waiting(ctx, c)
+		if len(rows) != 1 || rows[0].Kind != "after" || rows[0].Title != "Как прошло: Планетарий на Баррикадной?" || !rows[0].Hot {
+			t.Fatalf("after the meeting: %+v", rows)
+		}
+	}
+	if err := a.Rate(ctx, v, r.ID, "like"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Waiting(ctx, v)) != 0 {
+		t.Fatal("he has answered")
+	}
+	if rows := a.Waiting(ctx, n); len(rows) != 1 || rows[0].Kind != "after" {
+		t.Fatalf("she is still asked after his answer: %+v", rows)
+	}
+	if err := a.Rate(ctx, n, r.ID, "skip"); err != nil || len(a.Waiting(ctx, n)) != 0 {
+		t.Fatalf("she has answered: %v", err)
+	}
+	// two weeks later nobody is asked about an unanswered meeting
+	ck.t = at.Add(15 * 24 * time.Hour)
+	if len(a.MeetRows(ctx, v)) != 0 {
+		t.Fatal("too old to ask")
+	}
+}

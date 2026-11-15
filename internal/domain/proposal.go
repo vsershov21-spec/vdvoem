@@ -173,3 +173,73 @@ func pastVerb(name, verb string) string {
 	}
 	return verb
 }
+
+// ---------- system rows of «Ждёт тебя»: they come from a meeting, not from a proposal ----------
+
+// AfterAskDays: how long «Как прошло?» waits on the home screen
+const AfterAskDays = 14
+
+// MeetFact: what «Ждёт тебя» needs to know about one meeting
+type MeetFact struct {
+	RoundID  int64
+	Title    string
+	When     string // «Сб, 15 ноя · 19:30»
+	StartsAt time.Time
+	Rated    bool  // I have answered «как прошло»
+	Tickets  bool  // somebody has the tickets
+	Buyer    int64 // who said «куплю я» (0: nobody yet)
+}
+
+// MeetRows: the tickets of a meeting that is ahead, and «как прошло» of one that has passed.
+//
+//	tickets, nobody buys — both see «кто покупает?» (not hot: a walk needs no tickets)
+//	tickets, I buy       — «Купить билеты» with «Куплены» (hot: it is on me)
+//	after                — «Как прошло?», each answers for themselves (hot)
+//
+// ProposalID is 0: these rows are answered through the meeting, there is nothing to withdraw or to mark seen.
+func MeetRows(fs []MeetFact, me int64, now time.Time) []InboxRow {
+	out := []InboxRow{}
+	for _, f := range fs {
+		if f.Title == "" || f.StartsAt.IsZero() {
+			continue
+		}
+		r := InboxRow{RefID: f.RoundID, Role: "ask", Sub: f.When, CreatedUnix: f.StartsAt.Unix()}
+		switch {
+		case f.StartsAt.After(now):
+			if f.Tickets {
+				continue
+			}
+			r.Kind = "tickets"
+			switch f.Buyer {
+			case 0:
+				r.Title, r.Sub, r.Actions = "Билеты: "+f.Title, "кто покупает?", []string{"buy"}
+			case me:
+				r.Title, r.Hot, r.Actions = "Купить билеты: "+f.Title, true, []string{"bought"}
+			default:
+				continue // the partner buys: nothing for me to do
+			}
+		case !f.Rated && now.Sub(f.StartsAt) < AfterAskDays*24*time.Hour:
+			r.Kind, r.Hot = "after", true
+			r.Title, r.Actions = "Как прошло: "+f.Title+"?", []string{"like", "soso", "skip"}
+		default:
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// MergeInbox: what needs me first, the rest after; inside each part the order given
+func MergeInbox(parts ...[]InboxRow) []InboxRow {
+	hot, rest := []InboxRow{}, []InboxRow{}
+	for _, p := range parts {
+		for _, r := range p {
+			if r.Hot {
+				hot = append(hot, r)
+			} else {
+				rest = append(rest, r)
+			}
+		}
+	}
+	return append(hot, rest...)
+}

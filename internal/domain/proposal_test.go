@@ -95,3 +95,41 @@ func TestProposalReminder(t *testing.T) {
 		t.Fatal("answered proposals do not go stale")
 	}
 }
+
+func TestMeetRows(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	ahead, past := now.Add(48*time.Hour), now.Add(-3*time.Hour)
+	f := func(m MeetFact) []InboxRow {
+		m.RoundID, m.Title, m.When = 7, "Каток", "Сб"
+		return MeetRows([]MeetFact{m}, 1, now)
+	}
+
+	if r := f(MeetFact{StartsAt: ahead}); len(r) != 1 || r[0].Kind != "tickets" || r[0].Title != "Билеты: Каток" || r[0].Sub != "кто покупает?" || r[0].Hot || r[0].Actions[0] != "buy" || r[0].RefID != 7 || r[0].ProposalID != 0 {
+		t.Fatalf("nobody buys: %+v", r)
+	}
+	if r := f(MeetFact{StartsAt: ahead, Buyer: 1}); len(r) != 1 || r[0].Title != "Купить билеты: Каток" || !r[0].Hot || r[0].Actions[0] != "bought" || r[0].Sub != "Сб" {
+		t.Fatalf("I buy: %+v", r)
+	}
+	if r := f(MeetFact{StartsAt: ahead, Buyer: 2}); len(r) != 0 {
+		t.Fatalf("the partner buys: %+v", r)
+	}
+	if r := f(MeetFact{StartsAt: ahead, Buyer: 1, Tickets: true}); len(r) != 0 {
+		t.Fatalf("tickets are there: %+v", r)
+	}
+	if r := f(MeetFact{StartsAt: past}); len(r) != 1 || r[0].Kind != "after" || r[0].Title != "Как прошло: Каток?" || !r[0].Hot || len(r[0].Actions) != 3 {
+		t.Fatalf("after: %+v", r)
+	}
+	if r := f(MeetFact{StartsAt: past, Rated: true}); len(r) != 0 {
+		t.Fatalf("rated: %+v", r)
+	}
+	if r := f(MeetFact{StartsAt: now.Add(-15 * 24 * time.Hour)}); len(r) != 0 {
+		t.Fatalf("too old: %+v", r)
+	}
+	if r := MeetRows([]MeetFact{{RoundID: 1, StartsAt: ahead}}, 1, now); len(r) != 0 {
+		t.Fatalf("no idea chosen: %+v", r)
+	}
+	m := MergeInbox([]InboxRow{{Kind: "time"}, {Kind: "chore", Hot: true}}, []InboxRow{{Kind: "tickets"}, {Kind: "after", Hot: true}})
+	if len(m) != 4 || m[0].Kind != "chore" || m[1].Kind != "after" || m[2].Kind != "time" || m[3].Kind != "tickets" {
+		t.Fatalf("merge: %+v", m)
+	}
+}

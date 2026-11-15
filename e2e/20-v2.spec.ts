@@ -1122,3 +1122,31 @@ test('E72 новый интерфейс по умолчанию: вход без
   await say(o, 'Каток в Парке Горького')
   await waitMsg(o, /Сохранил в копилку/, 15000, was)
 })
+
+test('E73 билеты на главной: после «Да» оба видят «кто покупает?»; «Куплю я» оставляет строку только покупателю; «Куплены» её закрывает', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const [v, n] = people('Вова', 'Настя')
+  await pair(v, n)
+  const [id] = await addIdeas(v, ['Концерт в Зарядье'])
+  const f = await api(v, 'GET', '/free')
+  const { round } = await api(v, 'POST', '/rounds/with/' + id, { day: f.days[2].day, part: 2 })
+  const offer = (await api(n, 'GET', '/inbox')).rows[0]
+  await api(n, 'POST', `/proposals/${offer.id}/answer`, { yes: true })
+  const cv = await phone(browser), cn = await phone(browser)
+  const p = await openV2(cv, v), q = await openV2(cn, n)
+  for (const x of [p, q]) {
+    await expect(x.getByTestId('tickets-row')).toContainText('Билеты: Концерт в Зарядье')
+    await expect(x.getByTestId('tickets-row')).toContainText('кто покупает?')
+  }
+  const fit = await p.getByTestId('v2-home').evaluate(e => e.scrollHeight - e.clientHeight)
+  expect(fit).toBeLessThanOrEqual(0)
+  await shot(p, 'E73-who-buys')
+  await p.getByTestId('tickets-row').getByRole('button', { name: 'Куплю я' }).click()
+  await expect(p.getByTestId('tickets-row')).toContainText('Купить билеты: Концерт в Зарядье')
+  await expect(q.getByTestId('tickets-row')).toHaveCount(0, { timeout: 20000 })
+  expect((await api(n, 'GET', '/meet/' + round.id)).buying).toBe('partner')
+  await shot(p, 'E73-buyer')
+  await p.getByTestId('tickets-row').getByRole('button', { name: 'Куплены' }).click()
+  await expect(p.getByTestId('tickets-row')).toHaveCount(0)
+  expect((await api(n, 'GET', '/rounds/' + round.id)).round.tickets).toBe('partner')
+})

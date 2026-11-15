@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -260,4 +261,49 @@ func subLine(s string) string {
 		return ""
 	}
 	return "\n" + esc(s)
+}
+
+// MeetRows: the system rows of «Ждёт тебя» — who buys the tickets of a meeting ahead, and «как прошло» of one
+// that has passed. They are counted from the meetings themselves, so nothing has to be closed by hand.
+func (a *App) MeetRows(ctx context.Context, c Couple) []domain.InboxRow {
+	if c.Partner == nil {
+		return []domain.InboxRow{}
+	}
+	rs, err := a.S.RecentRounds(ctx, c.Space.ID, 40)
+	if err != nil {
+		return []domain.InboxRow{}
+	}
+	now := a.now()
+	var set map[string]string
+	var fs []domain.MeetFact
+	for _, r := range rs {
+		ahead := r.State == domain.StatePlanned && r.StartsAt.After(now)
+		passed := (r.State == domain.StatePlanned || r.State == domain.StateDone) && !r.StartsAt.IsZero() && !r.StartsAt.After(now)
+		if r.Chosen == 0 || (!ahead && !passed) {
+			continue
+		}
+		i, err := a.S.Idea(ctx, c.Space.ID, r.Chosen)
+		if err != nil {
+			continue
+		}
+		f := domain.MeetFact{RoundID: r.ID, Title: i.Title, When: domain.When(r.StartsAt, c.Loc()), StartsAt: r.StartsAt}
+		if ahead {
+			if set == nil {
+				set = a.S.SpaceSettings(ctx, c.Space.ID)
+			}
+			f.Tickets = a.Tickets(ctx, c.Space.ID, r.ID) != 0
+			f.Buyer, _ = strconv.ParseInt(set[fmt.Sprintf("sys.buy:%d", r.ID)], 10, 64)
+		} else if c.Me.Color == "a" {
+			f.Rated = r.AgainA != ""
+		} else {
+			f.Rated = r.AgainB != ""
+		}
+		fs = append(fs, f)
+	}
+	return domain.MeetRows(fs, c.Me.ID, now)
+}
+
+// Waiting: the whole «Ждёт тебя» of a member — proposals and what the meetings ask
+func (a *App) Waiting(ctx context.Context, c Couple) []domain.InboxRow {
+	return domain.MergeInbox(a.Inbox(ctx, c), a.MeetRows(ctx, c))
 }
