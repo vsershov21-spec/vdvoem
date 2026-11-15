@@ -258,9 +258,9 @@
 .v2 .v-swipe .pic::after{display:none}
 .v2 .eart{width:120px;height:64px;color:var(--a-mute);display:block}
 .v2 .splash{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:radial-gradient(70% 38% at 8% 4%,rgba(239,101,55,.34),transparent 70%),radial-gradient(60% 34% at 100% 30%,rgba(61,110,245,.3),transparent 70%),var(--a-bg);transition:opacity .45s ease-out;border-radius:inherit}
-.v2 .splash.out{opacity:0}.v2 .splash canvas{position:absolute;inset:0;width:100%;height:100%}.v2 .splash b{font-size:28px;letter-spacing:-.8px;position:relative;margin-top:150px}
+.v2 .splash.out{opacity:0}.v2 .splash canvas{position:absolute;inset:0;width:100%;height:100%}
 .v2 .nav button.on:not(.ai) svg{fill:color-mix(in srgb,var(--accent) 22%,transparent)}
-@media (prefers-reduced-motion:no-preference){.v2 .nav button.just svg{animation:pop2 .6s var(--spring2)}.v2 .splash b{animation:pop2 .66s 1s var(--spring2) both}
+@media (prefers-reduced-motion:no-preference){.v2 .nav button.just svg{animation:pop2 .6s var(--spring2)}
  .v2 .eart path:first-child{animation:v2drift .9s cubic-bezier(.16,1,.3,1) both}@keyframes v2drift{from{transform:translateX(-14px);opacity:0}}
  .v2 .eart path:nth-child(2){animation:drift2 .9s cubic-bezier(.16,1,.3,1) both}@keyframes drift2{from{transform:translateX(14px);opacity:0}}}
 
@@ -326,8 +326,10 @@
 .v2 .q .qt{min-height:44px}
 .v2 .scr>.v-row:first-child>.b.s{min-height:44px;min-width:44px}
 
-/* a row with one answer keeps it on the same line: the home screen has no height to spare */
+/* the answers of a row stay on its line: the home screen has no height to spare */
 .v2 .q.one{flex-direction:row;align-items:center;gap:10px}.v2 .q.one .qt{flex:1;min-width:0;width:auto}.v2 .q.one .qb{flex:none}
+.v2 .q.one .qt{align-items:center}.v2 .q.one .qt b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.v2 .q.one .qt small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v2 .q.one .qb .b.s{padding:8px 11px}.v2 .q.one{padding:10px 12px}
 /* the link of an idea: a field of its own, the whole line opens the event */
 .v2 .fld .lnk{border:0;background:none;padding:0;display:flex;align-items:center;gap:10px;text-align:left;color:inherit;min-height:44px;width:100%}
 .v2 .fld .lnk span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.v2 .fld .lnk em{font-style:normal;font-weight:650;color:var(--accent);flex:none}
@@ -339,3 +341,15 @@
 .v2 .cal button,.v2 .cal span{border-radius:16px}.v2 .v-msg{border-radius:22px}.v2 .v-toast{border-radius:999px}
 .v2 .v-sheet{border-radius:32px 32px 0 0}.v2 .nav{border-radius:34px}.v2 .nav button,.v2 .nav button.ai{border-radius:26px}.v2 .nav .v-pill::after{border-radius:28px}
 .v2 .tiles .in{border-radius:24px}.v2 input,.v2 textarea,.v2 select{border-radius:18px}
+
+/* the wordmark of the loading screen: the two halves of the name come from their sides and meet, as the arch does */
+.v2 .splash .wm{position:relative;margin-top:206px;display:flex;font-size:46px;font-weight:800;letter-spacing:-2.4px;line-height:1}
+.v2 .splash .wm i{font-style:normal;display:inline-block;color:var(--a-ink)}
+.v2 .splash .wm i:nth-child(-n+3){color:var(--accent)}.v2 .splash .wm i:nth-child(n+4){color:var(--blue)}.v2.dark .splash .wm i:nth-child(n+4){color:#6b95ff}
+.v2 .splash small{position:relative;margin-top:8px;font-size:13px;letter-spacing:.2px;color:var(--a-mute)}
+@media (prefers-reduced-motion:no-preference){
+ .v2 .splash .wm i{animation:wmL .7s calc(.75s + (2 - var(--k)) * .07s) cubic-bezier(.16,1,.3,1) both}
+ .v2 .splash .wm i:nth-child(n+4){animation-name:wmR;animation-delay:calc(.75s + (var(--k) - 3) * .07s)}
+ .v2 .splash small{animation:wmS .6s 1.25s ease-out both}
+ @keyframes wmL{from{opacity:0;transform:translateX(-26px);filter:blur(6px)}}@keyframes wmR{from{opacity:0;transform:translateX(26px);filter:blur(6px)}}@keyframes wmS{from{opacity:0;transform:translateY(6px)}}
+}

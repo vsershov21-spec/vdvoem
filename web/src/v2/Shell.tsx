@@ -126,5 +126,5 @@ function Splash() {
     return () => { clearTimeout(a); clearTimeout(b) }
   }, [on])
   if (!on) return null
-  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} /><b>Вдвоём</b></div>
+  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} /><b className="wm">{[...'вдвоём'].map((c, k) => <i key={k} style={{ ['--k' as string]: k }}>{c}</i>)}</b><small>идеи, встречи и дела на двоих</small></div>
 }

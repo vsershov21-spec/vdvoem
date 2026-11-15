@@ -76,10 +76,12 @@ export function InboxLine({ row }: { row: InboxRow }) {
       haptic.ok(); if (DONE[a]) say(DONE[a]); emit('home')
     } catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
+  // the answers stay on the line of the row. With three of them «другое» is left out: a tap on the row opens the same card
+  const shown = row.actions.length > 2 ? row.actions.filter(a => a !== 'other') : row.actions
   return (
-    <div className={'q' + (row.hot ? ' hot' : '') + (row.actions.length === 1 ? ' one' : '')} data-testid={row.kind === 'after' ? 'after-row' : row.kind === 'tickets' ? 'tickets-row' : 'inbox-row'}>
+    <div className={'q one' + (row.hot ? ' hot' : '')} data-testid={row.kind === 'after' ? 'after-row' : row.kind === 'tickets' ? 'tickets-row' : 'inbox-row'}>
       <button className="qt" onClick={() => go(where)}><i>{ICONS[row.kind]}</i><span><b>{row.title}</b><small>{row.sub}</small></span></button>
-      {row.actions.length > 0 && <div className="qb">{row.actions.map((a, k) =>
+      {shown.length > 0 && <div className="qb">{shown.map((a, k) =>
         <button key={a} className={'b s' + (k === 0 ? ' a' : '')} disabled={busy} onClick={() => act(a)}>{LABEL[row.kind]?.[a] || COMMON[a] || a}</button>)}</div>}
     </div>)
 }
@@ -244,6 +246,13 @@ function Solo({ home, onAddIdea }: { home: HomeV2; onAddIdea: () => void }) {
       </div>
       <div className="lbl">Пока ждёшь</div>
       <div className="v-row"><button className="b p" style={{ flex: 1 }} onClick={onAddIdea}>＋ Идея</button><button className="b" style={{ flex: 1 }} onClick={() => go('chores')}>＋ Дело</button></div>
+      <SoloCity />
       <button className="in" onClick={() => go('ideas')}><i>♡</i><span><b>Отметь, что нравится в афише</b><small>отметки останутся, когда партнёр придёт</small></span>›</button>
     </div>)
+}
+
+// setting up: the city is asked before the partner comes, so the afisha is of the right place from the start
+function SoloCity() {
+  const { data } = useLoad<{ city: string }>('/settings')
+  return <button className="in" data-testid="solo-city" onClick={() => go('settings/city')}><i>⌖</i><span><b>Город: {data?.city || 'не выбран'}</b><small>где искать афишу и места</small></span>›</button>
 }
