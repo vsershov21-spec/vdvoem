@@ -52,13 +52,13 @@ export function History({ view, home, from }: { view: string; home: HomeV2 | nul
       {tab === 'meets' ? (meets.data && (meets.data.meetings.length ? meets.data.meetings.map(r =>
         <button className="in" key={r.id} data-testid="hist-meet" onClick={() => go('meet/' + r.id)}>{r.chosen && <Pic idea={r.chosen} className="th" />}<span><b>{r.chosen?.title || 'Встреча'}</b>
           <small>{r.starts_at ? whenText(r.starts_at) : ''}</small><small data-testid="hist-rates">{rate('ты', r.again)} · {rate(pn, r.partner_again)}</small></span>›</button>)
-        : <Empty title="Встреч ещё не было"><button className="b p w" onClick={() => go('ideas')}>Выбрать, куда сходить</button></Empty>))
+        : <Empty art="cal" title="Встреч ещё не было"><button className="b p w" onClick={() => go('ideas')}>Выбрать, куда сходить</button></Empty>))
         : <>
           <label className="in"><i>⌕</i><span><input value={q} onChange={e => setQ(e.target.value)} placeholder="Найти: «кран», «подарок»" aria-label="Поиск по делам" data-testid="hist-search" /></span></label>
           <div className="v-chips">{([['', 'Все'], ['me', home?.me.name || 'Я'], ['partner', pn]] as ['' | 'me' | 'partner', string][]).map(([k, l]) => <button key={k} className={'v-chip' + (who === k ? ' on' : '')} onClick={() => setWho(k)}>{l}</button>)}</div>
           {chores.data && (chores.data.chores.length ? chores.data.chores.map(c =>
             <div className="in" key={c.id} data-testid="hist-chore"><span className="ck on" style={{ display: 'grid', placeItems: 'center' }}>✓</span><span><b>{c.title}</b><small>{c.done_by} · {c.done_at ? new Date(c.done_at * 1000).toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</small></span></div>)
-            : <Empty title={q || who ? 'Ничего не нашлось' : 'Сделанных дел пока нет'}><button className="b p w" onClick={() => go('chores')}>К делам</button></Empty>)}
+            : <Empty art={q || who ? 'search' : 'check'} title={q || who ? 'Ничего не нашлось' : 'Сделанных дел пока нет'}><button className="b p w" onClick={() => go('chores')}>К делам</button></Empty>)}
         </>}
     </div>)
 }

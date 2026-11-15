@@ -14,6 +14,7 @@ import { Plans, Free } from './Plans'
 import { Chores, ChoreCard } from './Chores'
 import { Profile, History, Settings, Taste } from './Profile'
 import { Assistant } from './Assistant'
+import { WORDMARK, WORDMARK_BOX } from './wordmark'
 import { particles, still } from './particles'
 
 // The shell of the new interface: five tabs with the assistant in the middle, nested screens that go back one
@@ -126,5 +127,5 @@ function Splash() {
     return () => { clearTimeout(a); clearTimeout(b) }
   }, [on])
   if (!on) return null
-  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} /><b className="wm">{[...'вдвоём'].map((c, k) => <i key={k} style={{ ['--k' as string]: k }}>{c}</i>)}</b><small>идеи, встречи и дела на двоих</small></div>
+  return <div className={'splash' + (out ? ' out' : '')} aria-hidden="true"><canvas ref={cv} /><svg className="wm" viewBox={WORDMARK_BOX} role="img" aria-label="Вдвоём">{WORDMARK.map((d, k) => <path key={k} d={d} style={{ ['--k' as string]: k }} />)}</svg><small>идеи, встречи и дела на двоих</small></div>
 }

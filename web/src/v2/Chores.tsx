@@ -73,7 +73,7 @@ export function Chores({ home }: { home: HomeV2 | null }) {
           {c.actions.length > 0 && <div className="qb">{c.actions.map((a, k) => <button key={a} className={'b s' + (k === 0 ? ' a' : '')} onClick={() => choreAct(c.id, a, set)}>{LABEL(pn)[a]}</button>)}</div>}
         </div> })}</div>}
       {block('Просрочено', 'overdue', true)}{block('Сегодня', 'today')}{block('Позже', 'later')}
-      {data && !open && !ask.length && <Empty title="Здесь дел нет"><button className="b p w" onClick={() => setAdd(true)}>Добавить дело</button></Empty>}
+      {data && !open && !ask.length && <Empty art="check" title="Здесь дел нет"><button className="b p w" onClick={() => setAdd(true)}>Добавить дело</button></Empty>}
       {data && <button className="b w" data-testid="done-toggle" onClick={() => setShowDone(!showDone)}>Сделано · {done.length} {showDone ? '▴' : '▾'}</button>}
       {showDone && <>{done.map(row)}<button className="back" style={{ alignSelf: 'flex-start' }} onClick={() => go('history/chores')}>Вся история дел</button></>}
       <Sheet open={add} onClose={() => setAdd(false)} testid="chore-sheet"><ChoreForm partner={paired ? pn : ''} onDone={r => { setAdd(false); if (r) set(r) }} /></Sheet>
@@ -87,7 +87,7 @@ export function ChoreCard({ id, home, from }: { id: number; home: HomeV2 | null;
   const pn = home?.partner?.name || 'партнёр'
   const c = data?.chores.find(x => x.id === id)
   const head = <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('chores')}>‹ {from}</button><b>Дело</b><span style={{ justifySelf: 'end' }}>{c && c.state !== 'done' && <button className="back" data-testid="edit-chore" onClick={() => setEdit(true)}>Изменить</button>}</span></div>
-  if (!c) return <div className="scr">{head}{data && <Empty title="Дела нет"><p className="m">Оно удалено или ушло в историю.</p><button className="b p w" onClick={() => go('chores')}>К делам</button></Empty>}</div>
+  if (!c) return <div className="scr">{head}{data && <Empty art="search" title="Дела нет"><p className="m">Оно удалено или ушло в историю.</p><button className="b p w" onClick={() => go('chores')}>К делам</button></Empty>}</div>
   const after = (r: Res) => { set(r); if (!r.chores.some(x => x.id === id)) go('chores') }
   return (
     <div className="scr" data-testid="v2-chore">

@@ -63,7 +63,7 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
       {!data ? null : v === 'both' ? (both.length ? both.map(i =>
         <div className="in" key={i.id} data-testid="match-row" style={{ cursor: 'pointer' }} onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[CATS[i.category]?.name, i.starts_at ? whenText(i.starts_at) : ''].filter(Boolean).join(' · ')}</small></span>
           <button className="b p s" onClick={e => { e.stopPropagation(); goMeet(i) }}>Идём</button></div>)
-        : <Empty title="Пока не совпало"><button className="b p w" onClick={() => go('')}>Отмечать идеи</button></Empty>)
+        : <Empty art="heart" title="Пока не совпало"><button className="b p w" onClick={() => go('')}>Отмечать идеи</button></Empty>)
         : v === 'afisha' ? <>
           <div className="v-row"><div className="v-chips">
             <button className={'v-chip' + (!cat ? ' on' : '')} onClick={() => pickCat('')}>Всё</button>
@@ -76,14 +76,14 @@ export function Ideas({ home, onAdd }: { home: HomeV2 | null; onAdd: () => void 
               return <button key={d} className={(d === now.getDate() ? 'today ' : '') + (day === d ? 'sel' : '')} onClick={() => setDay(day === d ? 0 : d)}>{d}{has && <i className="d" />}</button> })}
           </div></div>}
           {shownAf.length ? shownAf.map(i => <button className="in" key={i.id} data-testid="afisha-row" onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</small></span>{matched(i) ? <span className="badge">совпало</span> : wants(i.my_wish) ? '♥' : '›'}</button>)
-            : <Empty title={day ? 'В этот день событий нет' : cat ? 'Таких событий пока нет' : 'Афиша пока пуста'}><p className="m">Скаут ищет события каждый день.</p></Empty>}
+            : <Empty art="cal" title={day ? 'В этот день событий нет' : cat ? 'Таких событий пока нет' : 'Афиша пока пуста'}><p className="m">Скаут ищет события каждый день.</p></Empty>}
         </> : <>
           {paired && <div className="v-chips">{([['all', 'Все'], ['mine', 'Мои'], ['their', ncase(pn, 'gen')]] as ['all' | 'mine' | 'their', string][]).map(([k, l]) =>
             <button key={k} className={'v-chip' + (who === k ? ' on' : '')} onClick={() => setWho(k)}>{l}</button>)}</div>}
           {oursList.length ? <div className="g2">{oursList.map(i =>
             <button className="gcard" key={i.id} data-testid="idea-card" onClick={() => go('idea/' + i.id)}><Pic idea={i}>{badge(i) && <small>{badge(i)}</small>}{i.title}</Pic>
               <small>{CATS[i.category]?.name || 'Идея'} · {i.mine ? 'моя' : 'от ' + ncase(pn, 'gen')}{wants(i.my_wish) ? ' · ♥' : ''}</small></button>)}</div>
-            : <Empty title="Здесь пусто"><button className="b p w" onClick={onAdd}>Добавить идею</button></Empty>}
+            : <Empty art="heart" title="Здесь пусто"><button className="b p w" onClick={onAdd}>Добавить идею</button></Empty>}
         </>}
     </div>)
 }
@@ -206,12 +206,12 @@ export function AddIdea({ open, onClose }: { open: boolean; onClose: () => void 
 export function PickList({ id, from }: { id: number; from: string }) {
   const { data, err } = useLoad<{ title: string; ideas: Idea[] }>(id > 0 ? '/picks/' + id : null)
   const head = <div className="subh"><button className="back" aria-label="Назад" onClick={() => back('')}>‹ {from}</button><b>Подборка</b><span /></div>
-  if (!data) return <div className="scr" data-testid="v2-pick">{head}{(!!err || !(id > 0)) && <Empty title="Подборка не нашлась"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}</div>
+  if (!data) return <div className="scr" data-testid="v2-pick">{head}{(!!err || !(id > 0)) && <Empty art="search" title="Подборка не нашлась"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}</div>
   return (
     <div className="scr" data-testid="v2-pick">
       {head}
       <div><h2>{data.title}</h2><p className="m">Отметь, что нравится: «Хочу» в карточке идеи.</p></div>
       {data.ideas.length ? data.ideas.map(i => <button className="in" key={i.id} data-testid="pick-row" onClick={() => go('idea/' + i.id)}><Pic idea={i} className="th" /><span><b>{i.title}</b><small>{[i.starts_at ? whenText(i.starts_at) : '', i.price_min ? money(i.price_min) : ''].filter(Boolean).join(' · ')}</small></span>{matched(i) ? <span className="badge">совпало</span> : wants(i.my_wish) ? '♥' : '›'}</button>)
-        : <Empty title="В подборке пусто"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}
+        : <Empty art="spark" title="В подборке пусто"><button className="b p w" onClick={() => go('ideas')}>К идеям</button></Empty>}
     </div>)
 }

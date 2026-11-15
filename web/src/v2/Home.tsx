@@ -181,7 +181,7 @@ function Deck({ partner, onAddIdea }: { partner: string; onAddIdea: () => void }
         </div>
       </div>
         : <div className="v-card swipe0" data-testid="deck-empty" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '18px 14px' } as CSSProperties}>
-          <Empty title={cur === 'ours' ? (data.ideas.some(x => x.ours) || gone.length ? 'Наши разобраны' : 'Своих идей пока нет') : 'Афиша разобрана'}>
+          <Empty art="heart" title={cur === 'ours' ? (data.ideas.some(x => x.ours) || gone.length ? 'Наши разобраны' : 'Своих идей пока нет') : 'Афиша разобрана'}>
             {(cur === 'ours' ? afisha.length : ours.length) > 0
               ? <button className="b p w" onClick={() => setSrc(cur === 'ours' ? 'afisha' : 'ours')}>{cur === 'ours' ? 'Смотреть афишу' : 'К нашим идеям'} · {cur === 'ours' ? afisha.length : ours.length}</button>
               : <button className="b p w" onClick={onAddIdea}>Добавить идею</button>}
