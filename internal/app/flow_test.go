@@ -2712,3 +2712,54 @@ func TestMeetRowsInWaiting(t *testing.T) {
 		t.Fatal("too old to ask")
 	}
 }
+
+// «Вместе»: a chore of the two of them — the partner learns about it, either ticks it, both see it as theirs;
+// leaving the pair gives the leaver a copy and leaves the original for anyone
+func TestChoreTogether(t *testing.T) {
+	a, f, ck := setup(t)
+	ctx := context.Background()
+	v, n := pair(t, a)
+	today := ck.t
+	ch, err := a.AddChore(ctx, v, app.ChoreIn{Title: "Генеральная уборка", Who: "both", Due: &today})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.State != domain.ChoreOpen || ch.Assignee != domain.ChoreTogether {
+		t.Fatalf("open and on both, not a request: %+v", ch)
+	}
+	if !strings.Contains(f.last(2), "на вас обоих") || !strings.Contains(f.last(2), "Генеральная уборка") {
+		t.Fatalf("the partner is told: %q", f.last(2))
+	}
+	for _, c := range []app.Couple{v, n} {
+		list, s, _ := a.Chores(ctx, c)
+		if len(list) != 1 || list[0].Who != "both" || list[0].WhoName != "вместе" || len(list[0].Actions) != 1 || list[0].Actions[0] != "done" || s.Today != 1 {
+			t.Fatalf("both see it as theirs: %+v %+v", list, s)
+		}
+	}
+	if _, err := a.ChoreAct(ctx, n, ch.ID, "done"); err != nil {
+		t.Fatalf("either ticks it: %v", err)
+	}
+	if h, _ := a.ChoreHistory(ctx, v, "", "partner"); len(h) != 1 || h[0].Title != "Генеральная уборка" {
+		t.Fatalf("history: who ticked it: %+v", h)
+	}
+	// edited into «вместе» and back; nobody can be asked for it without a partner
+	two, _ := a.AddChore(ctx, v, app.ChoreIn{Title: "Разобрать балкон", Who: "me"})
+	if e, err := a.EditChore(ctx, v, two.ID, app.ChoreIn{Title: "Разобрать балкон", Who: "both"}, false); err != nil || e.Assignee != domain.ChoreTogether {
+		t.Fatalf("edit to both: %+v %v", e, err)
+	}
+	// leaving: the leaver takes a copy, the one who stays keeps it for anyone
+	v2, _, err := a.LeavePair(ctx, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2, _ := a.CoupleByMember(ctx, n.Me.ID)
+	if list, _, _ := a.Chores(ctx, n2); len(list) < 1 || list[0].Title != "Разобрать балкон" || list[0].Who != "any" {
+		t.Fatalf("the one who stays: %+v", list)
+	}
+	if list, _, _ := a.Chores(ctx, v2); len(list) != 1 || list[0].Title != "Разобрать балкон" || list[0].Who != "me" {
+		t.Fatalf("the leaver's copy: %+v", list)
+	}
+	if _, err := a.AddChore(ctx, v2, app.ChoreIn{Title: "Вдвоём без пары", Who: "both"}); !errors.Is(err, app.ErrNotPaired) {
+		t.Fatalf("no partner, no «вместе»: %v", err)
+	}
+}

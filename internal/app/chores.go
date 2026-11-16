@@ -50,6 +50,11 @@ func (a *App) whoID(c Couple, who string) (int64, error) {
 		return c.Me.ID, nil
 	case "any":
 		return 0, nil
+	case "both":
+		if c.Partner == nil {
+			return 0, ErrNotPaired
+		}
+		return domain.ChoreTogether, nil
 	case "partner":
 		if c.Partner == nil {
 			return 0, ErrNotPaired
@@ -63,6 +68,8 @@ func whoOf(c Couple, id int64) (string, string) {
 	switch {
 	case id == 0:
 		return "any", "кто угодно"
+	case id == domain.ChoreTogether:
+		return "both", "вместе"
 	case id == c.Me.ID:
 		return "me", c.Me.Name
 	}
@@ -175,6 +182,9 @@ func (a *App) AddChore(ctx context.Context, c Couple, in ChoreIn) (domain.Chore,
 		if err = a.askChore(ctx, c, &ch); err != nil {
 			return ch, err
 		}
+	}
+	if who == domain.ChoreTogether && c.Partner != nil { // nothing to answer: the partner just learns it is on both
+		a.tell(ctx, *c.Partner, c.Loc(), "notify.chores", fmt.Sprintf("%s %s дело на вас обоих: <b>%s</b>%s", esc(c.Me.Name), Past(c.Me.Name, "добавил"), esc(ch.Title), subLine(a.dueWords(c, ch))), a.choreKeys(ch))
 	}
 	a.Live.From(ctx, c.Space.ID)
 	return ch, nil
@@ -326,8 +336,10 @@ func (a *App) EditChore(ctx context.Context, c Couple, id int64, in ChoreIn, set
 	if setDue {
 		ch.Due, ch.DueTime = in.Due, in.DueTime && in.Due != nil
 	}
-	if ch.State == domain.ChoreOpen && (in.Who == "me" || in.Who == "any") {
-		ch.Assignee, _ = a.whoID(c, in.Who)
+	if ch.State == domain.ChoreOpen && (in.Who == "me" || in.Who == "any" || in.Who == "both") {
+		if who, err := a.whoID(c, in.Who); err == nil {
+			ch.Assignee = who
+		}
 	}
 	err = a.S.SaveChore(ctx, ch)
 	a.Live.From(ctx, c.Space.ID)

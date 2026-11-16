@@ -109,3 +109,26 @@ func TestChoreSummary(t *testing.T) {
 		t.Fatalf("empty summary keeps an empty list: %+v", e)
 	}
 }
+
+// «Вместе»: either of the two ticks it, nobody takes it over or passes it on, it is on both summaries
+func TestChoreTogether(t *testing.T) {
+	loc := time.UTC
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, loc)
+	due := now.Add(2 * time.Hour)
+	c := Chore{ID: 1, AuthorID: 1, Assignee: ChoreTogether, Title: "Генеральная уборка", Due: &due, DueTime: true, State: ChoreOpen}
+	for _, me := range []int64{1, 2} {
+		if !c.CanTick(me) {
+			t.Fatalf("%d cannot tick", me)
+		}
+		if a := c.Actions(me, now, loc); len(a) != 1 || a[0] != "done" {
+			t.Fatalf("actions of %d: %v", me, a)
+		}
+		if s := SummarizeChores([]Chore{c}, me, now, loc); s.Today != 1 {
+			t.Fatalf("summary of %d: %+v", me, s)
+		}
+	}
+	late := now.Add(3 * time.Hour)
+	if a := c.Actions(2, late, loc); len(a) != 2 || a[1] != "move" {
+		t.Fatalf("overdue: %v", a)
+	}
+}

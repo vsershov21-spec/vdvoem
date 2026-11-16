@@ -7,7 +7,7 @@ import { ncase } from '../lib/format'
 import type { HomeV2, ChoreSummary } from './types'
 import { Sheet, Empty, say } from './ui'
 
-export type Chore = { id: number; title: string; note: string; who: 'me' | 'partner' | 'any'; who_name: string; due?: number; due_time: boolean; repeat: '' | 'week' | 'month'
+export type Chore = { id: number; title: string; note: string; who: 'me' | 'partner' | 'any' | 'both'; who_name: string; due?: number; due_time: boolean; repeat: '' | 'week' | 'month'
   state: 'open' | 'ask' | 'declined' | 'done'; section: 'ask' | 'overdue' | 'today' | 'later' | 'done'; actions: string[]; asked_by?: 'me' | 'partner'; done_by?: string; done_at?: number }
 type Res = { chores: Chore[]; summary: ChoreSummary }
 const REPEAT: Record<string, string> = { '': 'нет', week: 'каждую неделю', month: 'каждый месяц' }
@@ -47,7 +47,8 @@ export function Chores({ home }: { home: HomeV2 | null }) {
   const [showDone, setShowDone] = useState(false)
   const [add, setAdd] = useState(false)
   const pn = home?.partner?.name || 'партнёр', paired = !!home?.paired
-  const pass = (c: Chore) => f === 'all' || (f === 'mine' ? c.who === 'me' : f === 'their' ? c.who === 'partner' : c.who === 'any')
+  // «вместе» is mine and the partner's at once, and one of the «Общие»
+  const pass = (c: Chore) => f === 'all' || (f === 'mine' ? c.who === 'me' || c.who === 'both' : f === 'their' ? c.who === 'partner' || c.who === 'both' : c.who === 'any' || c.who === 'both')
   const all = data?.chores || []
   const sec = (s: string) => all.filter(c => c.section === s && (s === 'ask' || pass(c)))
   const row = (c: Chore) => (
@@ -110,7 +111,7 @@ const localDT = (t?: number) => { if (!t) return ''; const d = new Date(t * 1000
 function ChoreForm({ partner, chore, onDone }: { partner: string; chore?: Chore; onDone: (r?: Res) => void }) {
   const [title, setTitle] = useState(chore?.title || '')
   const [note, setNote] = useState(chore?.note || '')
-  const [who, setWho] = useState<'me' | 'partner' | 'any'>(chore ? (chore.who === 'partner' ? 'me' : chore.who) : 'me')
+  const [who, setWho] = useState<'me' | 'partner' | 'any' | 'both'>(chore ? (chore.who === 'partner' ? 'me' : chore.who) : 'me')
   const [due, setDue] = useState<number | 0>(chore?.due || 0)
   const [time, setTime] = useState(!!chore?.due_time)
   const [exact, setExact] = useState(false)
@@ -121,7 +122,7 @@ function ChoreForm({ partner, chore, onDone }: { partner: string; chore?: Chore;
     const b = { title, note, who, due: due || null, has_due: true, due_time: time && !!due, repeat }
     try {
       const r = chore ? await patch<Res>('/chores/' + chore.id, b) : await post<Res>('/chores', b)
-      emit('home'); say(chore ? 'Сохранено' : who === 'partner' ? `Просьба ушла ${ncase(partner, 'dat')}` : 'Дело добавлено'); onDone(r)
+      emit('home'); say(chore ? 'Сохранено' : who === 'partner' ? `Просьба ушла ${ncase(partner, 'dat')}` : who === 'both' ? `Дело на вас обоих, ${partner} увидит` : 'Дело добавлено'); onDone(r)
     } catch (e) { say(humanError(e)) } finally { setBusy(false) }
   }
   const chip = (on: boolean, l: string, f: () => void) => <button key={l} className={'v-chip' + (on ? ' on' : '')} aria-pressed={on} onClick={f}>{l}</button>
@@ -130,7 +131,7 @@ function ChoreForm({ partner, chore, onDone }: { partner: string; chore?: Chore;
     <h3>{chore ? 'Изменить дело' : 'Новое дело'}</h3>
     <label className="fld"><small>Что сделать</small><input autoFocus={!chore} value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Забрать торт" /></label>
     {(!chore || chore.state === 'open') && <div className="blk"><label>Кто</label><div className="v-row">
-      {chip(who === 'me', 'Я', () => setWho('me'))}{partner && chip(who === 'partner', partner, () => setWho('partner'))}{chip(who === 'any', 'Кто угодно', () => setWho('any'))}</div></div>}
+      {chip(who === 'me', 'Я', () => setWho('me'))}{partner && !chore && chip(who === 'partner', partner, () => setWho('partner'))}{partner && chip(who === 'both', 'Вместе', () => setWho('both'))}{chip(who === 'any', 'Кто угодно', () => setWho('any'))}</div></div>}
     <div className="blk"><label>Срок</label><div className="v-row" style={{ flexWrap: 'wrap' }}>
       {chip(isDay(0), 'Сегодня', () => { setDue(dayStart(0)); setTime(false); setExact(false) })}{chip(isDay(1), 'Завтра', () => { setDue(dayStart(1)); setTime(false); setExact(false) })}
       {chip(exact || (!!due && !isDay(0) && !isDay(1)), 'Дата и время', () => setExact(true))}{chip(!due && !exact, 'Без срока', () => { setDue(0); setTime(false); setExact(false) })}</div>
@@ -139,6 +140,7 @@ function ChoreForm({ partner, chore, onDone }: { partner: string; chore?: Chore;
     <label className="fld"><small>Заметка</small><textarea rows={2} value={note} onChange={e => setNote(e.target.value)} /></label>
     <button className="b p w" disabled={busy || !title.trim()} data-testid="chore-save" onClick={save}>{chore ? 'Сохранить' : who === 'partner' ? 'Попросить ' + ncase(partner, 'acc') : 'Добавить'}</button>
     {!chore && who === 'partner' && <p className="m">{partner} ответит «Беру» или «Не могу». Откажется: дело вернётся тебе.</p>}
+    {who === 'both' && <p className="m">Делаете вместе: отметить «Сделано» может любой из вас.</p>}
     {chore && <button className="b ghost w red" data-testid="chore-delete" onClick={async () => { try { const r = await post<Res>(`/chores/${chore.id}/delete`); emit('home'); say('Дело удалено', () => { post<Res>(`/chores/${chore.id}/restore`).then(() => emit('home')).catch(() => {}) }); onDone(r) } catch (e) { say(humanError(e)) } }}>Удалить дело</button>}
   </>)
 }
